@@ -1,0 +1,899 @@
+/android-build/android-root/lib/python3.14/lib-dynload/_sha1.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/android-root/lib/python3.14/lib-dynload/termios.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/android-root/lib/python3.14/lib-dynload/_codecs_iso2022.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/android-root/lib/python3.14/lib-dynload/_testsinglephase.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/android-root/lib/python3.14/lib-dynload/_interpchannels.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/android-root/lib/python3.14/lib-dynload/cmath.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/android-root/lib/python3.14/lib-dynload/syslog.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/android-root/lib/python3.14/lib-dynload/_codecs_kr.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/android-root/lib/python3.14/lib-dynload/_multibytecodec.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/android-root/lib/python3.14/lib-dynload/_testcapi.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/android-root/lib/python3.14/lib-dynload/_codecs_cn.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/android-root/lib/python3.14/lib-dynload/_bisect.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/android-root/lib/python3.14/lib-dynload/_sha2.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/android-root/lib/python3.14/lib-dynload/_xxtestfuzz.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/android-root/lib/python3.14/lib-dynload/_struct.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/android-root/lib/python3.14/lib-dynload/_interpqueues.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/android-root/lib/python3.14/lib-dynload/_heapq.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/android-root/lib/python3.14/lib-dynload/_blake2.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/android-root/lib/python3.14/lib-dynload/_json.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/android-root/lib/python3.14/lib-dynload/_sqlite3.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/android-root/lib/python3.14/lib-dynload/unicodedata.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/android-root/lib/python3.14/lib-dynload/_elementtree.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/android-root/lib/python3.14/lib-dynload/xxsubtype.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/android-root/lib/python3.14/lib-dynload/_statistics.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/android-root/lib/python3.14/lib-dynload/_ctypes.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/android-root/lib/python3.14/lib-dynload/_interpreters.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/android-root/lib/python3.14/lib-dynload/_testbuffer.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/android-root/lib/python3.14/lib-dynload/mmap.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/android-root/lib/python3.14/lib-dynload/math.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/android-root/lib/python3.14/lib-dynload/_decimal.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/android-root/lib/python3.14/lib-dynload/_remote_debugging.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/android-root/lib/python3.14/lib-dynload/zlib.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/android-root/lib/python3.14/lib-dynload/_testmultiphase.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/android-root/lib/python3.14/lib-dynload/binascii.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/android-root/lib/python3.14/lib-dynload/_socket.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/android-root/lib/python3.14/lib-dynload/_codecs_hk.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/android-root/lib/python3.14/lib-dynload/_codecs_jp.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/android-root/lib/python3.14/lib-dynload/_codecs_tw.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/android-root/lib/python3.14/lib-dynload/_testinternalcapi.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/android-root/lib/python3.14/lib-dynload/_queue.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/android-root/lib/python3.14/lib-dynload/_sha3.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/android-root/lib/python3.14/lib-dynload/array.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/libpython3.14.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/libpythonbin.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/Modules/_ctypes_test.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/Modules/_testlimitedcapi.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/Modules/_csv.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/Modules/_zoneinfo.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/Modules/_testclinic_limited.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/Modules/fcntl.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/Modules/_hmac.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/Modules/_hashlib.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/Modules/_testimportmultiple.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/Modules/xxlimited.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/Modules/_testclinic.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/Modules/_random.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/Modules/_ssl.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/Modules/_md5.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/Modules/pyexpat.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/Modules/resource.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/Modules/_lsprof.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/Modules/_posixsubprocess.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/Modules/xxlimited_35.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/Modules/_pickle.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/Modules/_asyncio.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/Modules/select.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/Modules/_sha1.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/Modules/termios.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/Modules/_codecs_iso2022.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/Modules/_testsinglephase.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/Modules/_interpchannels.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/Modules/cmath.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/Modules/syslog.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/Modules/_codecs_kr.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/Modules/_multibytecodec.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/Modules/_testcapi.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/Modules/_codecs_cn.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/Modules/_bisect.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/Modules/_sha2.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/Modules/_xxtestfuzz.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/Modules/_struct.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/Modules/_interpqueues.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/Modules/_heapq.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/Modules/_blake2.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/Modules/_json.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/Modules/_sqlite3.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/Modules/unicodedata.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/Modules/_elementtree.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/Modules/xxsubtype.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/Modules/_statistics.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/Modules/_ctypes.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/Modules/_interpreters.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/Modules/_testbuffer.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/Modules/mmap.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/Modules/math.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/Modules/_decimal.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/Modules/_remote_debugging.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/Modules/zlib.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/Modules/_testmultiphase.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/Modules/binascii.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/Modules/_socket.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/Modules/_codecs_hk.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/Modules/_codecs_jp.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/Modules/_codecs_tw.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/Modules/_testinternalcapi.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/Modules/_queue.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/Modules/_sha3.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/Modules/array.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/build/lib.android-24-arm64_v8a-3.14/_ctypes_test.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/build/lib.android-24-arm64_v8a-3.14/_testlimitedcapi.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/build/lib.android-24-arm64_v8a-3.14/_csv.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/build/lib.android-24-arm64_v8a-3.14/_zoneinfo.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/build/lib.android-24-arm64_v8a-3.14/_testclinic_limited.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/build/lib.android-24-arm64_v8a-3.14/fcntl.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/build/lib.android-24-arm64_v8a-3.14/_hmac.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/build/lib.android-24-arm64_v8a-3.14/_hashlib.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/build/lib.android-24-arm64_v8a-3.14/_testimportmultiple.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/build/lib.android-24-arm64_v8a-3.14/xxlimited.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/build/lib.android-24-arm64_v8a-3.14/_testclinic.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/build/lib.android-24-arm64_v8a-3.14/_random.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/build/lib.android-24-arm64_v8a-3.14/_ssl.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/build/lib.android-24-arm64_v8a-3.14/_md5.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/build/lib.android-24-arm64_v8a-3.14/pyexpat.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/build/lib.android-24-arm64_v8a-3.14/resource.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/build/lib.android-24-arm64_v8a-3.14/_lsprof.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/build/lib.android-24-arm64_v8a-3.14/_posixsubprocess.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/build/lib.android-24-arm64_v8a-3.14/xxlimited_35.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/build/lib.android-24-arm64_v8a-3.14/_pickle.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/build/lib.android-24-arm64_v8a-3.14/_asyncio.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/build/lib.android-24-arm64_v8a-3.14/select.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/build/lib.android-24-arm64_v8a-3.14/_sha1.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/build/lib.android-24-arm64_v8a-3.14/termios.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/build/lib.android-24-arm64_v8a-3.14/_codecs_iso2022.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/build/lib.android-24-arm64_v8a-3.14/_testsinglephase.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/build/lib.android-24-arm64_v8a-3.14/_interpchannels.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/build/lib.android-24-arm64_v8a-3.14/cmath.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/build/lib.android-24-arm64_v8a-3.14/syslog.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/build/lib.android-24-arm64_v8a-3.14/_codecs_kr.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/build/lib.android-24-arm64_v8a-3.14/_multibytecodec.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/build/lib.android-24-arm64_v8a-3.14/_testcapi.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/build/lib.android-24-arm64_v8a-3.14/_codecs_cn.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/build/lib.android-24-arm64_v8a-3.14/_bisect.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/build/lib.android-24-arm64_v8a-3.14/_sha2.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/build/lib.android-24-arm64_v8a-3.14/_xxtestfuzz.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/build/lib.android-24-arm64_v8a-3.14/_struct.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/build/lib.android-24-arm64_v8a-3.14/_interpqueues.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/build/lib.android-24-arm64_v8a-3.14/_heapq.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/build/lib.android-24-arm64_v8a-3.14/_blake2.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/build/lib.android-24-arm64_v8a-3.14/_json.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/build/lib.android-24-arm64_v8a-3.14/_sqlite3.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/build/lib.android-24-arm64_v8a-3.14/unicodedata.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/build/lib.android-24-arm64_v8a-3.14/_elementtree.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/build/lib.android-24-arm64_v8a-3.14/xxsubtype.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/build/lib.android-24-arm64_v8a-3.14/_statistics.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/build/lib.android-24-arm64_v8a-3.14/_ctypes.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/build/lib.android-24-arm64_v8a-3.14/_interpreters.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/build/lib.android-24-arm64_v8a-3.14/_testbuffer.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/build/lib.android-24-arm64_v8a-3.14/mmap.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/build/lib.android-24-arm64_v8a-3.14/math.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/build/lib.android-24-arm64_v8a-3.14/_decimal.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/build/lib.android-24-arm64_v8a-3.14/_remote_debugging.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/build/lib.android-24-arm64_v8a-3.14/zlib.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/build/lib.android-24-arm64_v8a-3.14/_testmultiphase.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/build/lib.android-24-arm64_v8a-3.14/binascii.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/build/lib.android-24-arm64_v8a-3.14/_socket.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/build/lib.android-24-arm64_v8a-3.14/_codecs_hk.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/build/lib.android-24-arm64_v8a-3.14/_codecs_jp.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/build/lib.android-24-arm64_v8a-3.14/_codecs_tw.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/build/lib.android-24-arm64_v8a-3.14/_testinternalcapi.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/build/lib.android-24-arm64_v8a-3.14/_queue.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/build/lib.android-24-arm64_v8a-3.14/_sha3.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/build/lib.android-24-arm64_v8a-3.14/array.cpython-314-aarch64-linux-android.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/python3/arm64-v8a__ndk_target_24/python3/android-build/libpython3.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/pyjnius-sdl2/armeabi-v7a__ndk_target_24/pyjnius/build/lib.linux-x86_64-cpython-314/jnius/jnius.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/pyjnius-sdl2/arm64-v8a__ndk_target_24/pyjnius/build/lib.linux-x86_64-cpython-314/jnius/jnius.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/libffi/armeabi-v7a__ndk_target_24/libffi/.libs/libffi.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/libffi/arm64-v8a__ndk_target_24/libffi/.libs/libffi.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/openssl/armeabi-v7a__ndk_target_24/openssl3/libssl.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/openssl/armeabi-v7a__ndk_target_24/openssl3/libcrypto.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/openssl/arm64-v8a__ndk_target_24/openssl3/libssl.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/openssl/arm64-v8a__ndk_target_24/openssl3/libcrypto.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/root/usr/local/lib/python3.14/lib-dynload/resource.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/root/usr/local/lib/python3.14/lib-dynload/_uuid.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/root/usr/local/lib/python3.14/lib-dynload/_heapq.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/root/usr/local/lib/python3.14/lib-dynload/_elementtree.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/root/usr/local/lib/python3.14/lib-dynload/_sqlite3.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/root/usr/local/lib/python3.14/lib-dynload/_zstd.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/root/usr/local/lib/python3.14/lib-dynload/_md5.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/root/usr/local/lib/python3.14/lib-dynload/_testclinic.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/root/usr/local/lib/python3.14/lib-dynload/xxlimited_35.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/root/usr/local/lib/python3.14/lib-dynload/cmath.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/root/usr/local/lib/python3.14/lib-dynload/_statistics.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/root/usr/local/lib/python3.14/lib-dynload/_testsinglephase.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/root/usr/local/lib/python3.14/lib-dynload/_pickle.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/root/usr/local/lib/python3.14/lib-dynload/readline.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/root/usr/local/lib/python3.14/lib-dynload/_queue.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/root/usr/local/lib/python3.14/lib-dynload/_curses_panel.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/root/usr/local/lib/python3.14/lib-dynload/_xxtestfuzz.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/root/usr/local/lib/python3.14/lib-dynload/_posixshmem.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/root/usr/local/lib/python3.14/lib-dynload/_struct.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/root/usr/local/lib/python3.14/lib-dynload/_codecs_cn.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/root/usr/local/lib/python3.14/lib-dynload/_codecs_kr.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/root/usr/local/lib/python3.14/lib-dynload/math.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/root/usr/local/lib/python3.14/lib-dynload/_ssl.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/root/usr/local/lib/python3.14/lib-dynload/_interpreters.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/root/usr/local/lib/python3.14/lib-dynload/_blake2.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/root/usr/local/lib/python3.14/lib-dynload/_codecs_hk.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/root/usr/local/lib/python3.14/lib-dynload/_curses.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/root/usr/local/lib/python3.14/lib-dynload/grp.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/root/usr/local/lib/python3.14/lib-dynload/_sha2.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/root/usr/local/lib/python3.14/lib-dynload/array.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/root/usr/local/lib/python3.14/lib-dynload/_interpqueues.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/root/usr/local/lib/python3.14/lib-dynload/_testbuffer.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/root/usr/local/lib/python3.14/lib-dynload/_testclinic_limited.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/root/usr/local/lib/python3.14/lib-dynload/_random.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/root/usr/local/lib/python3.14/lib-dynload/_ctypes_test.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/root/usr/local/lib/python3.14/lib-dynload/_lsprof.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/root/usr/local/lib/python3.14/lib-dynload/termios.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/root/usr/local/lib/python3.14/lib-dynload/_testinternalcapi.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/root/usr/local/lib/python3.14/lib-dynload/_decimal.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/root/usr/local/lib/python3.14/lib-dynload/xxsubtype.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/root/usr/local/lib/python3.14/lib-dynload/_multibytecodec.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/root/usr/local/lib/python3.14/lib-dynload/_lzma.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/root/usr/local/lib/python3.14/lib-dynload/_zoneinfo.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/root/usr/local/lib/python3.14/lib-dynload/_testcapi.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/root/usr/local/lib/python3.14/lib-dynload/xxlimited.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/root/usr/local/lib/python3.14/lib-dynload/_sha1.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/root/usr/local/lib/python3.14/lib-dynload/_posixsubprocess.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/root/usr/local/lib/python3.14/lib-dynload/_interpchannels.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/root/usr/local/lib/python3.14/lib-dynload/_hashlib.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/root/usr/local/lib/python3.14/lib-dynload/_remote_debugging.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/root/usr/local/lib/python3.14/lib-dynload/zlib.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/root/usr/local/lib/python3.14/lib-dynload/mmap.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/root/usr/local/lib/python3.14/lib-dynload/syslog.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/root/usr/local/lib/python3.14/lib-dynload/_ctypes.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/root/usr/local/lib/python3.14/lib-dynload/_codecs_jp.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/root/usr/local/lib/python3.14/lib-dynload/_multiprocessing.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/root/usr/local/lib/python3.14/lib-dynload/unicodedata.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/root/usr/local/lib/python3.14/lib-dynload/_testimportmultiple.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/root/usr/local/lib/python3.14/lib-dynload/binascii.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/root/usr/local/lib/python3.14/lib-dynload/_json.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/root/usr/local/lib/python3.14/lib-dynload/_bz2.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/root/usr/local/lib/python3.14/lib-dynload/select.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/root/usr/local/lib/python3.14/lib-dynload/_asyncio.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/root/usr/local/lib/python3.14/lib-dynload/_testmultiphase.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/root/usr/local/lib/python3.14/lib-dynload/_socket.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/root/usr/local/lib/python3.14/lib-dynload/_hmac.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/root/usr/local/lib/python3.14/lib-dynload/_codecs_tw.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/root/usr/local/lib/python3.14/lib-dynload/pyexpat.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/root/usr/local/lib/python3.14/lib-dynload/_testlimitedcapi.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/root/usr/local/lib/python3.14/lib-dynload/_bisect.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/root/usr/local/lib/python3.14/lib-dynload/_codecs_iso2022.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/root/usr/local/lib/python3.14/lib-dynload/fcntl.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/root/usr/local/lib/python3.14/lib-dynload/_sha3.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/root/usr/local/lib/python3.14/lib-dynload/_csv.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/Modules/resource.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/Modules/_uuid.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/Modules/_heapq.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/Modules/_elementtree.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/Modules/_sqlite3.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/Modules/_zstd.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/Modules/_md5.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/Modules/_testclinic.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/Modules/xxlimited_35.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/Modules/cmath.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/Modules/_statistics.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/Modules/_testsinglephase.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/Modules/_pickle.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/Modules/readline.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/Modules/_queue.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/Modules/_curses_panel.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/Modules/_xxtestfuzz.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/Modules/_posixshmem.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/Modules/_struct.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/Modules/_codecs_cn.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/Modules/_codecs_kr.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/Modules/math.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/Modules/_ssl.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/Modules/_interpreters.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/Modules/_blake2.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/Modules/_codecs_hk.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/Modules/_curses.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/Modules/grp.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/Modules/_sha2.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/Modules/array.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/Modules/_interpqueues.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/Modules/_testbuffer.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/Modules/_testclinic_limited.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/Modules/_random.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/Modules/_ctypes_test.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/Modules/_lsprof.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/Modules/termios.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/Modules/_testinternalcapi.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/Modules/_decimal.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/Modules/xxsubtype.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/Modules/_multibytecodec.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/Modules/_lzma.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/Modules/_zoneinfo.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/Modules/_testcapi.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/Modules/xxlimited.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/Modules/_sha1.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/Modules/_posixsubprocess.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/Modules/_interpchannels.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/Modules/_hashlib.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/Modules/_remote_debugging.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/Modules/zlib.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/Modules/mmap.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/Modules/syslog.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/Modules/_ctypes.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/Modules/_codecs_jp.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/Modules/_multiprocessing.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/Modules/unicodedata.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/Modules/_testimportmultiple.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/Modules/binascii.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/Modules/_json.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/Modules/_bz2.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/Modules/select.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/Modules/_asyncio.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/Modules/_testmultiphase.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/Modules/_socket.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/Modules/_hmac.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/Modules/_codecs_tw.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/Modules/pyexpat.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/Modules/_testlimitedcapi.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/Modules/_bisect.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/Modules/_codecs_iso2022.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/Modules/fcntl.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/Modules/_sha3.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/Modules/_csv.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/build/lib.linux-x86_64-3.14/resource.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/build/lib.linux-x86_64-3.14/_uuid.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/build/lib.linux-x86_64-3.14/_heapq.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/build/lib.linux-x86_64-3.14/_elementtree.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/build/lib.linux-x86_64-3.14/_sqlite3.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/build/lib.linux-x86_64-3.14/_zstd.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/build/lib.linux-x86_64-3.14/_md5.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/build/lib.linux-x86_64-3.14/_testclinic.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/build/lib.linux-x86_64-3.14/xxlimited_35.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/build/lib.linux-x86_64-3.14/cmath.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/build/lib.linux-x86_64-3.14/_statistics.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/build/lib.linux-x86_64-3.14/_testsinglephase.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/build/lib.linux-x86_64-3.14/_pickle.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/build/lib.linux-x86_64-3.14/readline.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/build/lib.linux-x86_64-3.14/_queue.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/build/lib.linux-x86_64-3.14/_curses_panel.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/build/lib.linux-x86_64-3.14/_xxtestfuzz.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/build/lib.linux-x86_64-3.14/_posixshmem.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/build/lib.linux-x86_64-3.14/_struct.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/build/lib.linux-x86_64-3.14/_codecs_cn.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/build/lib.linux-x86_64-3.14/_codecs_kr.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/build/lib.linux-x86_64-3.14/math.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/build/lib.linux-x86_64-3.14/_ssl.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/build/lib.linux-x86_64-3.14/_interpreters.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/build/lib.linux-x86_64-3.14/_blake2.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/build/lib.linux-x86_64-3.14/_codecs_hk.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/build/lib.linux-x86_64-3.14/_curses.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/build/lib.linux-x86_64-3.14/grp.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/build/lib.linux-x86_64-3.14/_sha2.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/build/lib.linux-x86_64-3.14/array.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/build/lib.linux-x86_64-3.14/_interpqueues.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/build/lib.linux-x86_64-3.14/_testbuffer.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/build/lib.linux-x86_64-3.14/_testclinic_limited.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/build/lib.linux-x86_64-3.14/_random.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/build/lib.linux-x86_64-3.14/_ctypes_test.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/build/lib.linux-x86_64-3.14/_lsprof.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/build/lib.linux-x86_64-3.14/termios.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/build/lib.linux-x86_64-3.14/_testinternalcapi.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/build/lib.linux-x86_64-3.14/_decimal.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/build/lib.linux-x86_64-3.14/xxsubtype.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/build/lib.linux-x86_64-3.14/_multibytecodec.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/build/lib.linux-x86_64-3.14/_lzma.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/build/lib.linux-x86_64-3.14/_zoneinfo.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/build/lib.linux-x86_64-3.14/_testcapi.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/build/lib.linux-x86_64-3.14/xxlimited.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/build/lib.linux-x86_64-3.14/_sha1.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/build/lib.linux-x86_64-3.14/_posixsubprocess.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/build/lib.linux-x86_64-3.14/_interpchannels.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/build/lib.linux-x86_64-3.14/_hashlib.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/build/lib.linux-x86_64-3.14/_remote_debugging.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/build/lib.linux-x86_64-3.14/zlib.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/build/lib.linux-x86_64-3.14/mmap.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/build/lib.linux-x86_64-3.14/syslog.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/build/lib.linux-x86_64-3.14/_ctypes.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/build/lib.linux-x86_64-3.14/_codecs_jp.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/build/lib.linux-x86_64-3.14/_multiprocessing.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/build/lib.linux-x86_64-3.14/unicodedata.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/build/lib.linux-x86_64-3.14/_testimportmultiple.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/build/lib.linux-x86_64-3.14/binascii.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/build/lib.linux-x86_64-3.14/_json.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/build/lib.linux-x86_64-3.14/_bz2.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/build/lib.linux-x86_64-3.14/select.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/build/lib.linux-x86_64-3.14/_asyncio.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/build/lib.linux-x86_64-3.14/_testmultiphase.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/build/lib.linux-x86_64-3.14/_socket.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/build/lib.linux-x86_64-3.14/_hmac.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/build/lib.linux-x86_64-3.14/_codecs_tw.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/build/lib.linux-x86_64-3.14/pyexpat.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/build/lib.linux-x86_64-3.14/_testlimitedcapi.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/build/lib.linux-x86_64-3.14/_bisect.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/build/lib.linux-x86_64-3.14/_codecs_iso2022.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/build/lib.linux-x86_64-3.14/fcntl.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/build/lib.linux-x86_64-3.14/_sha3.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/hostpython3/desktop/hostpython3/native-build/build/lib.linux-x86_64-3.14/_csv.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/sqlite3/armeabi-v7a__ndk_target_24/sqlite3/libsqlite3.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/sqlite3/arm64-v8a__ndk_target_24/sqlite3/libsqlite3.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/kivy-sdl2/armeabi-v7a__ndk_target_24/kivy/build/lib.linux-x86_64-cpython-314/kivy/_metrics.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/kivy-sdl2/armeabi-v7a__ndk_target_24/kivy/build/lib.linux-x86_64-cpython-314/kivy/_event.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/kivy-sdl2/armeabi-v7a__ndk_target_24/kivy/build/lib.linux-x86_64-cpython-314/kivy/_clock.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/kivy-sdl2/armeabi-v7a__ndk_target_24/kivy/build/lib.linux-x86_64-cpython-314/kivy/properties.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/kivy-sdl2/armeabi-v7a__ndk_target_24/kivy/build/lib.linux-x86_64-cpython-314/kivy/weakproxy.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/kivy-sdl2/armeabi-v7a__ndk_target_24/kivy/build/lib.linux-x86_64-cpython-314/kivy/graphics/opengl_utils.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/kivy-sdl2/armeabi-v7a__ndk_target_24/kivy/build/lib.linux-x86_64-cpython-314/kivy/graphics/stencil_instructions.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/kivy-sdl2/armeabi-v7a__ndk_target_24/kivy/build/lib.linux-x86_64-cpython-314/kivy/graphics/vbo.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/kivy-sdl2/armeabi-v7a__ndk_target_24/kivy/build/lib.linux-x86_64-cpython-314/kivy/graphics/instructions.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/kivy-sdl2/armeabi-v7a__ndk_target_24/kivy/build/lib.linux-x86_64-cpython-314/kivy/graphics/tesselator.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/kivy-sdl2/armeabi-v7a__ndk_target_24/kivy/build/lib.linux-x86_64-cpython-314/kivy/graphics/gl_instructions.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/kivy-sdl2/armeabi-v7a__ndk_target_24/kivy/build/lib.linux-x86_64-cpython-314/kivy/graphics/shader.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/kivy-sdl2/armeabi-v7a__ndk_target_24/kivy/build/lib.linux-x86_64-cpython-314/kivy/graphics/vertex.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/kivy-sdl2/armeabi-v7a__ndk_target_24/kivy/build/lib.linux-x86_64-cpython-314/kivy/graphics/fbo.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/kivy-sdl2/armeabi-v7a__ndk_target_24/kivy/build/lib.linux-x86_64-cpython-314/kivy/graphics/context_instructions.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/kivy-sdl2/armeabi-v7a__ndk_target_24/kivy/build/lib.linux-x86_64-cpython-314/kivy/graphics/texture.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/kivy-sdl2/armeabi-v7a__ndk_target_24/kivy/build/lib.linux-x86_64-cpython-314/kivy/graphics/vertex_instructions.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/kivy-sdl2/armeabi-v7a__ndk_target_24/kivy/build/lib.linux-x86_64-cpython-314/kivy/graphics/opengl.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/kivy-sdl2/armeabi-v7a__ndk_target_24/kivy/build/lib.linux-x86_64-cpython-314/kivy/graphics/boxshadow.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/kivy-sdl2/armeabi-v7a__ndk_target_24/kivy/build/lib.linux-x86_64-cpython-314/kivy/graphics/compiler.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/kivy-sdl2/armeabi-v7a__ndk_target_24/kivy/build/lib.linux-x86_64-cpython-314/kivy/graphics/svg.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/kivy-sdl2/armeabi-v7a__ndk_target_24/kivy/build/lib.linux-x86_64-cpython-314/kivy/graphics/cgl.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/kivy-sdl2/armeabi-v7a__ndk_target_24/kivy/build/lib.linux-x86_64-cpython-314/kivy/graphics/cgl_backend/cgl_gl.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/kivy-sdl2/armeabi-v7a__ndk_target_24/kivy/build/lib.linux-x86_64-cpython-314/kivy/graphics/cgl_backend/cgl_mock.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/kivy-sdl2/armeabi-v7a__ndk_target_24/kivy/build/lib.linux-x86_64-cpython-314/kivy/graphics/cgl_backend/cgl_debug.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/kivy-sdl2/armeabi-v7a__ndk_target_24/kivy/build/lib.linux-x86_64-cpython-314/kivy/graphics/cgl_backend/cgl_glew.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/kivy-sdl2/armeabi-v7a__ndk_target_24/kivy/build/lib.linux-x86_64-cpython-314/kivy/graphics/cgl_backend/cgl_sdl2.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/kivy-sdl2/armeabi-v7a__ndk_target_24/kivy/build/lib.linux-x86_64-cpython-314/kivy/graphics/transformation.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/kivy-sdl2/armeabi-v7a__ndk_target_24/kivy/build/lib.linux-x86_64-cpython-314/kivy/graphics/buffer.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/kivy-sdl2/armeabi-v7a__ndk_target_24/kivy/build/lib.linux-x86_64-cpython-314/kivy/graphics/context.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/kivy-sdl2/armeabi-v7a__ndk_target_24/kivy/build/lib.linux-x86_64-cpython-314/kivy/graphics/scissor_instructions.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/kivy-sdl2/armeabi-v7a__ndk_target_24/kivy/build/lib.linux-x86_64-cpython-314/kivy/core/audio/audio_sdl2.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/kivy-sdl2/armeabi-v7a__ndk_target_24/kivy/build/lib.linux-x86_64-cpython-314/kivy/core/window/_window_sdl2.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/kivy-sdl2/armeabi-v7a__ndk_target_24/kivy/build/lib.linux-x86_64-cpython-314/kivy/core/window/window_info.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/kivy-sdl2/armeabi-v7a__ndk_target_24/kivy/build/lib.linux-x86_64-cpython-314/kivy/core/text/text_layout.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/kivy-sdl2/armeabi-v7a__ndk_target_24/kivy/build/lib.linux-x86_64-cpython-314/kivy/core/text/_text_sdl2.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/kivy-sdl2/armeabi-v7a__ndk_target_24/kivy/build/lib.linux-x86_64-cpython-314/kivy/core/image/_img_sdl2.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/kivy-sdl2/armeabi-v7a__ndk_target_24/kivy/build/lib.linux-x86_64-cpython-314/kivy/core/clipboard/_clipboard_sdl2.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/kivy-sdl2/arm64-v8a__ndk_target_24/kivy/build/lib.linux-x86_64-cpython-314/kivy/_metrics.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/kivy-sdl2/arm64-v8a__ndk_target_24/kivy/build/lib.linux-x86_64-cpython-314/kivy/_event.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/kivy-sdl2/arm64-v8a__ndk_target_24/kivy/build/lib.linux-x86_64-cpython-314/kivy/_clock.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/kivy-sdl2/arm64-v8a__ndk_target_24/kivy/build/lib.linux-x86_64-cpython-314/kivy/properties.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/kivy-sdl2/arm64-v8a__ndk_target_24/kivy/build/lib.linux-x86_64-cpython-314/kivy/weakproxy.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/kivy-sdl2/arm64-v8a__ndk_target_24/kivy/build/lib.linux-x86_64-cpython-314/kivy/graphics/opengl_utils.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/kivy-sdl2/arm64-v8a__ndk_target_24/kivy/build/lib.linux-x86_64-cpython-314/kivy/graphics/stencil_instructions.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/kivy-sdl2/arm64-v8a__ndk_target_24/kivy/build/lib.linux-x86_64-cpython-314/kivy/graphics/vbo.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/kivy-sdl2/arm64-v8a__ndk_target_24/kivy/build/lib.linux-x86_64-cpython-314/kivy/graphics/instructions.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/kivy-sdl2/arm64-v8a__ndk_target_24/kivy/build/lib.linux-x86_64-cpython-314/kivy/graphics/tesselator.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/kivy-sdl2/arm64-v8a__ndk_target_24/kivy/build/lib.linux-x86_64-cpython-314/kivy/graphics/gl_instructions.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/kivy-sdl2/arm64-v8a__ndk_target_24/kivy/build/lib.linux-x86_64-cpython-314/kivy/graphics/shader.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/kivy-sdl2/arm64-v8a__ndk_target_24/kivy/build/lib.linux-x86_64-cpython-314/kivy/graphics/vertex.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/kivy-sdl2/arm64-v8a__ndk_target_24/kivy/build/lib.linux-x86_64-cpython-314/kivy/graphics/fbo.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/kivy-sdl2/arm64-v8a__ndk_target_24/kivy/build/lib.linux-x86_64-cpython-314/kivy/graphics/context_instructions.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/kivy-sdl2/arm64-v8a__ndk_target_24/kivy/build/lib.linux-x86_64-cpython-314/kivy/graphics/texture.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/kivy-sdl2/arm64-v8a__ndk_target_24/kivy/build/lib.linux-x86_64-cpython-314/kivy/graphics/vertex_instructions.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/kivy-sdl2/arm64-v8a__ndk_target_24/kivy/build/lib.linux-x86_64-cpython-314/kivy/graphics/opengl.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/kivy-sdl2/arm64-v8a__ndk_target_24/kivy/build/lib.linux-x86_64-cpython-314/kivy/graphics/boxshadow.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/kivy-sdl2/arm64-v8a__ndk_target_24/kivy/build/lib.linux-x86_64-cpython-314/kivy/graphics/compiler.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/kivy-sdl2/arm64-v8a__ndk_target_24/kivy/build/lib.linux-x86_64-cpython-314/kivy/graphics/svg.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/kivy-sdl2/arm64-v8a__ndk_target_24/kivy/build/lib.linux-x86_64-cpython-314/kivy/graphics/cgl.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/kivy-sdl2/arm64-v8a__ndk_target_24/kivy/build/lib.linux-x86_64-cpython-314/kivy/graphics/cgl_backend/cgl_gl.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/kivy-sdl2/arm64-v8a__ndk_target_24/kivy/build/lib.linux-x86_64-cpython-314/kivy/graphics/cgl_backend/cgl_mock.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/kivy-sdl2/arm64-v8a__ndk_target_24/kivy/build/lib.linux-x86_64-cpython-314/kivy/graphics/cgl_backend/cgl_debug.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/kivy-sdl2/arm64-v8a__ndk_target_24/kivy/build/lib.linux-x86_64-cpython-314/kivy/graphics/cgl_backend/cgl_glew.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/kivy-sdl2/arm64-v8a__ndk_target_24/kivy/build/lib.linux-x86_64-cpython-314/kivy/graphics/cgl_backend/cgl_sdl2.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/kivy-sdl2/arm64-v8a__ndk_target_24/kivy/build/lib.linux-x86_64-cpython-314/kivy/graphics/transformation.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/kivy-sdl2/arm64-v8a__ndk_target_24/kivy/build/lib.linux-x86_64-cpython-314/kivy/graphics/buffer.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/kivy-sdl2/arm64-v8a__ndk_target_24/kivy/build/lib.linux-x86_64-cpython-314/kivy/graphics/context.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/kivy-sdl2/arm64-v8a__ndk_target_24/kivy/build/lib.linux-x86_64-cpython-314/kivy/graphics/scissor_instructions.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/kivy-sdl2/arm64-v8a__ndk_target_24/kivy/build/lib.linux-x86_64-cpython-314/kivy/core/audio/audio_sdl2.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/kivy-sdl2/arm64-v8a__ndk_target_24/kivy/build/lib.linux-x86_64-cpython-314/kivy/core/window/_window_sdl2.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/kivy-sdl2/arm64-v8a__ndk_target_24/kivy/build/lib.linux-x86_64-cpython-314/kivy/core/window/window_info.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/kivy-sdl2/arm64-v8a__ndk_target_24/kivy/build/lib.linux-x86_64-cpython-314/kivy/core/text/text_layout.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/kivy-sdl2/arm64-v8a__ndk_target_24/kivy/build/lib.linux-x86_64-cpython-314/kivy/core/text/_text_sdl2.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/kivy-sdl2/arm64-v8a__ndk_target_24/kivy/build/lib.linux-x86_64-cpython-314/kivy/core/image/_img_sdl2.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/kivy-sdl2/arm64-v8a__ndk_target_24/kivy/build/lib.linux-x86_64-cpython-314/kivy/core/clipboard/_clipboard_sdl2.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/android-sdl2/armeabi-v7a__ndk_target_24/android/build/lib.linux-x86_64-cpython-314/android/_android_sound.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/android-sdl2/armeabi-v7a__ndk_target_24/android/build/lib.linux-x86_64-cpython-314/android/_android.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/android-sdl2/armeabi-v7a__ndk_target_24/android/build/lib.linux-x86_64-cpython-314/android/_android_billing.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/android-sdl2/arm64-v8a__ndk_target_24/android/build/lib.linux-x86_64-cpython-314/android/_android_sound.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/android-sdl2/arm64-v8a__ndk_target_24/android/build/lib.linux-x86_64-cpython-314/android/_android.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./other_builds/android-sdl2/arm64-v8a__ndk_target_24/android/build/lib.linux-x86_64-cpython-314/android/_android_billing.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./venv/lib/python3.14/site-packages/Cython/Runtime/refnanny.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./venv/lib/python3.14/site-packages/Cython/Utils.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./venv/lib/python3.14/site-packages/Cython/_shared.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./venv/lib/python3.14/site-packages/Cython/Compiler/Parsing.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./venv/lib/python3.14/site-packages/Cython/Compiler/LineTable.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./venv/lib/python3.14/site-packages/Cython/Compiler/Visitor.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./venv/lib/python3.14/site-packages/Cython/Compiler/StringEncoding.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./venv/lib/python3.14/site-packages/Cython/Compiler/FlowControl.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./venv/lib/python3.14/site-packages/Cython/Compiler/Code.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./venv/lib/python3.14/site-packages/Cython/Compiler/FusedNode.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./venv/lib/python3.14/site-packages/Cython/Compiler/Scanning.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./venv/lib/python3.14/site-packages/Cython/Plex/Transitions.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./venv/lib/python3.14/site-packages/Cython/Plex/DFA.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./venv/lib/python3.14/site-packages/Cython/Plex/Scanners.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./venv/lib/python3.14/site-packages/Cython/Plex/Machines.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./venv/lib/python3.14/site-packages/Cython/Plex/Actions.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./venv/lib/python3.14/site-packages/Cython/Tempita/_tempita.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./venv/lib/python3.14/site-packages/Cython/LZSS.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./venv/lib/python3.14/site-packages/Cython/StringIOTree.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/arm64-v8a/jnius/jnius.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/arm64-v8a/kivy/_metrics.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/arm64-v8a/kivy/_event.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/arm64-v8a/kivy/_clock.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/arm64-v8a/kivy/properties.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/arm64-v8a/kivy/weakproxy.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/arm64-v8a/kivy/graphics/opengl_utils.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/arm64-v8a/kivy/graphics/stencil_instructions.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/arm64-v8a/kivy/graphics/vbo.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/arm64-v8a/kivy/graphics/instructions.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/arm64-v8a/kivy/graphics/tesselator.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/arm64-v8a/kivy/graphics/gl_instructions.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/arm64-v8a/kivy/graphics/shader.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/arm64-v8a/kivy/graphics/vertex.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/arm64-v8a/kivy/graphics/fbo.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/arm64-v8a/kivy/graphics/context_instructions.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/arm64-v8a/kivy/graphics/texture.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/arm64-v8a/kivy/graphics/vertex_instructions.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/arm64-v8a/kivy/graphics/opengl.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/arm64-v8a/kivy/graphics/boxshadow.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/arm64-v8a/kivy/graphics/compiler.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/arm64-v8a/kivy/graphics/svg.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/arm64-v8a/kivy/graphics/cgl.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/arm64-v8a/kivy/graphics/cgl_backend/cgl_gl.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/arm64-v8a/kivy/graphics/cgl_backend/cgl_mock.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/arm64-v8a/kivy/graphics/cgl_backend/cgl_debug.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/arm64-v8a/kivy/graphics/cgl_backend/cgl_glew.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/arm64-v8a/kivy/graphics/cgl_backend/cgl_sdl2.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/arm64-v8a/kivy/graphics/transformation.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/arm64-v8a/kivy/graphics/buffer.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/arm64-v8a/kivy/graphics/context.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/arm64-v8a/kivy/graphics/scissor_instructions.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/arm64-v8a/kivy/core/audio/audio_sdl2.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/arm64-v8a/kivy/core/window/_window_sdl2.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/arm64-v8a/kivy/core/window/window_info.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/arm64-v8a/kivy/core/text/text_layout.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/arm64-v8a/kivy/core/text/_text_sdl2.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/arm64-v8a/kivy/core/image/_img_sdl2.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/arm64-v8a/kivy/core/clipboard/_clipboard_sdl2.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/arm64-v8a/android/_android_sound.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/arm64-v8a/android/_android.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/arm64-v8a/android/_android_billing.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/armeabi-v7a/jnius/jnius.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/armeabi-v7a/kivy/_metrics.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/armeabi-v7a/kivy/_event.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/armeabi-v7a/kivy/_clock.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/armeabi-v7a/kivy/properties.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/armeabi-v7a/kivy/weakproxy.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/armeabi-v7a/kivy/graphics/opengl_utils.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/armeabi-v7a/kivy/graphics/stencil_instructions.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/armeabi-v7a/kivy/graphics/vbo.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/armeabi-v7a/kivy/graphics/instructions.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/armeabi-v7a/kivy/graphics/tesselator.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/armeabi-v7a/kivy/graphics/gl_instructions.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/armeabi-v7a/kivy/graphics/shader.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/armeabi-v7a/kivy/graphics/vertex.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/armeabi-v7a/kivy/graphics/fbo.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/armeabi-v7a/kivy/graphics/context_instructions.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/armeabi-v7a/kivy/graphics/texture.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/armeabi-v7a/kivy/graphics/vertex_instructions.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/armeabi-v7a/kivy/graphics/opengl.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/armeabi-v7a/kivy/graphics/boxshadow.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/armeabi-v7a/kivy/graphics/compiler.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/armeabi-v7a/kivy/graphics/svg.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/armeabi-v7a/kivy/graphics/cgl.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/armeabi-v7a/kivy/graphics/cgl_backend/cgl_gl.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/armeabi-v7a/kivy/graphics/cgl_backend/cgl_mock.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/armeabi-v7a/kivy/graphics/cgl_backend/cgl_debug.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/armeabi-v7a/kivy/graphics/cgl_backend/cgl_glew.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/armeabi-v7a/kivy/graphics/cgl_backend/cgl_sdl2.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/armeabi-v7a/kivy/graphics/transformation.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/armeabi-v7a/kivy/graphics/buffer.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/armeabi-v7a/kivy/graphics/context.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/armeabi-v7a/kivy/graphics/scissor_instructions.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/armeabi-v7a/kivy/core/audio/audio_sdl2.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/armeabi-v7a/kivy/core/window/_window_sdl2.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/armeabi-v7a/kivy/core/window/window_info.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/armeabi-v7a/kivy/core/text/text_layout.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/armeabi-v7a/kivy/core/text/_text_sdl2.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/armeabi-v7a/kivy/core/image/_img_sdl2.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/armeabi-v7a/kivy/core/clipboard/_clipboard_sdl2.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/armeabi-v7a/chardet/_kernel.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/armeabi-v7a/chardet/models/__init__.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/armeabi-v7a/chardet/pipeline/validity.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/armeabi-v7a/chardet/pipeline/postprocess.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/armeabi-v7a/chardet/pipeline/ascii.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/armeabi-v7a/chardet/pipeline/statistical.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/armeabi-v7a/chardet/pipeline/magic.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/armeabi-v7a/chardet/pipeline/utf8.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/armeabi-v7a/chardet/pipeline/escape.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/armeabi-v7a/chardet/pipeline/language.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/armeabi-v7a/chardet/pipeline/structural.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/armeabi-v7a/chardet/pipeline/utf1632.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/armeabi-v7a/chardet/pipeline/confusion.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/armeabi-v7a/chardet/pipeline/orchestrator.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/armeabi-v7a/android/_android_sound.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/armeabi-v7a/android/_android.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/armeabi-v7a/android/_android_billing.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./python-installs/gridcalc/armeabi-v7a/7cf47097c39cf1afcee8__mypyc.cpython-314-x86_64-linux-gnu.so
+[1m[90m[DEBUG][39m[0m:   	./bootstrap_builds/sdl2/obj/local/arm64-v8a/libSDL2_ttf.so
+[1m[90m[DEBUG][39m[0m:   	./bootstrap_builds/sdl2/obj/local/arm64-v8a/libmain.so
+[1m[90m[DEBUG][39m[0m:   	./bootstrap_builds/sdl2/obj/local/arm64-v8a/libSDL2.so
+[1m[90m[DEBUG][39m[0m:   	./bootstrap_builds/sdl2/obj/local/arm64-v8a/libSDL2_image.so
+[1m[90m[DEBUG][39m[0m:   	./bootstrap_builds/sdl2/obj/local/arm64-v8a/libSDL2_mixer.so
+[1m[90m[DEBUG][39m[0m:   	./bootstrap_builds/sdl2/obj/local/armeabi-v7a/libSDL2_ttf.so
+[1m[90m[DEBUG][39m[0m:   	./bootstrap_builds/sdl2/obj/local/armeabi-v7a/libmain.so
+[1m[90m[DEBUG][39m[0m:   	./bootstrap_builds/sdl2/obj/local/armeabi-v7a/libSDL2.so
+[1m[90m[DEBUG][39m[0m:   	./bootstrap_builds/sdl2/obj/local/armeabi-v7a/libSDL2_image.so
+[1m[90m[DEBUG][39m[0m:   	./bootstrap_builds/sdl2/obj/local/armeabi-v7a/libSDL2_mixer.so
+[1m[90m[DEBUG][39m[0m:   	./bootstrap_builds/sdl2/libs/arm64-v8a/libSDL2_ttf.so
+[1m[90m[DEBUG][39m[0m:   	./bootstrap_builds/sdl2/libs/arm64-v8a/libmain.so
+[1m[90m[DEBUG][39m[0m:   	./bootstrap_builds/sdl2/libs/arm64-v8a/libSDL2.so
+[1m[90m[DEBUG][39m[0m:   	./bootstrap_builds/sdl2/libs/arm64-v8a/libSDL2_image.so
+[1m[90m[DEBUG][39m[0m:   	./bootstrap_builds/sdl2/libs/arm64-v8a/libSDL2_mixer.so
+[1m[90m[DEBUG][39m[0m:   	./bootstrap_builds/sdl2/libs/armeabi-v7a/libSDL2_ttf.so
+[1m[90m[DEBUG][39m[0m:   	./bootstrap_builds/sdl2/libs/armeabi-v7a/libmain.so
+[1m[90m[DEBUG][39m[0m:   	./bootstrap_builds/sdl2/libs/armeabi-v7a/libSDL2.so
+[1m[90m[DEBUG][39m[0m:   	./bootstrap_builds/sdl2/libs/armeabi-v7a/libSDL2_image.so
+[1m[90m[DEBUG][39m[0m:   	./bootstrap_builds/sdl2/libs/armeabi-v7a/libSDL2_mixer.so
+[1m[90m[DEBUG][39m[0m:   	./libs_collections/gridcalc/arm64-v8a/libffi.so
+[1m[90m[DEBUG][39m[0m:   	./libs_collections/gridcalc/arm64-v8a/libssl.so
+[1m[90m[DEBUG][39m[0m:   	./libs_collections/gridcalc/arm64-v8a/libcrypto.so
+[1m[90m[DEBUG][39m[0m:   	./libs_collections/gridcalc/arm64-v8a/libpythonbin.so
+[1m[90m[DEBUG][39m[0m:   	./libs_collections/gridcalc/arm64-v8a/libsqlite3.so
+[1m[90m[DEBUG][39m[0m:   	./libs_collections/gridcalc/armeabi-v7a/libffi.so
+[1m[90m[DEBUG][39m[0m:   	./libs_collections/gridcalc/armeabi-v7a/libssl.so
+[1m[90m[DEBUG][39m[0m:   	./libs_collections/gridcalc/armeabi-v7a/libcrypto.so
+[1m[90m[DEBUG][39m[0m:   	./libs_collections/gridcalc/armeabi-v7a/libpythonbin.so
+[1m[90m[DEBUG][39m[0m:   	./libs_collections/gridcalc/armeabi-v7a/libsqlite3.so
+stty: 'standard input': Inappropriate ioctl for device
+[1m[90m[DEBUG][39m[0m:   [90m->[0m running find . -iname *.so -exec /home/runner/.buildozer/android/platform/android-ndk-r28c/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip --strip-unneeded {} ;[0m
+[1m[INFO][0m:    [36m<- directory context /home/runner/work/gridcalc-android/gridcalc-android/.buildozer/android/platform/build-arm64-v8a_armeabi-v7a/build[39m
+[1m[INFO][0m:    [36m<- directory context /home/runner/work/gridcalc-android/gridcalc-android/.buildozer/android/platform/python-for-android[39m
+[1m[INFO][0m:    *** PYTHON PACKAGE / PROJECT INSTALL STAGE FOR ARCH: arm64-v8a ***
+stty: 'standard input': Inappropriate ioctl for device
+[1m[90m[DEBUG][39m[0m:   [90m->[0m running pip3 install certifi chardet filetype idna requests six urllib3 --dry-run --break-system-packages --ignore-installed --disable-pip-version-check --only-binary=:all: --report /tmp/tmp54qad4h3 -q --platform=android_24_arm64_v8a --platform=android_24_aarch64 --python-version 3.14.2[0m
+[1m[INFO][0m:    Extra resolved pure python dependencies :
+[1m[INFO][0m:     
+[1m[INFO][0m:      [32mcharset-normalizer[37m : [1m3.5.1[0m
+[1m[INFO][0m:     
+[1m[INFO][0m:    The requirements (certifi, chardet, filetype, idna, requests, six, urllib3, https://files.pythonhosted.org/packages/29/cd/2b812ce5e888f1ce69a5350281e58aab07ae64a958ecae8912f30865718e/charset_normalizer-3.5.1-cp314-cp314-android_24_arm64_v8a.whl) don't have recipes, attempting to install them with pip
+[1m[INFO][0m:    If this fails, it may mean that the module has compiled components and needs a recipe.
+[1m[INFO][0m:    [36m-> directory context /home/runner/work/gridcalc-android/gridcalc-android/.buildozer/android/platform/build-arm64-v8a_armeabi-v7a/build[39m
+stty: 'standard input': Inappropriate ioctl for device
+[1m[90m[DEBUG][39m[0m:   [90m->[0m running python -m venv venv[0m
+[1m[INFO][0m:    Upgrade pip to latest version
+stty: 'standard input': Inappropriate ioctl for device
+[1m[90m[DEBUG][39m[0m:   [90m->[0m running bash -c source venv/bin/activate && pip install -U pip[0m
+[1m[90m[DEBUG][39m[0m:   	Traceback (most recent call last):
+[1m[90m[DEBUG][39m[0m:   	  File [35m"/home/runner/work/gridcalc-android/gridcalc-android/.buildozer/android/platform/build-arm64-v8a_armeabi-v7a/build/venv/bin/pip"[0m, line [35m5[0m, in [35m<module>[0m
+[1m[90m[DEBUG][39m[0m:   	    from pip._internal.cli.main import main
+[1m[90m[DEBUG][39m[0m:   	  File [35m"/home/runner/work/gridcalc-android/gridcalc-android/.buildozer/android/platform/build-arm64-v8a_armeabi-v7a/build/venv/lib/python3.14/site-packages/pip/_internal/cli/main.py"[0m, line [35m11[0m, in [35m<module>[0m
+[1m[90m[DEBUG][39m[0m:   	    from pip._internal.cli.autocompletion import autocomplete
+[1m[90m[DEBUG][39m[0m:   	  File [35m"/home/runner/work/gridcalc-android/gridcalc-android/.buildozer/android/platform/build-arm64-v8a_armeabi-v7a/build/venv/lib/python3.14/site-packages/pip/_internal/cli/autocompletion.py"[0m, line [35m12[0m, in [35m<module>[0m
+[1m[90m[DEBUG][39m[0m:   	    from pip._internal.cli.main_parser import create_main_parser
+[1m[90m[DEBUG][39m[0m:   	  File [35m"/home/runner/work/gridcalc-android/gridcalc-android/.buildozer/android/platform/build-arm64-v8a_armeabi-v7a/build/venv/lib/python3.14/site-packages/pip/_internal/cli/main_parser.py"[0m, line [35m9[0m, in [35m<module>[0m
+[1m[90m[DEBUG][39m[0m:   	    from pip._internal.build_env import get_runnable_pip
+[1m[90m[DEBUG][39m[0m:   	  File [35m"/home/runner/work/gridcalc-android/gridcalc-android/.buildozer/android/platform/build-arm64-v8a_armeabi-v7a/build/venv/lib/python3.14/site-packages/pip/_internal/build_env/__init__.py"[0m, line [35m8[0m, in [35m<module>[0m
+[1m[90m[DEBUG][39m[0m:   	    from pip._internal.build_env.installer import (
+[1m[90m[DEBUG][39m[0m:   	    ...<2 lines>...
+[1m[90m[DEBUG][39m[0m:   	    )
+[1m[90m[DEBUG][39m[0m:   	  File [35m"/home/runner/work/gridcalc-android/gridcalc-android/.buildozer/android/platform/build-arm64-v8a_armeabi-v7a/build/venv/lib/python3.14/site-packages/pip/_internal/build_env/installer.py"[0m, line [35m14[0m, in [35m<module>[0m
+[1m[90m[DEBUG][39m[0m:   	    from pip._internal.exceptions import (
+[1m[90m[DEBUG][39m[0m:   	    ...<4 lines>...
+[1m[90m[DEBUG][39m[0m:   	    )
+[1m[90m[DEBUG][39m[0m:   	[1;35mImportError[0m: [35mcannot import name 'BuildDependencyInstallError' from 'pip._internal.exceptions' (/home/runner/work/gridcalc-android/gridcalc-android/.buildozer/android/platform/build-arm64-v8a_armeabi-v7a/build/venv/lib/python3.14/site-packages/pip/_internal/exceptions.py)[0m
+Exception in thread background thread for pid 97227:
+Traceback (most recent call last):
+  File "/opt/hostedtoolcache/Python/3.11.16/x64/lib/python3.11/threading.py", line 1045, in _bootstrap_inner
+    self.run()
+  File "/opt/hostedtoolcache/Python/3.11.16/x64/lib/python3.11/threading.py", line 982, in run
+    self._target(*self._args, **self._kwargs)
+  File "/opt/hostedtoolcache/Python/3.11.16/x64/lib/python3.11/site-packages/sh/__init__.py", line 1709, in wrap
+    fn(*rgs, **kwargs)
+  File "/opt/hostedtoolcache/Python/3.11.16/x64/lib/python3.11/site-packages/sh/__init__.py", line 2720, in background_thread
+    handle_exit_code(exit_code)
+  File "/opt/hostedtoolcache/Python/3.11.16/x64/lib/python3.11/site-packages/sh/__init__.py", line 2411, in fn
+    return self.command.handle_command_exit_code(exit_code)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/hostedtoolcache/Python/3.11.16/x64/lib/python3.11/site-packages/sh/__init__.py", line 820, in handle_command_exit_code
+    raise exc
+sh.ErrorReturnCode_1: 
+
+  RAN: /usr/bin/bash -c 'source venv/bin/activate && pip install -U pip'
+
+  STDOUT:
+Traceback (most recent call last):
+  File [35m"/home/runner/work/gridcalc-android/gridcalc-android/.buildozer/android/platform/build-arm64-v8a_armeabi-v7a/build/venv/bin/pip"[0m, line [35m5[0m, in [35m<module>[0m
+    from pip._internal.cli.main import main
+  File [35m"/home/runner/work/gridcalc-android/gridcalc-android/.buildozer/android/platform/build-arm64-v8a_armeabi-v7a/build/venv/lib/python3.14/site-packages/pip/_internal/cli/main.py"[0m, line [35m11[0m, in [35m<module>[0m
+    from pip._internal.cli.autocompletion import autocomplete
+  File [35m"/home/runner/work/gridcalc-android/gridcalc-android/.buildozer/android/platform/build-arm64-v8a_armeabi-v7a/build/venv/lib/python3.14/site-packages/pip/_internal/cli/autocompletion.py"[0m, line [35m12[0m, in [35m<module>[0m
+    from pip._internal.cli.main_parser import create_main_parser
+  File [35m"/home/runner/work/gridcalc-android/gridcalc-android/.buildozer/android/platform/build-arm64-v8a_armeabi-v7a/build/venv/lib/python3.14/site-packages/pip/_internal/cli/main_parser.py"[0m, line [35m9[0m, in [35m<module>[0m
+    from pip._internal.build_env import get_runnable_pip
+  File [35m"/home/runner/work/gridcalc-android/gridcalc-android/.buildozer/android/platform/build-arm64-v8a_armeabi-v7a/build/venv/lib/python3.14/site-packages/pip/_internal/build_env/__init__.py"[0m, line [35m8[0m, in [35m<module>[0m
+    from pip._internal.build_env.installer import (
+    ...<2 lines>...
+    )
+  File [35m"/home/runner/work/gridcalc-android/gridcalc-android/.buildozer/android/platform/build-arm64-v8a_armeabi-v7a/build/venv/lib/python3.14/site-packages/pip/_internal/build_env/installer.py"[0m, line [35m14[0m, in [35m<module>[0m
+    from pip._internal.exceptions import (
+    ...<4 lines>...
+    )
+[1;35mImportError[0m: [35mcannot import name 'BuildDependencyInstallError' from 'pip._internal.exceptions' (/home/runner/work/gridcalc-android/gridcalc-android/.buildozer/android/platform/build-arm64-v8a_armeabi-v7a/build/venv/lib/python3.14/site-packages/pip/_internal/exceptions.py)[0m
+
+
+  STDERR:
+
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/home/runner/work/gridcalc-android/gridcalc-android/.buildozer/android/platform/python-for-android/pythonforandroid/toolchain.py", line 1290, in <module>
+    main()
+  File "/home/runner/work/gridcalc-android/gridcalc-android/.buildozer/android/platform/python-for-android/pythonforandroid/entrypoints.py", line 18, in main
+    ToolchainCL()
+  File "/home/runner/work/gridcalc-android/gridcalc-android/.buildozer/android/platform/python-for-android/pythonforandroid/toolchain.py", line 721, in __init__
+    getattr(self, command)(args)
+  File "/home/runner/work/gridcalc-android/gridcalc-android/.buildozer/android/platform/python-for-android/pythonforandroid/toolchain.py", line 104, in wrapper_func
+    build_dist_from_args(ctx, dist, args)
+  File "/home/runner/work/gridcalc-android/gridcalc-android/.buildozer/android/platform/python-for-android/pythonforandroid/toolchain.py", line 163, in build_dist_from_args
+    build_recipes(build_order, python_modules, ctx,
+  File "/home/runner/work/gridcalc-android/gridcalc-android/.buildozer/android/platform/python-for-android/pythonforandroid/build.py", line 554, in build_recipes
+    run_pymodules_install(
+  File "/home/runner/work/gridcalc-android/gridcalc-android/.buildozer/android/platform/python-for-android/pythonforandroid/build.py", line 877, in run_pymodules_install
+    shprint(sh.bash, '-c', (
+  File "/home/runner/work/gridcalc-android/gridcalc-android/.buildozer/android/platform/python-for-android/pythonforandroid/logger.py", line 174, in shprint
+    for line in output:
+  File "/opt/hostedtoolcache/Python/3.11.16/x64/lib/python3.11/site-packages/sh/__init__.py", line 876, in __next__
+    self.wait()
+  File "/opt/hostedtoolcache/Python/3.11.16/x64/lib/python3.11/site-packages/sh/__init__.py", line 793, in wait
+    self.handle_command_exit_code(exit_code)
+  File "/opt/hostedtoolcache/Python/3.11.16/x64/lib/python3.11/site-packages/sh/__init__.py", line 820, in handle_command_exit_code
+    raise exc
+sh.ErrorReturnCode_1: 
+
+  RAN: /usr/bin/bash -c 'source venv/bin/activate && pip install -U pip'
+
+  STDOUT:
+Traceback (most recent call last):
+  File [35m"/home/runner/work/gridcalc-android/gridcalc-android/.buildozer/android/platform/build-arm64-v8a_armeabi-v7a/build/venv/bin/pip"[0m, line [35m5[0m, in [35m<module>[0m
+    from pip._internal.cli.main import main
+  File [35m"/home/runner/work/gridcalc-android/gridcalc-android/.buildozer/android/platform/build-arm64-v8a_armeabi-v7a/build/venv/lib/python3.14/site-packages/pip/_internal/cli/main.py"[0m, line [35m11[0m, in [35m<module>[0m
+    from pip._internal.cli.autocompletion import autocomplete
+  File [35m"/home/runner/work/gridcalc-android/gridcalc-android/.buildozer/android/platform/build-arm64-v8a_armeabi-v7a/build/venv/lib/python3.14/site-packages/pip/_internal/cli/autocompletion.py"[0m, line [35m12[0m, in [35m<module>[0m
+    from pip._internal.cli.main_parser import create_main_parser
+  File [35m"/home/runner/work/gridcalc-android/gridcalc-android/.buildozer/android/platform/build-arm64-v8a_armeabi-v7a/build/venv/lib/python3.14/site-packages/pip/_internal/cli/main_parser.py"[0m, line [35m9[0m, in [35m<module>[0m
+    from pip._internal.build_env import get_runnable_pip
+  File [35m"/home/runner/work/gridcalc-android/gridcalc-android/.buildozer/android/platform/build-arm64-v8a_armeabi-v7a/build/venv/lib/python3.14/site-packages/pip/_internal/build_env/__init__.py"[0m, line [35m8[0m, in [35m<module>[0m
+    from pip._internal.build_env.installer import (
+    ...<2 lines>...
+    )
+  File [35m"/home/runner/work/gridcalc-android/gridcalc-android/.buildozer/android/platform/build-arm64-v8a_armeabi-v7a/build/venv/lib/python3.14/site-packages/pip/_internal/build_env/installer.py"[0m, line [35m14[0m, in [35m<module>[0m
+    from pip._internal.exceptions import (
+    ...<4 lines>...
+    )
+[1;35mImportError[0m: [35mcannot import name 'BuildDependencyInstallError' from 'pip._internal.exceptions' (/home/runner/work/gridcalc-android/gridcalc-android/.buildozer/android/platform/build-arm64-v8a_armeabi-v7a/build/venv/lib/python3.14/site-packages/pip/_internal/exceptions.py)[0m
+
+
+  STDERR:
+
+[0m[1;31m# Command failed: ['/opt/hostedtoolcache/Python/3.11.16/x64/bin/python', '-m', 'pythonforandroid.toolchain', 'create', '--dist_name=gridcalc', '--bootstrap=sdl2', '--requirements=python3,kivy==2.3.1', '--arch=arm64-v8a', '--arch=armeabi-v7a', '--copy-libs', '--color=always', '--storage-dir=/home/runner/work/gridcalc-android/gridcalc-android/.buildozer/android/platform/build-arm64-v8a_armeabi-v7a', '--ndk-api=24', '--ignore-setup-py', '--debug'][0m
+[0m[1;31m# ENVIRONMENT:[0m
+[0m[1;31m#     SHELL = '/bin/bash'[0m
+[0m[1;31m#     SELENIUM_JAR_PATH = '/usr/share/java/selenium-server.jar'[0m
+[0m[1;31m#     CONDA = '/usr/share/miniconda'[0m
+[0m[1;31m#     GITHUB_WORKSPACE = '/home/runner/work/gridcalc-android/gridcalc-android'[0m
+[0m[1;31m#     JAVA_HOME_11_X64 = '/usr/lib/jvm/temurin-11-jdk-amd64'[0m
+[0m[1;31m#     JAVA_HOME_25_X64 = '/usr/lib/jvm/temurin-25-jdk-amd64'[0m
+[0m[1;31m#     PKG_CONFIG_PATH = '/opt/hostedtoolcache/Python/3.11.16/x64/lib/pkgconfig'[0m
+[0m[1;31m#     GITHUB_PATH = '/home/runner/work/_temp/_runner_file_commands/add_path_836cf289-76b8-4747-ae28-7db5affe8d8c'[0m
+[0m[1;31m#     GITHUB_ACTION = '__run_3'[0m
+[0m[1;31m#     JAVA_HOME = '/opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/17.0.20-1/x64'[0m
+[0m[1;31m#     GITHUB_RUN_NUMBER = '3'[0m
+[0m[1;31m#     RUNNER_NAME = 'GitHub Actions 1000000002'[0m
+[0m[1;31m#     GRADLE_HOME = '/usr/share/gradle-9.7.1'[0m
+[0m[1;31m#     GITHUB_REPOSITORY_OWNER_ID = '155295680'[0m
+[0m[1;31m#     ACTIONS_RUNNER_ACTION_ARCHIVE_CACHE = '/opt/actionarchivecache'[0m
+[0m[1;31m#     XDG_CONFIG_HOME = '/home/runner/.config'[0m
+[0m[1;31m#     Python_ROOT_DIR = '/opt/hostedtoolcache/Python/3.11.16/x64'[0m
+[0m[1;31m#     DOTNET_SKIP_FIRST_TIME_EXPERIENCE = '1'[0m
+[0m[1;31m#     ANT_HOME = '/usr/share/ant'[0m
+[0m[1;31m#     JAVA_HOME_8_X64 = '/usr/lib/jvm/temurin-8-jdk-amd64'[0m
+[0m[1;31m#     GITHUB_TRIGGERING_ACTOR = 'hz13332'[0m
+[0m[1;31m#     pythonLocation = '/opt/hostedtoolcache/Python/3.11.16/x64'[0m
+[0m[1;31m#     GITHUB_REF_TYPE = 'branch'[0m
+[0m[1;31m#     HOMEBREW_CLEANUP_PERIODIC_FULL_DAYS = '3650'[0m
+[0m[1;31m#     ACTIONS_RUNNER_RETURN_JOB_RESULT_FOR_HOSTED = '1'[0m
+[0m[1;31m#     ANDROID_NDK = '/usr/local/lib/android/sdk/ndk/27.3.13750724'[0m
+[0m[1;31m#     BOOTSTRAP_HASKELL_NONINTERACTIVE = '1'[0m
+[0m[1;31m#     PWD = '/home/runner/work/gridcalc-android/gridcalc-android'[0m
+[0m[1;31m#     PIPX_BIN_DIR = '/opt/pipx_bin'[0m
+[0m[1;31m#     LOGNAME = 'runner'[0m
+[0m[1;31m#     GITHUB_ARTIFACTS_LIST = '/home/runner/work/_temp/_runner_file_commands/artifacts_list_836cf289-76b8-4747-ae28-7db5affe8d8c'[0m
+[0m[1;31m#     GITHUB_REPOSITORY_ID = '1367005443'[0m
+[0m[1;31m#     GITHUB_ACTIONS = 'true'[0m
+[0m[1;31m#     USE_BAZEL_FALLBACK_VERSION = 'silent:'[0m
+[0m[1;31m#     ANDROID_NDK_LATEST_HOME = '/usr/local/lib/android/sdk/ndk/29.0.14206865'[0m
+[0m[1;31m#     SYSTEMD_EXEC_PID = '1570'[0m
+[0m[1;31m#     GITHUB_SHA = 'ca2ec423f8ab49d2924b040f16f365425496fd37'[0m
+[0m[1;31m#     GITHUB_WORKFLOW_REF = 'hz13332/gridcalc-android/.github/workflows/build-apk.yml@refs/heads/main'[0m
+[0m[1;31m#     POWERSHELL_DISTRIBUTION_CHANNEL = 'GitHub-Actions-Linux'[0m
+[0m[1;31m#     RUNNER_ENVIRONMENT = 'github-hosted'[0m
+[0m[1;31m#     DOTNET_MULTILEVEL_LOOKUP = '0'[0m
+[0m[1;31m#     GITHUB_REF = 'refs/heads/main'[0m
+[0m[1;31m#     RUNNER_OS = 'Linux'[0m
+[0m[1;31m#     GITHUB_REF_PROTECTED = 'false'[0m
+[0m[1;31m#     HOME = '/home/runner'[0m
+[0m[1;31m#     GITHUB_API_URL = 'https://api.github.com'[0m
+[0m[1;31m#     LANG = 'C.UTF-8'[0m
+[0m[1;31m#     GOROOT_1_25_X64 = '/opt/hostedtoolcache/go/1.25.14/x64'[0m
+[0m[1;31m#     RUNNER_TRACKING_ID = 'github_dc352435-d38e-40af-b90e-7ae9bbda809a'[0m
+[0m[1;31m#     RUNNER_ARCH = 'X64'[0m
+[0m[1;31m#     RUNNER_TEMP = '/home/runner/work/_temp'[0m
+[0m[1;31m#     GITHUB_STATE = '/home/runner/work/_temp/_runner_file_commands/save_state_836cf289-76b8-4747-ae28-7db5affe8d8c'[0m
+[0m[1;31m#     EDGEWEBDRIVER = '/usr/local/share/edge_driver'[0m
+[0m[1;31m#     JAVA_HOME_21_X64 = '/usr/lib/jvm/temurin-21-jdk-amd64'[0m
+[0m[1;31m#     GITHUB_ENV = '/home/runner/work/_temp/_runner_file_commands/set_env_836cf289-76b8-4747-ae28-7db5affe8d8c'[0m
+[0m[1;31m#     GITHUB_EVENT_PATH = '/home/runner/work/_temp/_github_workflow/event.json'[0m
+[0m[1;31m#     INVOCATION_ID = '840482fb66b6414487b5a6df44eabec9'[0m
+[0m[1;31m#     GITHUB_EVENT_NAME = 'push'[0m
+[0m[1;31m#     GITHUB_RUN_ID = '34679924716'[0m
+[0m[1;31m#     JAVA_HOME_17_X64 = '/opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/17.0.20-1/x64'[0m
+[0m[1;31m#     ANDROID_NDK_HOME = '/usr/local/lib/android/sdk/ndk/27.3.13750724'[0m
+[0m[1;31m#     GITHUB_STEP_SUMMARY = '/home/runner/work/_temp/_runner_file_commands/step_summary_836cf289-76b8-4747-ae28-7db5affe8d8c'[0m
+[0m[1;31m#     HOMEBREW_NO_AUTO_UPDATE = '1'[0m
+[0m[1;31m#     GITHUB_ACTOR = 'hz13332'[0m
+[0m[1;31m#     NVM_DIR = '/home/runner/.nvm'[0m
+[0m[1;31m#     SGX_AESM_ADDR = '1'[0m
+[0m[1;31m#     GITHUB_RUN_ATTEMPT = '1'[0m
+[0m[1;31m#     ANDROID_HOME = '/usr/local/lib/android/sdk'[0m
+[0m[1;31m#     GITHUB_GRAPHQL_URL = 'https://api.github.com/graphql'[0m
+[0m[1;31m#     ACCEPT_EULA = 'Y'[0m
+[0m[1;31m#     USER = 'runner'[0m
+[0m[1;31m#     PSModulePath = '/root/.local/share/powershell/Modules:/usr/local/share/powershell/Modules:/opt/microsoft/powershell/7/Modules:/usr/share/az_15.6.1'[0m
+[0m[1;31m#     GITHUB_SERVER_URL = 'https://github.com'[0m
+[0m[1;31m#     PIPX_HOME = '/opt/pipx'[0m
+[0m[1;31m#     GECKOWEBDRIVER = '/usr/local/share/gecko_driver'[0m
+[0m[1;31m#     CHROMEWEBDRIVER = '/usr/local/share/chromedriver-linux64'[0m
+[0m[1;31m#     SHLVL = '0'[0m
+[0m[1;31m#     ANDROID_SDK_ROOT = '/usr/local/lib/android/sdk'[0m
+[0m[1;31m#     VCPKG_INSTALLATION_ROOT = '/usr/local/share/vcpkg'[0m
+[0m[1;31m#     GITHUB_ACTOR_ID = '155295680'[0m
+[0m[1;31m#     ACTIONS_ORCHESTRATION_ID = '9398070b-adc7-450c-bd08-f5cf24086c2a.build.__default'[0m
+[0m[1;31m#     RUNNER_TOOL_CACHE = '/opt/hostedtoolcache'[0m
+[0m[1;31m#     ImageVersion = '20260907.292.1'[0m
+[0m[1;31m#     Python3_ROOT_DIR = '/opt/hostedtoolcache/Python/3.11.16/x64'[0m
+[0m[1;31m#     DOTNET_NOLOGO = '1'[0m
+[0m[1;31m#     GITHUB_ARTIFACTS = '/home/runner/work/_temp/_runner_file_commands/artifacts_836cf289-76b8-4747-ae28-7db5affe8d8c'[0m
+[0m[1;31m#     GITHUB_WORKFLOW_SHA = 'ca2ec423f8ab49d2924b040f16f365425496fd37'[0m
+[0m[1;31m#     GOROOT_1_24_X64 = '/opt/hostedtoolcache/go/1.24.13/x64'[0m
+[0m[1;31m#     GITHUB_REF_NAME = 'main'[0m
+[0m[1;31m#     GITHUB_JOB = 'build'[0m
+[0m[1;31m#     LD_LIBRARY_PATH = '/opt/hostedtoolcache/Python/3.11.16/x64/lib'[0m
+[0m[1;31m#     XDG_RUNTIME_DIR = '/run/user/1001'[0m
+[0m[1;31m#     AZURE_EXTENSION_DIR = '/opt/az/azcliextensions'[0m
+[0m[1;31m#     GOROOT_1_26_X64 = '/opt/hostedtoolcache/go/1.26.8/x64'[0m
+[0m[1;31m#     GITHUB_REPOSITORY = 'hz13332/gridcalc-android'[0m
+[0m[1;31m#     Python2_ROOT_DIR = '/opt/hostedtoolcache/Python/3.11.16/x64'[0m
+[0m[1;31m#     CHROME_BIN = '/usr/bin/google-chrome'[0m
+[0m[1;31m#     ANDROID_NDK_ROOT = '/usr/local/lib/android/sdk/ndk/27.3.13750724'[0m
+[0m[1;31m#     GITHUB_RETENTION_DAYS = '90'[0m
+[0m[1;31m#     JOURNAL_STREAM = '8:10344'[0m
+[0m[1;31m#     RUNNER_WORKSPACE = '/home/runner/work/gridcalc-android'[0m
+[0m[1;31m#     LEIN_HOME = '/usr/local/lib/lein'[0m
+[0m[1;31m#     LEIN_JAR = '/usr/local/lib/lein/self-installs/leiningen-2.12.0-standalone.jar'[0m
+[0m[1;31m#     GITHUB_ACTION_REPOSITORY = ''[0m
+[0m[1;31m#     HCA_CLOUD_PROVIDER = 'azure'[0m
+[0m[1;31m#     PATH = '/home/runner/.buildozer/android/platform/apache-ant-1.9.4/bin:/opt/hostedtoolcache/Python/3.11.16/x64/bin:/opt/hostedtoolcache/Python/3.11.16/x64:/opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/17.0.20-1/x64/bin:/snap/bin:/home/runner/.local/bin:/opt/pipx_bin:/home/runner/.cargo/bin:/home/runner/.config/composer/vendor/bin:/usr/local/.ghcup/bin:/home/runner/.dotnet/tools:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin'[0m
+[0m[1;31m#     GITHUB_BASE_REF = ''[0m
+[0m[1;31m#     GHCUP_INSTALL_BASE_PREFIX = '/usr/local'[0m
+[0m[1;31m#     CI = 'true'[0m
+[0m[1;31m#     SWIFT_PATH = '/usr/share/swift/usr/bin'[0m
+[0m[1;31m#     ImageOS = 'ubuntu22'[0m
+[0m[1;31m#     GITHUB_REPOSITORY_OWNER = 'hz13332'[0m
+[0m[1;31m#     GITHUB_HEAD_REF = ''[0m
+[0m[1;31m#     GITHUB_ACTION_REF = ''[0m
+[0m[1;31m#     ENABLE_RUNNER_TRACING = 'true'[0m
+[0m[1;31m#     GITHUB_WORKFLOW = 'Build APK'[0m
+[0m[1;31m#     DEBIAN_FRONTEND = 'noninteractive'[0m
+[0m[1;31m#     GITHUB_OUTPUT = '/home/runner/work/_temp/_runner_file_commands/set_output_836cf289-76b8-4747-ae28-7db5affe8d8c'[0m
+[0m[1;31m#     AGENT_TOOLSDIRECTORY = '/opt/hostedtoolcache'[0m
+[0m[1;31m#     _ = '/opt/hostedtoolcache/Python/3.11.16/x64/bin/buildozer'[0m
+[0m[1;31m#     PACKAGES_PATH = '/home/runner/.buildozer/android/packages'[0m
+[0m[1;31m#     ANDROIDSDK = '/home/runner/.buildozer/android/platform/android-sdk'[0m
+[0m[1;31m#     ANDROIDNDK = '/home/runner/.buildozer/android/platform/android-ndk-r28c'[0m
+[0m[1;31m#     ANDROIDAPI = '33'[0m
+[0m[1;31m#     ANDROIDMINAPI = '24'[0m
+[0m[1;31m# [0m
+[0m[1;31m# Buildozer failed to execute the last command[0m
+[0m[1;31m# The error might be hidden in the log above this error[0m
+[0m[1;31m# Please read the full log, and search for it before[0m
+[0m[1;31m# raising an issue with buildozer itself.[0m
+[0m[1;31m# In case of a bug report, please add a full log with log_level = 2[0m
