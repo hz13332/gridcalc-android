@@ -152,7 +152,9 @@ class GridApp(App):
     def build(self):
         self.title = "网格交易收益计算器"
         try:
-            Window.softinput_mode = "pan"
+            # below_target: 键盘弹起时只把当前输入框顶到键盘上方,
+            # 用 pan 会把整个窗口顶起导致顶部输入框被推出屏幕
+            Window.softinput_mode = "below_target"
         except Exception:
             pass
         root = BoxLayout(orientation="vertical", padding=dp(10), spacing=dp(8))
