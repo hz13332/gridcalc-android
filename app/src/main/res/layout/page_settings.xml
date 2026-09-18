@@ -25,7 +25,8 @@
                 android:layout_marginBottom="10dp"
                 android:text="外观"
                 android:textColor="?attr/colorInk"
-                android:textSize="16sp" />
+                android:textSize="16sp"
+                android:textStyle="bold" />
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="48dp"
@@ -78,59 +79,68 @@
                 android:layout_marginBottom="10dp"
                 android:text="费率"
                 android:textColor="?attr/colorInk"
-                android:textSize="16sp" />
+                android:textSize="16sp"
+                android:textStyle="bold" />
             <GridLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:columnCount="2"
-                android:rowCount="2">
-                <TextView
+                android:columnCount="2">
+                <LinearLayout
                     android:layout_width="0dp"
-                    android:layout_height="48dp"
+                    android:layout_height="wrap_content"
                     android:layout_columnWeight="1"
-                    android:layout_gravity="center_vertical"
-                    android:text="手续费率 %"
-                    android:textColor="?attr/colorSub"
-                    android:textSize="13sp" />
-                <EditText
-                    android:id="@+id/in_fee"
+                    android:layout_marginRight="6dp"
+                    android:orientation="vertical">
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="5dp"
+                        android:text="手续费率 %"
+                        android:textColor="?attr/colorSub"
+                        android:textSize="12sp" />
+                    <EditText
+                        android:id="@+id/in_fee"
+                        android:layout_width="match_parent"
+                        android:layout_height="48dp"
+                        android:background="@drawable/input_bg"
+                        android:importantForAutofill="no"
+                        android:inputType="numberDecimal"
+                        android:paddingLeft="10dp"
+                        android:paddingRight="10dp"
+                        android:text="0.05"
+                        android:textColor="?attr/colorInk"
+                        android:textColorHint="?attr/colorFaint"
+                        android:textSize="16sp"
+                        android:typeface="monospace" />
+                </LinearLayout>
+                <LinearLayout
                     android:layout_width="0dp"
-                    android:layout_height="48dp"
+                    android:layout_height="wrap_content"
                     android:layout_columnWeight="1"
-                    android:layout_marginBottom="8dp"
-                    android:background="@drawable/input_bg"
-                    android:importantForAutofill="no"
-                    android:inputType="numberDecimal"
-                    android:paddingLeft="10dp"
-                    android:paddingRight="10dp"
-                    android:text="0.05"
-                    android:textColor="?attr/colorInk"
-                    android:textColorHint="?attr/colorFaint"
-                    android:textSize="16sp"
-                    android:typeface="monospace" />
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="48dp"
-                    android:layout_columnWeight="1"
-                    android:layout_gravity="center_vertical"
-                    android:text="维持保证金率 %"
-                    android:textColor="?attr/colorSub"
-                    android:textSize="13sp" />
-                <EditText
-                    android:id="@+id/in_mmr"
-                    android:layout_width="0dp"
-                    android:layout_height="48dp"
-                    android:layout_columnWeight="1"
-                    android:background="@drawable/input_bg"
-                    android:importantForAutofill="no"
-                    android:inputType="numberDecimal"
-                    android:paddingLeft="10dp"
-                    android:paddingRight="10dp"
-                    android:text="100"
-                    android:textColor="?attr/colorInk"
-                    android:textColorHint="?attr/colorFaint"
-                    android:textSize="16sp"
-                    android:typeface="monospace" />
+                    android:layout_marginLeft="6dp"
+                    android:orientation="vertical">
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="5dp"
+                        android:text="维持保证金率 %"
+                        android:textColor="?attr/colorSub"
+                        android:textSize="12sp" />
+                    <EditText
+                        android:id="@+id/in_mmr"
+                        android:layout_width="match_parent"
+                        android:layout_height="48dp"
+                        android:background="@drawable/input_bg"
+                        android:importantForAutofill="no"
+                        android:inputType="numberDecimal"
+                        android:paddingLeft="10dp"
+                        android:paddingRight="10dp"
+                        android:text="100"
+                        android:textColor="?attr/colorInk"
+                        android:textColorHint="?attr/colorFaint"
+                        android:textSize="16sp"
+                        android:typeface="monospace" />
+                </LinearLayout>
             </GridLayout>
         </LinearLayout>
 
@@ -148,7 +158,8 @@
                 android:layout_marginBottom="10dp"
                 android:text="关于"
                 android:textColor="?attr/colorInk"
-                android:textSize="16sp" />
+                android:textSize="16sp"
+                android:textStyle="bold" />
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"

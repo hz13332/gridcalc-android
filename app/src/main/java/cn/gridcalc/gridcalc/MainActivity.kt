@@ -277,6 +277,17 @@ class MainActivity : Activity() {
 
     // ---------- 界面 ----------
 
+    private fun watchKeyboard() {
+        val content = findViewById<View>(android.R.id.content)
+        val bar = findViewById<View>(R.id.tabbar)
+        content.viewTreeObserver.addOnGlobalLayoutListener {
+            val r = android.graphics.Rect()
+            content.getWindowVisibleDisplayFrame(r)
+            val h = content.rootView.height
+            bar.visibility = if (h - r.bottom > h * 0.15) View.GONE else View.VISIBLE
+        }
+    }
+
     private fun showTab(name: String) {
         tab = name
         body.removeAllViews()
@@ -393,6 +404,7 @@ class MainActivity : Activity() {
             b.getString("fee")?.let { feeInp.setText(it) }
             b.getString("mmr")?.let { mmrInp.setText(it) }
         }
+        watchKeyboard()
         showTab(savedInstanceState?.getString("tab") ?: "calc")
     }
 }

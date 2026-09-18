@@ -11,8 +11,8 @@ android {
         applicationId = "cn.gridcalc.gridcalc"
         minSdk = 26
         targetSdk = 33
-        versionCode = 20000
-        versionName = "2.0"
+        versionCode = 20001
+        versionName = "2.0.1"
     }
 
     buildTypes {

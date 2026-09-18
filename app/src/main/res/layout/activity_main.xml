@@ -5,48 +5,6 @@
     android:background="?attr/colorCanvas"
     android:orientation="vertical">
 
-    <!-- 顶栏 -->
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="64dp"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:paddingLeft="14dp"
-        android:paddingRight="14dp">
-        <TextView
-            android:layout_width="36dp"
-            android:layout_height="36dp"
-            android:background="@drawable/brand_bg"
-            android:gravity="center"
-            android:text="网"
-            android:textColor="?attr/colorOnPrimary"
-            android:textSize="17sp" />
-        <LinearLayout
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_marginLeft="10dp"
-            android:layout_weight="1"
-            android:orientation="vertical">
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="网格交易收益计算器"
-                android:textColor="?attr/colorInk"
-                android:textSize="17sp" />
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="GRID CALC · 等比网格"
-                android:textColor="?attr/colorFaint"
-                android:textSize="11sp"
-                android:letterSpacing="0.12" />
-        </LinearLayout>
-    </LinearLayout>
-    <View
-        android:layout_width="match_parent"
-        android:layout_height="1dp"
-        android:background="?attr/colorBorder" />
-
     <!-- 内容区 -->
     <FrameLayout
         android:id="@+id/body"
@@ -56,6 +14,7 @@
 
     <!-- 底部 Tab -->
     <LinearLayout
+        android:id="@+id/tabbar"
         android:layout_width="match_parent"
         android:layout_height="64dp"
         android:background="?attr/colorCanvas"
