@@ -97,7 +97,8 @@
                         android:layout_marginBottom="5dp"
                         android:text="手续费率 %"
                         android:textColor="?attr/colorSub"
-                        android:textSize="12sp" />
+                        android:textSize="14sp"
+                        android:fontFamily="sans-serif-medium" />
                     <EditText
                         android:id="@+id/in_fee"
                         android:layout_width="match_parent"
@@ -110,7 +111,7 @@
                         android:text="0.05"
                         android:textColor="?attr/colorInk"
                         android:textColorHint="?attr/colorFaint"
-                        android:textSize="16sp"
+                        android:textSize="17sp"
                         android:typeface="monospace" />
                 </LinearLayout>
                 <LinearLayout
@@ -125,7 +126,8 @@
                         android:layout_marginBottom="5dp"
                         android:text="维持保证金率 %"
                         android:textColor="?attr/colorSub"
-                        android:textSize="12sp" />
+                        android:textSize="14sp"
+                        android:fontFamily="sans-serif-medium" />
                     <EditText
                         android:id="@+id/in_mmr"
                         android:layout_width="match_parent"
@@ -138,7 +140,7 @@
                         android:text="100"
                         android:textColor="?attr/colorInk"
                         android:textColorHint="?attr/colorFaint"
-                        android:textSize="16sp"
+                        android:textSize="17sp"
                         android:typeface="monospace" />
                 </LinearLayout>
             </GridLayout>
@@ -163,7 +165,7 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="网格交易收益计算器 v2.0\n等比网格 · 路径法爆仓价 · 离线运行"
+                android:text="网格交易收益计算器 v2.0.1\n等比网格 · 路径法爆仓价 · 离线运行"
                 android:textColor="?attr/colorSub"
                 android:textSize="12sp" />
         </LinearLayout>

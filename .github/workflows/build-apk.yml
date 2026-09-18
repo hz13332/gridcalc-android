@@ -18,19 +18,22 @@ jobs:
         run: |
           chmod +x gradlew
           ./gradlew assembleDebug
-      - name: 读取版本号
-        id: ver
-        # 版本号唯一来源:app/build.gradle.kts 的 versionName
-        # 版本规则:小版本自动递增,大版本(小数点前)由维护者指定
-        run: |
-          V=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
-          echo "name=$V" >> $GITHUB_OUTPUT
       - name: 上传 APK
         uses: actions/upload-artifact@v4
         with:
           name: GridCalc-apk
           path: app/build/outputs/apk/debug/*.apk
+      - name: 读取版本号
+        if: github.event_name == 'workflow_dispatch'
+        id: ver
+        # 版本号唯一来源:app/build.gradle.kts 的 versionName
+        # 版本规则:小版本自动递增,大版本(小数点前)由维护者指定
+        # 发版必须经维护者确认,手动点 Run workflow 才发布
+        run: |
+          V=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
+          echo "name=$V" >> $GITHUB_OUTPUT
       - name: 发布 Release
+        if: github.event_name == 'workflow_dispatch'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.ver.outputs.name }}
