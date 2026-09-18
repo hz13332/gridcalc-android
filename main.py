@@ -445,7 +445,8 @@ class GridApp(App):
         for _k, _t in _saved_inp.items():
             if _k in self.inp:
                 self.inp[_k].text = _t
-        self.gtype.text = _saved_g
+        if getattr(self, "gtype", None) is not None:
+            self.gtype.text = _saved_g
         if _saved_fee is not None:
             self.fee_inp.text = _saved_fee
         if _saved_mmr is not None:
@@ -511,7 +512,7 @@ class GridApp(App):
         return head
 
     def _build_calc_page(self):
-        _sc = ScrollView()
+        _sc = ScrollView(bar_width=0)
         page = BoxLayout(orientation="vertical", padding=dp(12), spacing=dp(12),
                          size_hint_y=None)
         page.bind(minimum_height=page.setter("height"))
@@ -522,27 +523,24 @@ class GridApp(App):
         form.bind(minimum_height=form.setter("height"))
         self.inp = {}
 
-        def row(name, key, default):
+        def row(name, key, default, hint=""):
             lb = L(text=name, color=SUB, font_size=dp(13),
                    size_hint_y=None, height=dp(48))
-            ti = T(text=default)
+            ti = T(text=default, hint_text=hint)
+            ti.bind(text=lambda *a: self._auto())
             form.add_widget(lb)
             form.add_widget(ti)
             self.inp[key] = ti
 
-        row("总投入 USDT", "C", "")
-        row("杠杆倍率", "L", "")
-        row("最低价", "Pl", "")
-        row("最高价", "Ph", "")
-        row("触发价", "Po", "")
-        row("网格数量 N", "N", "")
-        row("每格数量", "q", "")
+        row("总投入", "C", "", "USDT")
+        row("杠杆倍率", "L", "", "倍")
+        row("最低价", "Pl", "", "USDT")
+        row("最高价", "Ph", "", "USDT")
+        row("触发价", "Po", "", "USDT")
+        row("网格数量", "N", "", "整数")
+        row("每格数量", "q", "", "BTC")
         form_card.add_widget(form)
         page.add_widget(form_card)
-
-        btn = B(text="计 算")
-        btn.bind(on_press=self.on_calc)
-        page.add_widget(btn)
 
         res_card = Card()
         res_card.add_widget(H(text="计算结果"))
@@ -584,16 +582,10 @@ class GridApp(App):
         return _sc
 
     def _build_settings_page(self):
-        _sc = ScrollView()
+        _sc = ScrollView(bar_width=0)
         _pg = BoxLayout(orientation="vertical", padding=dp(12), spacing=dp(12),
                         size_hint_y=None)
         _pg.bind(minimum_height=_pg.setter("height"))
-
-        _gc = Card()
-        _gc.add_widget(H(text="网格模式"))
-        self.gtype = S(text="等比网格", values=("等比网格", "等差网格"))
-        _gc.add_widget(self.gtype)
-        _pg.add_widget(_gc)
 
         _tc = Card()
         _tc.add_widget(H(text="外观"))
@@ -615,17 +607,19 @@ class GridApp(App):
         _fg.add_widget(L(text="手续费率 %", color=SUB, font_size=dp(13),
                          size_hint_y=None, height=dp(48)))
         self.fee_inp = T(text="0.05")
+        self.fee_inp.bind(text=lambda *a: self._auto())
         _fg.add_widget(self.fee_inp)
         _fg.add_widget(L(text="维持保证金率 %", color=SUB, font_size=dp(13),
                          size_hint_y=None, height=dp(48)))
-        self.mmr_inp = T(text="1")
+        self.mmr_inp = T(text="100")
+        self.mmr_inp.bind(text=lambda *a: self._auto())
         _fg.add_widget(self.mmr_inp)
         _fc.add_widget(_fg)
         _pg.add_widget(_fc)
 
         _ac = Card()
         _ac.add_widget(H(text="关于"))
-        _ac.add_widget(D(text="网格交易收益计算器 v1.0\n等比 / 等差网格 · 路径法爆仓价 · 离线运行",
+        _ac.add_widget(D(text="网格交易收益计算器 v2.0\n等比 / 等差网格 · 路径法爆仓价 · 离线运行",
                          font_size=dp(12), color=SUB))
         _pg.add_widget(_ac)
         _sc.add_widget(_pg)
@@ -726,7 +720,7 @@ class GridApp(App):
                 raise ValueError("维持保证金率不是有效数字")
             if not mmr >= 0:
                 raise ValueError("维持保证金率不能为负")
-            g = "geo" if self.gtype.text.startswith("等比") else "arith"
+            g = "geo"
             r = calc_grid(C, Pl, Ph, Po, N, g, q, fee, mmr)
             self.hero.color = TEAL if r["net"] >= 0 else RED
             self.hero.text = "%+.2f USDT" % r["net"]
@@ -764,12 +758,30 @@ class GridApp(App):
                         "%+.2f" % cum, TEAL if cum >= 0 else RED, zebra))
                 zebra = not zebra
         except Exception as e:
+            _msg = str(e)
+            if "还没有填" in _msg:
+                self.hero.color = INK
+                self.hero.text = "--"
+                self.hero_sub.color = SUB
+                self.hero_sub.text = "输入参数后点计算"
+                for _v in self.stat_vals.values():
+                    _v.text = "--"
+                self.det_sum.color = SUB
+                self.det_sum.text = "明细会在计算后显示"
+                self.rows.clear_widgets()
+                return
             self.hero.color = RED
             self.hero.text = "出错"
             self.hero_sub.color = RED
-            self.hero_sub.text = str(e)
+            self.hero_sub.text = _msg
             for _v in self.stat_vals.values():
                 _v.text = "--"
+
+    def _auto(self, *a):
+        try:
+            self.on_calc()
+        except Exception:
+            pass
 
     @staticmethod
     def _lines(Pl, Ph, N, g):
