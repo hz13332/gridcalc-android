@@ -13,37 +13,26 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-      - name: 安装系统依赖
+      - uses: gradle/actions/setup-gradle@v3
+      - name: 构建 Debug APK
         run: |
-          sudo apt-get update
-          sudo apt-get install -y git zip unzip autoconf libtool pkg-config zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo5 cmake libffi-dev libssl-dev
-      - name: 安装 buildozer
-        run: pip install buildozer cython==0.29.36
-      - name: 构建 APK
+          chmod +x gradlew
+          ./gradlew assembleDebug
+      - name: 读取版本号
+        id: ver
+        # 版本号唯一来源:app/build.gradle.kts 的 versionName
+        # 版本规则:小版本自动递增,大版本(小数点前)由维护者指定
         run: |
-          set -o pipefail
-          buildozer android debug 2>&1 | tee build.log
-      - name: 回传失败日志
-        if: failure()
-        run: |
-          tail -c 120000 build.log > failure-tail.txt || echo NOLOG > failure-tail.txt
-          git config user.name gridcalc-bot
-          git config user.email gridcalc-bot@local
-          git checkout -B debug-logs
-          git add failure-tail.txt
-          git commit -m "failure log" || true
-          git push -f origin debug-logs
+          V=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
+          echo "name=$V" >> $GITHUB_OUTPUT
       - name: 上传 APK
         uses: actions/upload-artifact@v4
         with:
           name: GridCalc-apk
-          path: bin/*.apk
-      - name: 发布 Release 免登录下载
+          path: app/build/outputs/apk/debug/*.apk
+      - name: 发布 Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: apk-${{ github.run_number }}
-          name: 安卓安装包 apk-${{ github.run_number }}
-          files: bin/*.apk
+          tag_name: v${{ steps.ver.outputs.name }}
+          name: v${{ steps.ver.outputs.name }}
+          files: app/build/outputs/apk/debug/*.apk

@@ -1,0 +1,355 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true"
+    android:scrollbars="none"
+    android:clipToPadding="false">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="12dp">
+
+        <!-- 输入参数 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="@drawable/card_bg"
+            android:orientation="vertical"
+            android:padding="14dp">
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="10dp"
+                android:text="输入参数"
+                android:textColor="?attr/colorInk"
+                android:textSize="16sp" />
+            <GridLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:columnCount="2"
+                android:rowCount="7"
+                android:useDefaultMargins="false">
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="48dp"
+                    android:layout_columnWeight="1"
+                    android:layout_gravity="center_vertical"
+                    android:text="总投入"
+                    android:textColor="?attr/colorSub"
+                    android:textSize="13sp" />
+                <EditText
+                    android:id="@+id/in_C"
+                    android:layout_width="0dp"
+                    android:layout_height="48dp"
+                    android:layout_columnWeight="1"
+                    android:layout_marginBottom="8dp"
+                    android:background="@drawable/input_bg"
+                    android:hint="USDT"
+                    android:importantForAutofill="no"
+                    android:inputType="numberDecimal"
+                    android:paddingLeft="10dp"
+                    android:paddingRight="10dp"
+                    android:textColor="?attr/colorInk"
+                    android:textColorHint="?attr/colorFaint"
+                    android:textSize="16sp"
+                    android:typeface="monospace" />
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="48dp"
+                    android:layout_columnWeight="1"
+                    android:layout_gravity="center_vertical"
+                    android:text="杠杆倍率"
+                    android:textColor="?attr/colorSub"
+                    android:textSize="13sp" />
+                <EditText
+                    android:id="@+id/in_L"
+                    android:layout_width="0dp"
+                    android:layout_height="48dp"
+                    android:layout_columnWeight="1"
+                    android:layout_marginBottom="8dp"
+                    android:background="@drawable/input_bg"
+                    android:hint="倍·如150"
+                    android:importantForAutofill="no"
+                    android:inputType="numberDecimal"
+                    android:paddingLeft="10dp"
+                    android:paddingRight="10dp"
+                    android:textColor="?attr/colorInk"
+                    android:textColorHint="?attr/colorFaint"
+                    android:textSize="16sp"
+                    android:typeface="monospace" />
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="48dp"
+                    android:layout_columnWeight="1"
+                    android:layout_gravity="center_vertical"
+                    android:text="最低价"
+                    android:textColor="?attr/colorSub"
+                    android:textSize="13sp" />
+                <EditText
+                    android:id="@+id/in_Pl"
+                    android:layout_width="0dp"
+                    android:layout_height="48dp"
+                    android:layout_columnWeight="1"
+                    android:layout_marginBottom="8dp"
+                    android:background="@drawable/input_bg"
+                    android:hint="USDT"
+                    android:importantForAutofill="no"
+                    android:inputType="numberDecimal"
+                    android:paddingLeft="10dp"
+                    android:paddingRight="10dp"
+                    android:textColor="?attr/colorInk"
+                    android:textColorHint="?attr/colorFaint"
+                    android:textSize="16sp"
+                    android:typeface="monospace" />
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="48dp"
+                    android:layout_columnWeight="1"
+                    android:layout_gravity="center_vertical"
+                    android:text="最高价"
+                    android:textColor="?attr/colorSub"
+                    android:textSize="13sp" />
+                <EditText
+                    android:id="@+id/in_Ph"
+                    android:layout_width="0dp"
+                    android:layout_height="48dp"
+                    android:layout_columnWeight="1"
+                    android:layout_marginBottom="8dp"
+                    android:background="@drawable/input_bg"
+                    android:hint="USDT"
+                    android:importantForAutofill="no"
+                    android:inputType="numberDecimal"
+                    android:paddingLeft="10dp"
+                    android:paddingRight="10dp"
+                    android:textColor="?attr/colorInk"
+                    android:textColorHint="?attr/colorFaint"
+                    android:textSize="16sp"
+                    android:typeface="monospace" />
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="48dp"
+                    android:layout_columnWeight="1"
+                    android:layout_gravity="center_vertical"
+                    android:text="触发价"
+                    android:textColor="?attr/colorSub"
+                    android:textSize="13sp" />
+                <EditText
+                    android:id="@+id/in_Po"
+                    android:layout_width="0dp"
+                    android:layout_height="48dp"
+                    android:layout_columnWeight="1"
+                    android:layout_marginBottom="8dp"
+                    android:background="@drawable/input_bg"
+                    android:hint="USDT"
+                    android:importantForAutofill="no"
+                    android:inputType="numberDecimal"
+                    android:paddingLeft="10dp"
+                    android:paddingRight="10dp"
+                    android:textColor="?attr/colorInk"
+                    android:textColorHint="?attr/colorFaint"
+                    android:textSize="16sp"
+                    android:typeface="monospace" />
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="48dp"
+                    android:layout_columnWeight="1"
+                    android:layout_gravity="center_vertical"
+                    android:text="网格数量"
+                    android:textColor="?attr/colorSub"
+                    android:textSize="13sp" />
+                <EditText
+                    android:id="@+id/in_N"
+                    android:layout_width="0dp"
+                    android:layout_height="48dp"
+                    android:layout_columnWeight="1"
+                    android:layout_marginBottom="8dp"
+                    android:background="@drawable/input_bg"
+                    android:hint="整数"
+                    android:importantForAutofill="no"
+                    android:inputType="number"
+                    android:paddingLeft="10dp"
+                    android:paddingRight="10dp"
+                    android:textColor="?attr/colorInk"
+                    android:textColorHint="?attr/colorFaint"
+                    android:textSize="16sp"
+                    android:typeface="monospace" />
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="48dp"
+                    android:layout_columnWeight="1"
+                    android:layout_gravity="center_vertical"
+                    android:text="每格数量"
+                    android:textColor="?attr/colorSub"
+                    android:textSize="13sp" />
+                <EditText
+                    android:id="@+id/in_q"
+                    android:layout_width="0dp"
+                    android:layout_height="48dp"
+                    android:layout_columnWeight="1"
+                    android:background="@drawable/input_bg"
+                    android:hint="BTC"
+                    android:importantForAutofill="no"
+                    android:inputType="numberDecimal"
+                    android:paddingLeft="10dp"
+                    android:paddingRight="10dp"
+                    android:textColor="?attr/colorInk"
+                    android:textColorHint="?attr/colorFaint"
+                    android:textSize="16sp"
+                    android:typeface="monospace" />
+            </GridLayout>
+        </LinearLayout>
+
+        <!-- 计算结果 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/card_bg"
+            android:orientation="vertical"
+            android:padding="14dp">
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="10dp"
+                android:text="计算结果"
+                android:textColor="?attr/colorInk"
+                android:textSize="16sp" />
+            <TextView
+                android:id="@+id/hero"
+                android:layout_width="match_parent"
+                android:layout_height="56dp"
+                android:gravity="center"
+                android:text="--"
+                android:textSize="32sp"
+                android:typeface="monospace" />
+            <TextView
+                android:id="@+id/hero_sub"
+                android:layout_width="match_parent"
+                android:layout_height="24dp"
+                android:gravity="center"
+                android:text="输入参数后自动计算"
+                android:textColor="?attr/colorSub"
+                android:textSize="13sp" />
+            <GridLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:columnCount="2"
+                android:rowCount="2">
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="48dp"
+                    android:layout_columnWeight="1"
+                    android:orientation="vertical">
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="18dp"
+                        android:text="爆仓价"
+                        android:textColor="?attr/colorSub"
+                        android:textSize="11sp" />
+                    <TextView
+                        android:id="@+id/stat_liq"
+                        android:layout_width="wrap_content"
+                        android:layout_height="30dp"
+                        android:text="--"
+                        android:textColor="?attr/colorInk"
+                        android:textSize="15sp"
+                        android:typeface="monospace" />
+                </LinearLayout>
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="48dp"
+                    android:layout_columnWeight="1"
+                    android:orientation="vertical">
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="18dp"
+                        android:text="收益率"
+                        android:textColor="?attr/colorSub"
+                        android:textSize="11sp" />
+                    <TextView
+                        android:id="@+id/stat_roe"
+                        android:layout_width="wrap_content"
+                        android:layout_height="30dp"
+                        android:text="--"
+                        android:textColor="?attr/colorInk"
+                        android:textSize="15sp"
+                        android:typeface="monospace" />
+                </LinearLayout>
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="48dp"
+                    android:layout_columnWeight="1"
+                    android:orientation="vertical">
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="18dp"
+                        android:text="初始持仓"
+                        android:textColor="?attr/colorSub"
+                        android:textSize="11sp" />
+                    <TextView
+                        android:id="@+id/stat_pos"
+                        android:layout_width="wrap_content"
+                        android:layout_height="30dp"
+                        android:text="--"
+                        android:textColor="?attr/colorInk"
+                        android:textSize="15sp"
+                        android:typeface="monospace" />
+                </LinearLayout>
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="48dp"
+                    android:layout_columnWeight="1"
+                    android:orientation="vertical">
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="18dp"
+                        android:text="卖出总额"
+                        android:textColor="?attr/colorSub"
+                        android:textSize="11sp" />
+                    <TextView
+                        android:id="@+id/stat_sell"
+                        android:layout_width="wrap_content"
+                        android:layout_height="30dp"
+                        android:text="--"
+                        android:textColor="?attr/colorInk"
+                        android:textSize="15sp"
+                        android:typeface="monospace" />
+                </LinearLayout>
+            </GridLayout>
+        </LinearLayout>
+
+        <!-- 网格明细 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/card_bg"
+            android:orientation="vertical"
+            android:padding="14dp">
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="10dp"
+                android:text="网格明细"
+                android:textColor="?attr/colorInk"
+                android:textSize="16sp" />
+            <TextView
+                android:id="@+id/det_sum"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="明细会在计算后显示"
+                android:textColor="?attr/colorSub"
+                android:textSize="13sp" />
+            <LinearLayout
+                android:id="@+id/rows"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:orientation="vertical" />
+        </LinearLayout>
+    </LinearLayout>
+</ScrollView>

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <attr name="colorCanvas" format="color" />
+    <attr name="colorCard" format="color" />
+    <attr name="colorSurf2" format="color" />
+    <attr name="colorInput" format="color" />
+    <attr name="colorInk" format="color" />
+    <attr name="colorSub" format="color" />
+    <attr name="colorFaint" format="color" />
+    <attr name="colorPrimary" format="color" />
+    <attr name="colorPrimaryDark" format="color" />
+    <attr name="colorTeal" format="color" />
+    <attr name="colorRed" format="color" />
+    <attr name="colorBorder" format="color" />
+    <attr name="colorTealBg" format="color" />
+    <attr name="colorBlueBg" format="color" />
+    <attr name="colorOnPrimary" format="color" />
+</resources>

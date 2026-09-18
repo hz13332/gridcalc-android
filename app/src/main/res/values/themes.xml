@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 浅色 · 白天 -->
+    <style name="Theme.GridCalc.Light" parent="android:Theme.Material.NoActionBar">
+        <item name="colorCanvas">#F2F4F8</item>
+        <item name="colorCard">#FFFFFF</item>
+        <item name="colorSurf2">#EEF1F6</item>
+        <item name="colorInput">#EEF1F6</item>
+        <item name="colorInk">#1A1D24</item>
+        <item name="colorSub">#5B6472</item>
+        <item name="colorFaint">#8A93A3</item>
+        <item name="colorPrimary">#165DFF</item>
+        <item name="colorPrimaryDark">#0F49CC</item>
+        <item name="colorTeal">#0AA182</item>
+        <item name="colorRed">#D92D20</item>
+        <item name="colorBorder">#D5DBE5</item>
+        <item name="colorTealBg">#1F0AA182</item>
+        <item name="colorBlueBg">#1F165DFF</item>
+        <item name="colorOnPrimary">#FFFFFF</item>
+        <item name="android:windowBackground">?attr/colorCanvas</item>
+        <item name="android:statusBarColor">?attr/colorCanvas</item>
+        <item name="android:navigationBarColor">?attr/colorCanvas</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+
+    <!-- 深色 · 夜晚 -->
+    <style name="Theme.GridCalc.Dark" parent="android:Theme.Material.NoActionBar">
+        <item name="colorCanvas">#010102</item>
+        <item name="colorCard">#0F1011</item>
+        <item name="colorSurf2">#141516</item>
+        <item name="colorInput">#1D2026</item>
+        <item name="colorInk">#F7F8F8</item>
+        <item name="colorSub">#D0D6E0</item>
+        <item name="colorFaint">#8A8F98</item>
+        <item name="colorPrimary">#5E6AD2</item>
+        <item name="colorPrimaryDark">#4A55B5</item>
+        <item name="colorTeal">#27A644</item>
+        <item name="colorRed">#E5484D</item>
+        <item name="colorBorder">#23252A</item>
+        <item name="colorTealBg">#1F27A644</item>
+        <item name="colorBlueBg">#245E6AD2</item>
+        <item name="colorOnPrimary">#FFFFFF</item>
+        <item name="android:windowBackground">?attr/colorCanvas</item>
+        <item name="android:statusBarColor">?attr/colorCanvas</item>
+        <item name="android:navigationBarColor">?attr/colorCanvas</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+</resources>
