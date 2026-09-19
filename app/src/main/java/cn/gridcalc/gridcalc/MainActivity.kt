@@ -6,11 +6,12 @@ import android.content.Context
 import android.content.res.Configuration
 import android.graphics.Color
 import android.os.Bundle
-import android.text.Editable
-import android.text.TextWatcher
 import android.util.TypedValue
 import android.view.LayoutInflater
 import android.view.View
+import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputMethodManager
+import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.ImageView
@@ -33,6 +34,8 @@ class MainActivity : Activity() {
     private val inp = mutableMapOf<String, EditText>()
     private lateinit var feeInp: EditText
     private lateinit var mmrInp: EditText
+    private lateinit var dblBtn: Button
+    private var dbl = false
     private lateinit var hero: TextView
     private lateinit var heroSub: TextView
     private val statVals = mutableMapOf<String, TextView>()
@@ -88,7 +91,7 @@ class MainActivity : Activity() {
 
     private fun calcGrid(
         c: Double, pl: Double, ph: Double, po: Double, n: Int, q: Double,
-        fee: Double, mmr: Double
+        fee: Double, mmr: Double, dbl: Boolean
     ): CalcResult {
         val eps = 1e-9
         val lines = gridLines(pl, ph, n)
@@ -99,10 +102,11 @@ class MainActivity : Activity() {
         if (m < 1 || bc < 1) throw IllegalArgumentException("触发价必须在最低价和最高价之间,且上下都要有格子")
         val sumS = sells.sum()
         val sumB = buys.sum()
-        val q0 = m * q
+        // 加倍建仓:初始持仓翻倍,卖出总额多出一份到顶全平(M·q·Ph)
+        val q0 = if (dbl) 2 * m * q else m * q
         val cost0 = q0 * po
         val buyFee = cost0 * fee
-        val sellT = q * sumS
+        val sellT = if (dbl) q * sumS + m * q * ph else q * sumS
         val net = sellT - cost0 - buyFee - sellT * fee
         val buysDesc = buys.sortedDescending()
         var qq = q0
@@ -131,8 +135,8 @@ class MainActivity : Activity() {
         } else {
             found = po
         }
-        val qf = (m + bc) * q
-        val avgF = (m * po + sumB) / (m + bc)
+        val qf = q0 + bc * q
+        val avgF = (q0 * po + sumB * q) / qf
         val eqBottom = c + qf * (pl - avgF) - buyFee - sumB * q * fee
         return CalcResult(m, bc, n + 1, q0, cost0, sellT, net, net / c * 100.0,
             found, eqBottom)
@@ -147,18 +151,11 @@ class MainActivity : Activity() {
 
     private fun fmt(v: Double, d: Int = 2): String = "%,.${d}f".format(v)
 
-    private fun autoCalc() {
-        try {
-            onCalc()
-        } catch (_: Exception) {
-        }
-    }
-
     private fun idle() {
         hero.setTextColor(attrColor("colorInk"))
         hero.text = "--"
         heroSub.setTextColor(attrColor("colorSub"))
-        heroSub.text = "输入参数后自动计算"
+        heroSub.text = "输入参数后回车计算"
         statVals.values.forEach { it.text = "--" }
         detSum.setTextColor(attrColor("colorSub"))
         detSum.text = "明细会在计算后显示"
@@ -185,7 +182,7 @@ class MainActivity : Activity() {
             val mmr = getNum(mmrInp, "维持保证金率") / 100.0
             if (mmr < 0) throw IllegalArgumentException("维持保证金率不能为负")
 
-            val r = calcGrid(c, pl, ph, po, n, q, fee, mmr)
+            val r = calcGrid(c, pl, ph, po, n, q, fee, mmr, dbl)
             val teal = attrColor("colorTeal")
             val red = attrColor("colorRed")
             val ink = attrColor("colorInk")
@@ -200,8 +197,8 @@ class MainActivity : Activity() {
             statVals["pos"]!!.text = "%.4f".format(r.q0)
             statVals["sell"]!!.text = fmt(r.sellT)
             detSum.setTextColor(ink)
-            detSum.text = "买%d/卖%d/线%d · 持仓%.6f · 成本%.2f".format(
-                r.b, r.m, r.lines, r.q0, r.cost0)
+            detSum.text = "买%d/卖%d/线%d · 持仓%.6f · 成本%.2f%s".format(
+                r.b, r.m, r.lines, r.q0, r.cost0, if (dbl) " · 加倍建仓" else "")
 
             val buyFee = r.cost0 * fee
             var cumSell = 0.0
@@ -226,6 +223,12 @@ class MainActivity : Activity() {
                         if (cum >= 0) teal else red, zebra, false))
                 }
                 zebra = !zebra
+            }
+            if (dbl) {
+                rows.addView(makeRow(
+                    "顶", fmt(ph), "全平|sell",
+                    "%+.2f".format(r.net),
+                    if (r.net >= 0) teal else red, zebra, false))
             }
         } catch (e: Exception) {
             val msg = e.message ?: "出错"
@@ -329,12 +332,31 @@ class MainActivity : Activity() {
         recreate()
     }
 
+    private fun paintDbl() {
+        val onPrimary = attrColor("colorOnPrimary")
+        val ink = attrColor("colorInk")
+        if (dbl) {
+            dblBtn.setBackgroundResource(R.drawable.btn_primary)
+            dblBtn.setTextColor(onPrimary)
+        } else {
+            dblBtn.setBackgroundResource(R.drawable.btn_ghost)
+            dblBtn.setTextColor(ink)
+        }
+    }
+
+    private fun hideKeyboard(v: View) {
+        val imm = getSystemService(INPUT_METHOD_SERVICE) as? InputMethodManager
+        imm?.hideSoftInputFromWindow(v.windowToken, 0)
+        v.clearFocus()
+    }
+
     override fun onSaveInstanceState(out: Bundle) {
         super.onSaveInstanceState(out)
         out.putString("tab", tab)
         for ((k, e) in inp) out.putString("in_$k", e.text.toString())
         out.putString("fee", feeInp.text.toString())
         out.putString("mmr", mmrInp.text.toString())
+        out.putBoolean("dbl", dbl)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -371,15 +393,17 @@ class MainActivity : Activity() {
         val ids = mapOf("C" to R.id.in_C, "L" to R.id.in_L, "Pl" to R.id.in_Pl,
             "Ph" to R.id.in_Ph, "Po" to R.id.in_Po, "N" to R.id.in_N,
             "q" to R.id.in_q)
-        val watcher = object : TextWatcher {
-            override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
-            override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
-            override fun afterTextChanged(s: Editable?) = autoCalc()
-        }
         for ((k, id) in ids) {
             val e = calcPage.findViewById<EditText>(id)
             inp[k] = e
-            e.addTextChangedListener(watcher)
+            // 回车才算:输入即算已去掉,IME 回车触发并收键盘
+            e.setOnEditorActionListener { v, actionId, _ ->
+                if (actionId == EditorInfo.IME_ACTION_DONE) {
+                    hideKeyboard(v)
+                    onCalc()
+                    true
+                } else false
+            }
         }
         hero = calcPage.findViewById(R.id.hero)
         heroSub = calcPage.findViewById(R.id.hero_sub)
@@ -392,8 +416,22 @@ class MainActivity : Activity() {
 
         feeInp = settingsPage.findViewById(R.id.in_fee)
         mmrInp = settingsPage.findViewById(R.id.in_mmr)
-        feeInp.addTextChangedListener(watcher)
-        mmrInp.addTextChangedListener(watcher)
+        for (e in listOf(feeInp, mmrInp)) {
+            e.setOnEditorActionListener { v, actionId, _ ->
+                if (actionId == EditorInfo.IME_ACTION_DONE) {
+                    hideKeyboard(v)
+                    onCalc()
+                    true
+                } else false
+            }
+        }
+        dblBtn = calcPage.findViewById(R.id.dbl_btn)
+        dblBtn.setOnClickListener {
+            dbl = !dbl
+            paintDbl()
+            onCalc()
+        }
+        paintDbl()
         themeFollow = settingsPage.findViewById(R.id.theme_follow)
         themeLight = settingsPage.findViewById(R.id.theme_light)
         themeDark = settingsPage.findViewById(R.id.theme_dark)
@@ -406,6 +444,8 @@ class MainActivity : Activity() {
             for ((k, e) in inp) b.getString("in_$k")?.let { e.setText(it) }
             b.getString("fee")?.let { feeInp.setText(it) }
             b.getString("mmr")?.let { mmrInp.setText(it) }
+            dbl = b.getBoolean("dbl", false)
+            paintDbl()
         }
         watchKeyboard()
         showTab(savedInstanceState?.getString("tab") ?: "calc")
