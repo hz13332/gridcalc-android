@@ -1,0 +1,191 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true"
+    android:scrollbars="none"
+    android:clipToPadding="false">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="12dp">
+
+        <!-- 行情输入 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="@drawable/card_bg"
+            android:orientation="vertical"
+            android:padding="14dp">
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="10dp"
+                android:text="行情 · VPVR"
+                android:textColor="?attr/colorInk"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginRight="6dp"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="5dp"
+                        android:text="交易品种"
+                        android:textColor="?attr/colorSub"
+                        android:textSize="14sp"
+                        android:fontFamily="sans-serif-medium" />
+                    <EditText
+                        android:id="@+id/mkt_sym"
+                        android:layout_width="match_parent"
+                        android:layout_height="48dp"
+                        android:background="@drawable/input_bg"
+                        android:hint="BTCUSDT / AAPL"
+                        android:importantForAutofill="no"
+                        android:inputType="textNoSuggestions"
+                        android:imeOptions="actionDone"
+                        android:singleLine="true"
+                        android:paddingLeft="10dp"
+                        android:paddingRight="10dp"
+                        android:textColor="?attr/colorInk"
+                        android:textColorHint="?attr/colorFaint"
+                        android:textSize="17sp"
+                        android:typeface="monospace" />
+                </LinearLayout>
+                <Button
+                    android:id="@+id/mkt_go"
+                    android:layout_width="84dp"
+                    android:layout_height="48dp"
+                    android:layout_gravity="bottom"
+                    android:layout_marginLeft="6dp"
+                    android:background="@drawable/btn_ghost"
+                    android:text="查看"
+                    android:textColor="?attr/colorInk"
+                    android:textSize="15sp" />
+            </LinearLayout>
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:layout_marginTop="10dp"
+                android:orientation="horizontal">
+                <Button
+                    android:id="@+id/mkt_tf_w"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_marginRight="4dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/btn_primary"
+                    android:text="周线"
+                    android:textColor="?attr/colorOnPrimary"
+                    android:textSize="15sp" />
+                <Button
+                    android:id="@+id/mkt_tf_m"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_marginLeft="4dp"
+                    android:layout_marginRight="4dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/btn_ghost"
+                    android:text="月线"
+                    android:textColor="?attr/colorInk"
+                    android:textSize="15sp" />
+                <Button
+                    android:id="@+id/mkt_tf_q"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_marginLeft="4dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/btn_ghost"
+                    android:text="季线"
+                    android:textColor="?attr/colorInk"
+                    android:textSize="15sp" />
+            </LinearLayout>
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:orientation="vertical">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="5dp"
+                    android:text="K线数量（5~100）"
+                    android:textColor="?attr/colorSub"
+                    android:textSize="14sp"
+                    android:fontFamily="sans-serif-medium" />
+                <EditText
+                    android:id="@+id/mkt_kcount"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:background="@drawable/input_bg"
+                    android:importantForAutofill="no"
+                    android:inputType="number"
+                    android:imeOptions="actionDone"
+                    android:singleLine="true"
+                    android:paddingLeft="10dp"
+                    android:paddingRight="10dp"
+                    android:text="52"
+                    android:textColor="?attr/colorInk"
+                    android:textColorHint="?attr/colorFaint"
+                    android:textSize="17sp"
+                    android:typeface="monospace" />
+            </LinearLayout>
+            <TextView
+                android:id="@+id/mkt_srcnote"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="币：BTC现货三家选量最大 · 股：Nasdaq · 金银：Yahoo期货 · 有一家能用即画"
+                android:textColor="?attr/colorSub"
+                android:textSize="11sp" />
+        </LinearLayout>
+
+        <!-- 行情图 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/card_bg"
+            android:orientation="vertical"
+            android:padding="14dp">
+            <TextView
+                android:id="@+id/mkt_status"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="输入品种后查看"
+                android:textColor="?attr/colorSub"
+                android:textSize="13sp" />
+            <TextView
+                android:id="@+id/mkt_ohlc"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:layout_marginBottom="6dp"
+                android:textColor="?attr/colorSub"
+                android:textSize="12sp"
+                android:typeface="monospace" />
+            <cn.gridcalc.gridcalc.MktView
+                android:id="@+id/mkt_chart"
+                android:layout_width="match_parent"
+                android:layout_height="260dp" />
+            <TextView
+                android:id="@+id/mkt_leg"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:textColor="?attr/colorSub"
+                android:textSize="12sp"
+                android:typeface="monospace" />
+        </LinearLayout>
+    </LinearLayout>
+</ScrollView>

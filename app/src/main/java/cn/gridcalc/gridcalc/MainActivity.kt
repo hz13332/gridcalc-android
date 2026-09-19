@@ -24,12 +24,17 @@ class MainActivity : Activity() {
     private lateinit var body: FrameLayout
     private lateinit var calcPage: View
     private lateinit var settingsPage: View
+    private lateinit var mktPage: View
+    private lateinit var mktPanel: MktPanel
     private lateinit var tabCalc: LinearLayout
     private lateinit var tabSetup: LinearLayout
+    private lateinit var tabMkt: LinearLayout
     private lateinit var tabCalcIcon: ImageView
     private lateinit var tabCalcLabel: TextView
     private lateinit var tabSetupIcon: ImageView
     private lateinit var tabSetupLabel: TextView
+    private lateinit var tabMktIcon: ImageView
+    private lateinit var tabMktLabel: TextView
 
     private val inp = mutableMapOf<String, EditText>()
     private lateinit var feeInp: EditText
@@ -69,7 +74,7 @@ class MainActivity : Activity() {
         else -> if (systemDark()) "dark" else "light"
     }
 
-    private fun attrColor(name: String): Int {
+    fun attrColor(name: String): Int {
         val id = resources.getIdentifier(name, "attr", packageName)
         val tv = TypedValue()
         theme.resolveAttribute(id, tv, true)
@@ -297,18 +302,23 @@ class MainActivity : Activity() {
     private fun showTab(name: String) {
         tab = name
         body.removeAllViews()
-        body.addView(if (name == "calc") calcPage else settingsPage)
+        body.addView(when (name) {
+            "mkt" -> mktPage
+            "setup" -> settingsPage
+            else -> calcPage
+        })
         paintTabs()
     }
 
     private fun paintTabs() {
         val primary = attrColor("colorPrimary")
         val sub = attrColor("colorSub")
-        val active = tab == "calc"
-        tabCalcIcon.setColorFilter(if (active) primary else sub)
-        tabCalcLabel.setTextColor(if (active) primary else sub)
-        tabSetupIcon.setColorFilter(if (active) sub else primary)
-        tabSetupLabel.setTextColor(if (active) sub else primary)
+        tabCalcIcon.setColorFilter(if (tab == "calc") primary else sub)
+        tabCalcLabel.setTextColor(if (tab == "calc") primary else sub)
+        tabSetupIcon.setColorFilter(if (tab == "setup") primary else sub)
+        tabSetupLabel.setTextColor(if (tab == "setup") primary else sub)
+        tabMktIcon.setColorFilter(if (tab == "mkt") primary else sub)
+        tabMktLabel.setTextColor(if (tab == "mkt") primary else sub)
     }
 
     private fun paintThemeSeg() {
@@ -344,7 +354,7 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun hideKeyboard(v: View) {
+    fun hideKeyboard(v: View) {
         val imm = getSystemService(INPUT_METHOD_SERVICE) as? InputMethodManager
         imm?.hideSoftInputFromWindow(v.windowToken, 0)
         v.clearFocus()
@@ -380,15 +390,21 @@ class MainActivity : Activity() {
         val inf = LayoutInflater.from(this)
         calcPage = inf.inflate(R.layout.page_calc, body, false)
         settingsPage = inf.inflate(R.layout.page_settings, body, false)
+        mktPage = inf.inflate(R.layout.page_mkt, body, false)
+        mktPanel = MktPanel(this, mktPage)
 
         tabCalc = findViewById(R.id.tab_calc)
         tabSetup = findViewById(R.id.tab_setup)
+        tabMkt = findViewById(R.id.tab_mkt)
         tabCalcIcon = findViewById(R.id.tab_calc_icon)
         tabCalcLabel = findViewById(R.id.tab_calc_label)
         tabSetupIcon = findViewById(R.id.tab_setup_icon)
         tabSetupLabel = findViewById(R.id.tab_setup_label)
+        tabMktIcon = findViewById(R.id.tab_mkt_icon)
+        tabMktLabel = findViewById(R.id.tab_mkt_label)
         tabCalc.setOnClickListener { showTab("calc") }
         tabSetup.setOnClickListener { showTab("setup") }
+        tabMkt.setOnClickListener { showTab("mkt") }
 
         val ids = mapOf("C" to R.id.in_C, "L" to R.id.in_L, "Pl" to R.id.in_Pl,
             "Ph" to R.id.in_Ph, "Po" to R.id.in_Po, "N" to R.id.in_N,
