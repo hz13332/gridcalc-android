@@ -78,7 +78,7 @@ class MainActivity : Activity() {
     data class CalcResult(
         val m: Int, val b: Int, val lines: Int, val q0: Double,
         val cost0: Double, val sellT: Double, val net: Double,
-        val roe: Double, val liq: Double, val eqBottom: Double
+        val roe: Double, val liq: Double?, val eqBottom: Double
     )
 
     private fun gridLines(pl: Double, ph: Double, n: Int): List<Double> {
@@ -110,7 +110,10 @@ class MainActivity : Activity() {
         var feesPaid = buyFee
         var found: Double? = null
         fun hit(p: Double, qqv: Double, e: Double) = e <= mmr * qqv * p
-        if (!hit(po, qq, c - feesPaid)) {
+        if (kotlin.math.abs(1 - mmr) < 1e-9) {
+            // MMR=100%:爆仓与价格无关。本金覆盖持仓成本则永不爆仓,否则开仓即爆
+            found = if (c > cost + feesPaid) null else po
+        } else if (!hit(po, qq, c - feesPaid)) {
             for (pb in buysDesc) {
                 val avg = cost / qq
                 if (hit(pb, qq, c + qq * (pb - avg) - feesPaid)) {
@@ -132,7 +135,7 @@ class MainActivity : Activity() {
         val avgF = (m * po + sumB) / (m + bc)
         val eqBottom = c + qf * (pl - avgF) - buyFee - sumB * q * fee
         return CalcResult(m, bc, n + 1, q0, cost0, sellT, net, net / c * 100.0,
-            found!!, eqBottom)
+            found, eqBottom)
     }
 
     private fun getNum(e: EditText, name: String, isInt: Boolean = false): Double {
@@ -192,7 +195,7 @@ class MainActivity : Activity() {
             heroSub.setTextColor(sub)
             heroSub.text = "收益率 %+.2f%% · %d卖%d买 · 见底权益约%.2fU".format(
                 r.roe, r.m, r.b, r.eqBottom)
-            statVals["liq"]!!.text = fmt(r.liq)
+            statVals["liq"]!!.text = r.liq?.let { fmt(it) } ?: "永不爆仓"
             statVals["roe"]!!.text = "%+.2f%%".format(r.roe)
             statVals["pos"]!!.text = "%.4f".format(r.q0)
             statVals["sell"]!!.text = fmt(r.sellT)
