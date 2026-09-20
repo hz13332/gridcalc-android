@@ -9,9 +9,7 @@ import android.graphics.RectF
 import android.graphics.Typeface
 import android.util.AttributeSet
 import android.util.TypedValue
-import android.view.GestureDetector
 import android.view.MotionEvent
-import android.view.ScaleGestureDetector
 import android.view.View
 import kotlin.math.abs
 import kotlin.math.max
@@ -20,9 +18,10 @@ import kotlin.math.roundToInt
 
 // ---------- 行情 VPVR · 绘制层 ----------
 // 照搬设计稿 renderMK:K线+右侧分布柱(涨#2962FF跌#FF6D00,VA内外透明度,
-// 低价在下)+POC绿线+价格轴6档+时间轴+十字(横吸K线纵自由,价签反算价)+
-// 双指缩放重算可见窗口(MK.view思想:始终锚定末端,只缩放根数,最小10根,
-// 双击复位)。单指拖动为十字,纵向滚动交还父ScrollView。
+// 低价在下)+POC绿线+价格轴6档+时间轴+十字(横吸K线纵自由,价签反算价)。
+// 图已锁定:无缩放/复位/平移手势,可见窗口恒为全量(MK.view=null常态),
+// 只由图上方输入(品种+周期+K数)决定;单指拖动仅移动十字,
+// 纵向滚动交还父ScrollView。
 
 data class MktInfo(
     val ohlc: String, val chgUp: Boolean,
@@ -35,12 +34,8 @@ class MktView @JvmOverloads constructor(
 ) : View(context, attrs, defStyle) {
 
     private var all: List<KLine> = emptyList()
-    private var viewEnd: Int = 0
-    private var viewCount: Int = 0
-    private var hasView = false
     private var crossPx: Float? = null
     private var crossPy: Float? = null
-    private var scaling = false
 
     var onInfo: ((MktInfo) -> Unit)? = null
 
@@ -48,44 +43,6 @@ class MktView @JvmOverloads constructor(
     private val dashPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
     }
-
-    private val scaleDet = ScaleGestureDetector(context,
-        object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
-            override fun onScaleBegin(detector: ScaleGestureDetector): Boolean {
-                scaling = true
-                return true
-            }
-
-            override fun onScale(detector: ScaleGestureDetector): Boolean {
-                val total = all.size
-                if (total < 1) return true
-                val cur = if (hasView) viewCount else total
-                var c = (cur / detector.scaleFactor).roundToInt()
-                c = max(10, min(total, c))
-                viewEnd = total
-                viewCount = c
-                hasView = true
-                crossPx = null
-                crossPy = null
-                redraw()
-                return true
-            }
-
-            override fun onScaleEnd(detector: ScaleGestureDetector) {
-                scaling = false
-            }
-        })
-
-    private val gestureDet = GestureDetector(context,
-        object : GestureDetector.SimpleOnGestureListener() {
-            override fun onDoubleTap(e: MotionEvent): Boolean {
-                hasView = false
-                crossPx = null
-                crossPy = null
-                redraw()
-                return true
-            }
-        })
 
     private fun dp(v: Float): Float = v * resources.displayMetrics.density
 
@@ -98,7 +55,6 @@ class MktView @JvmOverloads constructor(
 
     fun setData(ks: List<KLine>) {
         all = ks
-        hasView = false
         crossPx = null
         crossPy = null
         redraw()
@@ -106,7 +62,6 @@ class MktView @JvmOverloads constructor(
 
     fun clear() {
         all = emptyList()
-        hasView = false
         crossPx = null
         crossPy = null
         invalidate()
@@ -116,29 +71,21 @@ class MktView @JvmOverloads constructor(
         invalidate()
     }
 
-    private fun visible(): List<KLine> {
-        if (all.isEmpty()) return emptyList()
-        val total = all.size
-        val vv = if (hasView) viewEnd to viewCount else total to total
-        val end = min(total, vv.first)
-        val from = max(0, end - vv.second)
-        return all.subList(from, end)
-    }
+    // 窗口恒为全量(MK.view=null常态),只由上方输入决定
+    private fun visible(): List<KLine> = all
 
     override fun onTouchEvent(e: MotionEvent): Boolean {
-        scaleDet.onTouchEvent(e)
-        gestureDet.onTouchEvent(e)
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 parent?.requestDisallowInterceptTouchEvent(true)
-                if (e.pointerCount == 1 && !scaling) {
+                if (e.pointerCount == 1) {
                     crossPx = e.x
                     crossPy = e.y
                     redraw()
                 }
             }
             MotionEvent.ACTION_MOVE -> {
-                if (e.pointerCount == 1 && !scaling && crossPx != null) {
+                if (e.pointerCount == 1 && crossPx != null) {
                     crossPx = e.x
                     crossPy = e.y
                     redraw()
@@ -146,11 +93,9 @@ class MktView @JvmOverloads constructor(
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 parent?.requestDisallowInterceptTouchEvent(false)
-                if (!scaling) {
-                    crossPx = null
-                    crossPy = null
-                    redraw()
-                }
+                crossPx = null
+                crossPy = null
+                redraw()
             }
         }
         return true

@@ -40,6 +40,8 @@ class MktPanel(private val act: MainActivity, page: View) {
     private var lastKs: List<KLine> = emptyList()
     private var lastSrc = ""
     private var lastMkt = ""
+    // 首家先画注记:非空时状态行显示"POC x（初步·源）",终画前清掉
+    private var prelimTag: String? = null
 
     // ---------- 品种联想下拉(对标稿子symList) ----------
     private val sugHandler = Handler(Looper.getMainLooper())
@@ -227,7 +229,7 @@ class MktPanel(private val act: MainActivity, page: View) {
                 " · VA " + MktData.mkFmt(info.val_) + "~" + MktData.mkFmt(info.vah) +
                 " · " + info.count + "根 · " + lastSrc
             leg.text = if (info.legRow.isEmpty()) base else base + "\n" + info.legRow
-            mkStatus("POC " + MktData.mkFmt(info.poc), false)
+            mkStatus("POC " + MktData.mkFmt(info.poc) + (prelimTag ?: ""), false)
         }
     }
 
@@ -264,32 +266,31 @@ class MktPanel(private val act: MainActivity, page: View) {
         }
         val n = minOf(100, count.toInt())
         val type = MktData.symType(s)
-        mkStatus("拉取中…", false)
+        val mkt = when (type) {
+            "crypto" -> "币 "
+            "gold" -> "黄金 "
+            "silver" -> "白银 "
+            else -> "美股 "
+        } + s.trim().uppercase(Locale.US)
+        prelimTag = null
         val seq = ++reqSeq
+        if (type == "stock") {
+            loadStockParallel(s, n, mkt, seq)
+            return
+        }
+        if (type == "crypto") {
+            loadCryptoParallel(s, n, mkt, seq)
+            return
+        }
+        mkStatus("拉取中…", false)
         Thread {
             try {
-                val vs = when (type) {
-                    "crypto" -> MktData.fetchCrypto(s, tf, n)
-                    "gold" -> MktData.fetchStock("GC=F", tf, n)
-                    "silver" -> MktData.fetchStock("SI=F", tf, n)
-                    else -> MktData.fetchNasdaq(s, tf, n)
-                }
+                val vs = if (type == "gold") MktData.fetchYahooDaily("GC=F", tf, n)
+                else MktData.fetchYahooDaily("SI=F", tf, n)
                 val ag = MktData.aggregate(vs)
-                val mkt = when (type) {
-                    "crypto" -> "币 "
-                    "gold" -> "黄金 "
-                    "silver" -> "白银 "
-                    else -> "美股 "
-                } + s.trim().uppercase(Locale.US)
                 act.runOnUiThread {
                     if (seq != reqSeq) return@runOnUiThread
-                    lastKs = ag.ks
-                    lastSrc = ag.src
-                    lastMkt = mkt
-                    chart.setData(ag.ks)
-                    srcNote.text = mkt + " · " + ag.src + " · 可见 " + ag.ks.size +
-                        " 根 · " + MktData.fmtDT(ag.ks.first().t) + "~" +
-                        MktData.fmtDT(ag.ks.last().t)
+                    renderAgg(ag, mkt, seq)
                 }
             } catch (_: Exception) {
                 act.runOnUiThread {
@@ -298,5 +299,150 @@ class MktPanel(private val act: MainActivity, page: View) {
                 }
             }
         }.start()
+    }
+
+    private fun renderAgg(ag: Agg, mkt: String, seq: Int) {
+        if (seq != reqSeq) return
+        lastKs = ag.ks
+        lastSrc = ag.src
+        lastMkt = mkt
+        chart.setData(ag.ks)
+        srcNote.text = mkt + " · " + ag.src + " · 可见 " + ag.ks.size +
+            " 根 · " + MktData.fmtDT(ag.ks.first().t) + "~" +
+            MktData.fmtDT(ag.ks.last().t)
+    }
+
+    // ---------- 股票三源并行(Nasdaq+YahooDaily+东方财富)+首家先画 ----------
+    private fun renderStock(v: VendorKs, mkt: String, seq: Int, prelim: String?) {
+        if (seq != reqSeq) return
+        prelimTag = prelim
+        renderAgg(MktData.aggregate(listOf(v)), mkt, seq)
+    }
+
+    private fun loadStockParallel(s: String, n: Int, mkt: String, seq: Int) {
+        MktData.MktCache.get(MktData.MktCache.key(s, tf, n))?.let { vs ->
+            renderStock(MktData.pickStockWinner(vs), mkt, seq, null)
+            return
+        }
+        mkStatus("拉取中…", false)
+        val lock = Any()
+        val total = 3
+        val got = mutableListOf<VendorKs>()
+        var done = 0
+        var stage = 0 // 0未画 1已初画 2已终画
+        fun onArrival(vs: List<VendorKs>?) {
+            var toRender: Pair<VendorKs, String?>? = null
+            var fail = false
+            var toCache: List<VendorKs>? = null
+            synchronized(lock) {
+                if (seq != reqSeq) return
+                if (vs != null && vs.isNotEmpty()) got.addAll(vs)
+                done++
+                if (done >= total && got.isNotEmpty()) {
+                    stage = 2
+                    toRender = MktData.pickStockWinner(got) to null
+                } else if (got.isNotEmpty() && stage == 0) {
+                    stage = 1
+                    toRender = got[0] to
+                        ("（初步·" + MktData.vendorName(got[0].v) + "）")
+                }
+                if (done >= total && got.isNotEmpty()) toCache = got.toList()
+                fail = done >= total && got.isEmpty()
+            }
+            toCache?.let { MktData.MktCache.put(MktData.MktCache.key(s, tf, n), it) }
+            if (fail) {
+                act.runOnUiThread {
+                    if (seq != reqSeq) return@runOnUiThread
+                    mkStatus("行情拉取失败(网络或品种名不对)", true)
+                }
+                return
+            }
+            toRender?.let { (v, tag) ->
+                act.runOnUiThread { renderStock(v, mkt, seq, tag) }
+            }
+        }
+        Thread {
+            try {
+                onArrival(MktData.fetchNasdaq(s, tf, n))
+            } catch (_: Exception) {
+                onArrival(null)
+            }
+        }.start()
+        Thread {
+            try {
+                onArrival(MktData.fetchYahooDaily(s, tf, n))
+            } catch (_: Exception) {
+                onArrival(null)
+            }
+        }.start()
+        Thread {
+            try {
+                onArrival(MktData.fetchEastmoney(s, tf, n))
+            } catch (_: Exception) {
+                onArrival(null)
+            }
+        }.start()
+    }
+
+    // ---------- 币多腿并行(BN/OK/BB/GT/KU/MX/BTC限定GK)+首家先画 ----------
+    // 到齐按报价成交额qv优胜重算(aggregate),与稿子first/all一致
+    private fun renderCrypto(vs: List<VendorKs>, mkt: String, seq: Int, prelim: String?) {
+        if (seq != reqSeq) return
+        prelimTag = prelim
+        renderAgg(MktData.aggregate(vs), mkt, seq)
+    }
+
+    private fun loadCryptoParallel(s: String, n: Int, mkt: String, seq: Int) {
+        MktData.MktCache.get(MktData.MktCache.key(s, tf, n))?.let { vs ->
+            renderCrypto(vs, mkt, seq, null)
+            return
+        }
+        val legs = MktData.cryptoLegs(s)
+        mkStatus("拉取中…", false)
+        val lock = Any()
+        val total = legs.size
+        val got = mutableListOf<VendorKs>()
+        var done = 0
+        var stage = 0 // 0未画 1已初画 2已终画
+        fun onArrival(v: VendorKs?) {
+            var toRender: Pair<List<VendorKs>, String?>? = null
+            var fail = false
+            var toCache: List<VendorKs>? = null
+            synchronized(lock) {
+                if (seq != reqSeq) return
+                if (v != null) got.add(v)
+                done++
+                if (done >= total && got.isNotEmpty()) {
+                    stage = 2
+                    toRender = got.toList() to null
+                } else if (got.isNotEmpty() && stage == 0) {
+                    stage = 1
+                    toRender = listOf(got[0]) to
+                        ("（初步·" + MktData.vendorName(got[0].v) + "）")
+                }
+                if (done >= total && got.isNotEmpty()) toCache = got.toList()
+                fail = done >= total && got.isEmpty()
+            }
+            toCache?.let { MktData.MktCache.put(MktData.MktCache.key(s, tf, n), it) }
+            if (fail) {
+                act.runOnUiThread {
+                    if (seq != reqSeq) return@runOnUiThread
+                    mkStatus("行情拉取失败(网络或品种名不对)", true)
+                }
+                return
+            }
+            toRender?.let { (vs, tag) ->
+                act.runOnUiThread { renderCrypto(vs, mkt, seq, tag) }
+            }
+        }
+        for (leg in legs) {
+            Thread {
+                try {
+                    onArrival(MktData.fetchCryptoLeg(leg, s, tf, n))
+                } catch (_: Exception) {
+                    onArrival(null)
+                }
+            }.start()
+        }
     }
 }

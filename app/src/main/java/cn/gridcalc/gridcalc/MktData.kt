@@ -72,10 +72,12 @@ object MktData {
     private fun arrL(a: JSONArray, i: Int): Long =
         if (i < a.length()) a.optString(i, "0").toDoubleOrNull()?.toLong() ?: 0L else 0L
 
-    internal fun get(url: String, accept: String? = null, ua: String = UA): String {
+    internal fun get(
+        url: String, accept: String? = null, ua: String = UA, timeoutMs: Int = 0
+    ): String {
         val c = (URL(url).openConnection() as HttpURLConnection).apply {
-            connectTimeout = 12000
-            readTimeout = 15000
+            connectTimeout = if (timeoutMs > 0) timeoutMs else 12000
+            readTimeout = if (timeoutMs > 0) timeoutMs else 15000
             setRequestProperty("User-Agent", ua)
             if (accept != null) setRequestProperty("Accept", accept)
             instanceFollowRedirects = true
@@ -89,58 +91,160 @@ object MktData {
         }
     }
 
-    fun fetchCrypto(sym: String, tf: String, count: Int): List<VendorKs> {
-        var base = sym.uppercase(Locale.US).replace(Regex("[^A-Z]"), "")
-            .replace(Regex("(USDT|USD|USDC)$"), "")
+    // 币:base/quote拆分(照稿子,quote兜底USDT)
+    fun splitBaseQuote(sym: String): Pair<String, String> {
+        val clean = sym.uppercase(Locale.US).replace(Regex("[^A-Z]"), "")
+        var base = clean
+        var quote = "USDT"
+        for (q in listOf("USDT", "USDC", "USD")) {
+            if (clean.endsWith(q)) {
+                base = clean.dropLast(q.length).ifEmpty { "BTC" }
+                quote = q
+                break
+            }
+        }
         if (base.isEmpty()) base = "BTC"
+        return base to quote
+    }
+
+    // 币分支参战腿:BN(USD报价时跳过)/OK/BB/GT/KU/MX+BTC限定GK
+    fun cryptoLegs(sym: String): List<String> {
+        val (base, quote) = splitBaseQuote(sym)
+        val legs = mutableListOf("OK", "BB", "GT", "KU", "MX")
+        if (quote != "USD") legs.add(0, "BN")
+        if (base == "BTC") legs.add("GK")
+        return legs
+    }
+
+    // 单腿拉取(含prep:Q走toQuarterly但GK除外,按t正序截最近n根,不足3根抛错)
+    // iv下标:BN0/OK1/BB2/GT3/KU4/MX5,超时单腿10秒
+    fun fetchCryptoLeg(v: String, sym: String, tf: String, count: Int, timeoutMs: Int = 10000): VendorKs {
+        val (base, quote) = splitBaseQuote(sym)
         val n = max(5, min(100, count))
         val mq = if (tf == "Q") min(n * 3, 100) else n
         val iv = when (tf) {
-            "W" -> arrayOf("1w", "1W", "W")
-            else -> arrayOf("1M", "1M", "M")
+            "W" -> arrayOf("1w", "1W", "W", "7d", "1week", "1W")
+            else -> arrayOf("1M", "1M", "M", "30d", "1month", "1M")
         }
-        val out = mutableListOf<VendorKs>()
-        // Binance 现货:data-api.binance.vision,k[7]=报价成交额
-        try {
-            val a = JSONArray(get(
-                "https://data-api.binance.vision/api/v3/klines?symbol=${base}USDT&interval=${iv[0]}&limit=$mq"))
-            val ks = (0 until a.length()).map { i ->
-                val k = a.getJSONArray(i)
-                KLine(arrL(k, 0), arrD(k, 1), arrD(k, 2), arrD(k, 3),
-                    arrD(k, 4), arrD(k, 5), arrD(k, 7))
+        val moz = "Mozilla/5.0"
+        val ks: List<KLine> = when (v) {
+            "BN" -> {
+                if (quote == "USD") throw Exception("skip USD")
+                val a = JSONArray(get(
+                    "https://data-api.binance.vision/api/v3/klines?symbol=$base$quote&interval=${iv[0]}&limit=$mq",
+                    timeoutMs = timeoutMs))
+                (0 until a.length()).map { i ->
+                    val k = a.getJSONArray(i)
+                    KLine(arrL(k, 0), arrD(k, 1), arrD(k, 2), arrD(k, 3),
+                        arrD(k, 4), arrD(k, 5), arrD(k, 7))
+                }
             }
-            if (ks.size >= 3) out.add(VendorKs("BN", ks))
-        } catch (_: Exception) {
-        }
-        // OKX 现货:instId=BASE-USDT,k[7]=volCcyQuote
-        try {
-            val data = JSONObject(get(
-                "https://www.okx.com/api/v5/market/candles?instId=$base-USDT&bar=${iv[1]}&limit=$mq"))
-                .optJSONArray("data") ?: JSONArray()
-            val ks = (0 until data.length()).map { i ->
-                val k = data.getJSONArray(i)
-                KLine(arrL(k, 0), arrD(k, 1), arrD(k, 2), arrD(k, 3),
-                    arrD(k, 4), arrD(k, 5), arrD(k, 7))
+            "OK" -> {
+                val data = JSONObject(get(
+                    "https://www.okx.com/api/v5/market/candles?instId=$base-$quote&bar=${iv[1]}&limit=$mq",
+                    timeoutMs = timeoutMs))
+                    .optJSONArray("data") ?: JSONArray()
+                (0 until data.length()).map { i ->
+                    val k = data.getJSONArray(i)
+                    KLine(arrL(k, 0), arrD(k, 1), arrD(k, 2), arrD(k, 3),
+                        arrD(k, 4), arrD(k, 5), arrD(k, 7))
+                }
             }
-            if (ks.size >= 3) out.add(VendorKs("OK", ks))
-        } catch (_: Exception) {
-        }
-        // Bybit 现货:category=spot,k[6]=turnover
-        try {
-            val list = JSONObject(get(
-                "https://api.bybit.com/v5/market/kline?category=spot&symbol=${base}USDT&interval=${iv[2]}&limit=$mq"))
-                .optJSONObject("result")?.optJSONArray("list") ?: JSONArray()
-            val ks = (0 until list.length()).map { i ->
-                val k = list.getJSONArray(i)
-                KLine(arrL(k, 0), arrD(k, 1), arrD(k, 2), arrD(k, 3),
-                    arrD(k, 4), arrD(k, 5), arrD(k, 6))
+            "BB" -> {
+                val list = JSONObject(get(
+                    "https://api.bybit.com/v5/market/kline?category=spot&symbol=$base$quote&interval=${iv[2]}&limit=$mq",
+                    timeoutMs = timeoutMs))
+                    .optJSONObject("result")?.optJSONArray("list") ?: JSONArray()
+                (0 until list.length()).map { i ->
+                    val k = list.getJSONArray(i)
+                    KLine(arrL(k, 0), arrD(k, 1), arrD(k, 2), arrD(k, 3),
+                        arrD(k, 4), arrD(k, 5), arrD(k, 6))
+                }
             }
-            if (ks.size >= 3) out.add(VendorKs("BB", ks))
-        } catch (_: Exception) {
+            "GT" -> {
+                // 行[t秒,qv,close,high,low,open,baseVol]
+                val a = JSONArray(get(
+                    "https://api.gateio.ws/api/v4/spot/candlesticks?currency_pair=${base}_${quote}&interval=${iv[3]}&limit=$mq",
+                    ua = moz, timeoutMs = timeoutMs))
+                (0 until a.length()).map { i ->
+                    val k = a.getJSONArray(i)
+                    KLine(arrL(k, 0) * 1000, arrD(k, 5), arrD(k, 3), arrD(k, 4),
+                        arrD(k, 2), arrD(k, 6), arrD(k, 1))
+                }
+            }
+            "KU" -> {
+                // 行[t秒,o,c,h,l,vol,turnover],无limit参数(最多1500,靠slice截)
+                val data = JSONObject(get(
+                    "https://api.kucoin.com/api/v1/market/candles?symbol=$base-$quote&type=${iv[4]}",
+                    ua = moz, timeoutMs = timeoutMs))
+                    .optJSONArray("data") ?: JSONArray()
+                (0 until data.length()).map { i ->
+                    val k = data.getJSONArray(i)
+                    KLine(arrL(k, 0) * 1000, arrD(k, 1), arrD(k, 3), arrD(k, 4),
+                        arrD(k, 2), arrD(k, 5), arrD(k, 6))
+                }
+            }
+            "MX" -> {
+                // Binance同格式,t为毫秒,interval大写
+                val a = JSONArray(get(
+                    "https://api.mexc.com/api/v3/klines?symbol=$base$quote&interval=${iv[5]}&limit=$mq",
+                    ua = moz, timeoutMs = timeoutMs))
+                (0 until a.length()).map { i ->
+                    val k = a.getJSONArray(i)
+                    KLine(arrL(k, 0), arrD(k, 1), arrD(k, 2), arrD(k, 3),
+                        arrD(k, 4), arrD(k, 5), arrD(k, 7))
+                }
+            }
+            "GK" -> return fetchGecko(base, tf, n, timeoutMs).first()
+            else -> throw Exception("unknown leg $v")
         }
-        if (out.isEmpty()) throw Exception("行情拉取失败(网络或品种名不对)")
-        if (tf == "Q") out.forEach { it.k = toQuarterly(it.k) }
-        return out
+        if (ks.size < 3) throw Exception("行情拉取失败(网络或品种名不对)")
+        val qk = if (tf == "Q" && v != "GK") toQuarterly(ks) else ks
+        val disp = qk.sortedBy { it.t }.takeLast(n)
+        if (disp.size < 3) throw Exception("行情拉取失败(网络或品种名不对)")
+        return VendorKs(v, disp)
+    }
+
+    // CoinGecko(BTC限定):ohlc取[t,o,h,l,c]+market_chart按UTC日期对齐量,
+    // 日线经resample+取最近n,qv直接取和
+    fun fetchGecko(base: String, tf: String, count: Int, timeoutMs: Int = 10000): List<VendorKs> {
+        if (base != "BTC") throw Exception("gecko BTC限定")
+        val n = max(5, min(100, count))
+        val per = when (tf) { "M" -> 31; "Q" -> 92; else -> 7 }
+        val days = min(365, Math.ceil(n * per * 1.3).toInt())
+        val moz = "Mozilla/5.0"
+        val o = JSONArray(get(
+            "https://api.coingecko.com/api/v3/coins/bitcoin/ohlc?vs_currency=usd&days=$days",
+            ua = moz, timeoutMs = timeoutMs))
+        val m = JSONObject(get(
+            "https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=$days&interval=daily",
+            ua = moz, timeoutMs = timeoutMs))
+        if (o.length() == 0) throw Exception("行情拉取失败(网络或品种名不对)")
+        val vols = m.optJSONArray("total_volumes") ?: JSONArray()
+        val vmap = HashMap<String, Double>()
+        for (i in 0 until vols.length()) {
+            val e = vols.optJSONArray(i) ?: continue
+            vmap[utcDate(e.optLong(0, 0))] = e.optDouble(1, 0.0)
+        }
+        val ks = mutableListOf<KLine>()
+        for (i in 0 until o.length()) {
+            val k = o.optJSONArray(i) ?: continue
+            val t = k.optLong(0, 0)
+            val h = k.optDouble(2, 0.0)
+            if (!(h > 0)) continue
+            ks.add(KLine(t, k.optDouble(1, 0.0), h, k.optDouble(3, 0.0),
+                k.optDouble(4, 0.0), vmap[utcDate(t)] ?: 0.0, 0.0))
+        }
+        val rs = resampleDaily(ks, tf).takeLast(n)
+        if (rs.size < 3) throw Exception("行情拉取失败(网络或品种名不对)")
+        return listOf(VendorKs("GK", rs.map { it.copy(qv = it.v) }))
+    }
+
+    private fun utcDate(t: Long): String {
+        val d = Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC"))
+            .apply { timeInMillis = t }
+        return "%04d-%02d-%02d".format(d.get(Calendar.YEAR),
+            d.get(Calendar.MONTH) + 1, d.get(Calendar.DAY_OF_MONTH))
     }
 
     fun toQuarterly(ks: List<KLine>): List<KLine> {
@@ -155,7 +259,8 @@ object MktData {
         return out
     }
 
-    fun fetchStock(sym: String, tf: String, count: Int): List<VendorKs> {
+    // Yahoo日级(query1 YI映射,range按根数倒推,取最近n根,失败抛错,单路timeoutMs超时)
+    fun fetchYahooDaily(sym: String, tf: String, count: Int, timeoutMs: Int = 10000): List<VendorKs> {
         val n = max(5, min(200, count))
         val per = when (tf) { "M" -> 31; "Q" -> 92; else -> 7 }
         val need = n * per * 1.5
@@ -169,8 +274,10 @@ object MktData {
         }
         val iv = when (tf) { "M" -> "1mo"; "Q" -> "3mo"; else -> "1wk" }
         val enc = URLEncoder.encode(sym.trim(), "UTF-8")
+        // Yahoo chart接口认浏览器UA,自带GridCalc UA会被401,此处用Mozilla/5.0
         val j = JSONObject(get(
-            "https://query1.finance.yahoo.com/v8/finance/chart/$enc?interval=$iv&range=$rg"))
+            "https://query1.finance.yahoo.com/v8/finance/chart/$enc?interval=$iv&range=$rg",
+            ua = "Mozilla/5.0", timeoutMs = timeoutMs))
         val r = j.optJSONObject("chart")?.optJSONArray("result")?.optJSONObject(0)
             ?: throw Exception("行情拉取失败(网络或品种名不对)")
         val ts = r.optJSONArray("timestamp") ?: throw Exception("行情拉取失败(网络或品种名不对)")
@@ -239,7 +346,7 @@ object MktData {
         return 0L
     }
 
-    fun fetchNasdaq(sym: String, tf: String, count: Int): List<VendorKs> {
+    fun fetchNasdaq(sym: String, tf: String, count: Int, timeoutMs: Int = 10000): List<VendorKs> {
         val n = max(5, min(200, count))
         val per = when (tf) { "M" -> 40; "Q" -> 120; else -> 9 }
         val utc = java.util.TimeZone.getTimeZone("UTC")
@@ -252,7 +359,7 @@ object MktData {
         val enc = URLEncoder.encode(sym.trim().uppercase(Locale.US), "UTF-8")
         val j = JSONObject(get(
             "https://api.nasdaq.com/api/quote/$enc/historical?assetclass=stocks&fromdate=${df.format(from.time)}&limit=9999",
-            accept = "application/json", ua = "Mozilla/5.0"))
+            accept = "application/json", ua = "Mozilla/5.0", timeoutMs = timeoutMs))
         val rows = j.optJSONObject("data")?.optJSONObject("tradesTable")?.optJSONArray("rows")
             ?: JSONArray()
         fun num(x: Any?): Double {
@@ -274,12 +381,91 @@ object MktData {
         return listOf(VendorKs("NQ", ks.takeLast(n)))
     }
 
+    // 东方财富push2his美股(secid=105.SYM):行=date,open,close,high,low,volume,amount
+    // (oc在hl前);Q取3倍月数供toQuarterly合成(照搬);v取份额成交量f56(与NQ/YH
+    // 同股数口径直接比),qv取金额f57
+    fun fetchEastmoney(sym: String, tf: String, count: Int, timeoutMs: Int = 10000): List<VendorKs> {
+        var base = sym.uppercase(Locale.US).replace(Regex("[^A-Z]"), "")
+        if (base.isEmpty()) base = "AAPL"
+        val n = max(5, min(200, count))
+        val mq = if (tf == "Q") min(n * 3, 100) else n
+        val klt = if (tf == "W") "102" else "103"
+        val j = JSONObject(get(
+            "https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=105.$base&klt=$klt&fqt=1&lmt=$mq&end=20500000" +
+                "&fields1=f1,f2,f3,f4,f5,f6,f7,f8&fields2=f51,f52,f53,f54,f55,f56,f57,f58" +
+                "&ut=f057cbcbce2a86e2866ab8877db1d059&forcect=1",
+            timeoutMs = timeoutMs))
+        val klines = j.optJSONObject("data")?.optJSONArray("klines") ?: JSONArray()
+        val out = mutableListOf<KLine>()
+        for (i in 0 until klines.length()) {
+            val p = klines.optString(i, "").split(",")
+            if (p.size < 7) continue
+            val t = parseNasdaqDate(p[0].trim().take(10))
+            val o = p[1].toDoubleOrNull() ?: 0.0
+            val c = p[2].toDoubleOrNull() ?: 0.0
+            val h = p[3].toDoubleOrNull() ?: 0.0
+            val l = p[4].toDoubleOrNull() ?: 0.0
+            val v = p[5].toDoubleOrNull() ?: 0.0
+            val amt = p[6].toDoubleOrNull() ?: 0.0
+            if (t == 0L || !(h > 0)) continue
+            out.add(KLine(t, o, h, l, c, v, amt))
+        }
+        out.sortBy { it.t }
+        if (out.size < 3) throw Exception("行情拉取失败(网络或品种名不对)")
+        val ks = if (tf == "Q") toQuarterly(out) else out
+        return listOf(VendorKs("ED", ks.takeLast(n)))
+    }
+
+    fun vendorName(v: String): String = when (v) {
+        "BN" -> "Binance"
+        "OK" -> "OKX"
+        "BB" -> "Bybit"
+        "GT" -> "Gate.io"
+        "KU" -> "KuCoin"
+        "MX" -> "MEXC"
+        "GK" -> "CoinGecko"
+        "YH" -> "Yahoo"
+        "NQ" -> "Nasdaq"
+        "ED" -> "东方财富"
+        else -> v
+    }
+
+    // 股票多源按份额成交量选优(股数口径,可直接比Σv)
+    fun pickStockWinner(vs: List<VendorKs>): VendorKs =
+        vs.maxByOrNull { v -> v.k.sumOf { it.v } }!!
+
+    // 行情多源内存缓存5分钟,key=品种|周期|根数
+    object MktCache {
+        private data class E(val vs: List<VendorKs>, val at: Long)
+        private const val TTL = 5 * 60 * 1000L
+        private val map = LinkedHashMap<String, E>()
+
+        fun key(sym: String, tf: String, n: Int): String =
+            sym.trim().uppercase(Locale.US) + "|" + tf + "|" + n
+
+        @Synchronized
+        fun get(k: String): List<VendorKs>? {
+            val e = map[k] ?: return null
+            if (System.currentTimeMillis() - e.at > TTL) {
+                map.remove(k)
+                return null
+            }
+            return e.vs
+        }
+
+        @Synchronized
+        fun put(k: String, vs: List<VendorKs>) {
+            map[k] = E(vs, System.currentTimeMillis())
+            while (map.size > 20) {
+                map.remove(map.keys.first())
+            }
+        }
+    }
+
     fun aggregate(vs: List<VendorKs>): Agg {
-        val names = mapOf("BN" to "Binance", "OK" to "OKX", "BB" to "Bybit",
-            "YH" to "Yahoo", "NQ" to "Nasdaq")
         val win = vs.maxByOrNull { v -> v.k.sumOf { numD(it.qv) } }!!
         val disp = win.k.sortedBy { it.t }.takeLast(240)
-        return Agg(disp, names[win.v] ?: win.v)
+        return Agg(disp, vendorName(win.v))
     }
 
     fun profileOf(ks: List<KLine>): Profile {
