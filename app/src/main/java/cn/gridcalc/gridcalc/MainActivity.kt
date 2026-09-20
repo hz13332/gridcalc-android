@@ -50,7 +50,7 @@ class MainActivity : Activity() {
     private lateinit var themeLight: View
     private lateinit var themeDark: View
 
-    private var tab = "calc"
+    private var tab = "mkt"
     private var mode = "follow"
 
     // ---------- 主题 ----------
@@ -464,6 +464,6 @@ class MainActivity : Activity() {
             paintDbl()
         }
         watchKeyboard()
-        showTab(savedInstanceState?.getString("tab") ?: "calc")
+        showTab(savedInstanceState?.getString("tab") ?: "mkt")
     }
 }

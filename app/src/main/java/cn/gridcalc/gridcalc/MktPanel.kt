@@ -35,7 +35,7 @@ class MktPanel(private val act: MainActivity, page: View) {
     private val srcNote: TextView = page.findViewById(R.id.mkt_srcnote)
     private val chart: MktView = page.findViewById(R.id.mkt_chart)
 
-    private var tf = "W"
+    private var tf = "M"
     private var reqSeq = 0
     private var lastKs: List<KLine> = emptyList()
     private var lastSrc = ""
@@ -116,6 +116,9 @@ class MktPanel(private val act: MainActivity, page: View) {
     }
 
     private fun hideSug() {
+        // 防重弹:查看/回车/选词后旧异步回包一律丢弃
+        sugSeq++
+        sugRunnable?.let { sugHandler.removeCallbacks(it) }
         sugPopup?.dismiss()
     }
 
@@ -211,6 +214,10 @@ class MktPanel(private val act: MainActivity, page: View) {
                 done(v) { if (symInp.text.toString().trim().isNotEmpty()) mkLoad() }
                 true
             } else false
+        }
+        // K数变更即重算(对标稿子change事件:失焦提交时,有品种就直接加载)
+        kcountInp.setOnFocusChangeListener { _, hasFocus ->
+            if (!hasFocus && symInp.text.toString().trim().isNotEmpty()) mkLoad()
         }
         val tfClick = { t: String ->
             tf = t

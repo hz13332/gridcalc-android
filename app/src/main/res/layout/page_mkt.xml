@@ -84,9 +84,9 @@
                     android:layout_height="match_parent"
                     android:layout_marginRight="4dp"
                     android:layout_weight="1"
-                    android:background="@drawable/btn_primary"
+                    android:background="@drawable/btn_ghost"
                     android:text="周线"
-                    android:textColor="?attr/colorOnPrimary"
+                    android:textColor="?attr/colorInk"
                     android:textSize="15sp" />
                 <Button
                     android:id="@+id/mkt_tf_m"
@@ -95,9 +95,9 @@
                     android:layout_marginLeft="4dp"
                     android:layout_marginRight="4dp"
                     android:layout_weight="1"
-                    android:background="@drawable/btn_ghost"
+                    android:background="@drawable/btn_primary"
                     android:text="月线"
-                    android:textColor="?attr/colorInk"
+                    android:textColor="?attr/colorOnPrimary"
                     android:textSize="15sp" />
                 <Button
                     android:id="@+id/mkt_tf_q"
@@ -134,7 +134,7 @@
                     android:singleLine="true"
                     android:paddingLeft="10dp"
                     android:paddingRight="10dp"
-                    android:text="52"
+                    android:text="30"
                     android:textColor="?attr/colorInk"
                     android:textColorHint="?attr/colorFaint"
                     android:textSize="17sp"
@@ -145,7 +145,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
-                android:text="币：BTC现货三家选量最大 · 股：Nasdaq · 金银：Yahoo期货 · 有一家能用即画"
+                android:text="币：六家现货选量最大 · 股：Nasdaq/雅虎/东方 · 金银：App内查看 · 有一家能用即画"
                 android:textColor="?attr/colorSub"
                 android:textSize="11sp" />
         </LinearLayout>

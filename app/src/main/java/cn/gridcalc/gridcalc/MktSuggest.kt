@@ -13,7 +13,7 @@ data class SugItem(val s: String, val tag: String, val pre: Boolean)
 
 object MktSuggest {
 
-    private val TOPC = listOf("BTCUSDT", "BTCUSD", "BTCUSDC")
+    private val TOPC = listOf("BTCUSD")
     private val TOPM = listOf("XAUUSD" to "黄金", "XAGUSD" to "白银")
     private val TOPS = listOf("AAPL", "TSLA", "NVDA", "MSFT", "AMZN", "META",
         "GOOGL", "AMD", "COIN", "MSTR", "NFLX", "BABA", "TSM", "PLTR")
@@ -27,7 +27,7 @@ object MktSuggest {
         "拼多多" to "PDD", "京东" to "JD", "理想" to "LI", "蔚来" to "NIO",
         "小鹏" to "XPEV", "摩根大通" to "JPM", "辉瑞" to "PFE", "可口可乐" to "KO",
         "麦当劳" to "MCD", "迪士尼" to "DIS", "贝宝" to "PYPL", "思科" to "CSCO",
-        "比特币" to "BTCUSDT", "黄金" to "XAUUSD", "白银" to "XAGUSD"
+        "比特币" to "BTCUSD", "黄金" to "XAUUSD", "白银" to "XAGUSD"
     )
 
     private val SPOT_QUOTES = setOf("USDT", "USD", "USDC")
@@ -111,14 +111,18 @@ object MktSuggest {
                 val x = quotes.optJSONObject(i) ?: continue
                 val sym = x.optString("symbol", "")
                 if (sym.isEmpty()) continue
-                val tag = x.optString("shortname",
-                    x.optString("quoteType", "股票"))
-                out.add(SugItem(sym, tag, sym.startsWith(q)))
+                if (x.optString("quoteType", "") != "EQUITY") continue
+                val sn = x.optString("shortname", "")
+                out.add(SugItem(sym, if (sn.isEmpty()) "美股" else sn, sym.startsWith(q)))
             }
         } catch (_: Exception) {
         }
         return out
     }
+
+    // BTC收敛:BTC打头只出BTCUSD,其余变体一律不收
+    private fun converged(s: String): Boolean =
+        !(s.startsWith("BTC") && s != "BTCUSD")
 
     // 异步合并:OKX/Bybit现货表按base前缀过滤+Yahoo搜索,去重后排序截6条
     fun remote(q: String): List<SugItem> {
@@ -126,7 +130,9 @@ object MktSuggest {
         if (q.isEmpty()) return out
         try {
             for (s in okSymbols()) {
-                if (s.startsWith(q) && out.none { it.s == s } && out.size < 20) {
+                if (s.startsWith(q) && converged(s) &&
+                    out.none { it.s == s } && out.size < 20
+                ) {
                     out.add(SugItem(s, "OKX", true))
                 }
             }
@@ -134,13 +140,16 @@ object MktSuggest {
         }
         try {
             for (s in bbSymbols()) {
-                if (s.startsWith(q) && out.none { it.s == s } && out.size < 20) {
+                if (s.startsWith(q) && converged(s) &&
+                    out.none { it.s == s } && out.size < 20
+                ) {
                     out.add(SugItem(s, "Bybit", true))
                 }
             }
         } catch (_: Exception) {
         }
         for (x in yahooSearch(q)) {
+            if (!converged(x.s)) continue
             if (out.none { it.s == x.s }) out.add(x)
         }
         return out
