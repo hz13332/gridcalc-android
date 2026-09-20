@@ -234,7 +234,10 @@ class MktPanel(private val act: MainActivity, page: View) {
             ohlc.setTextColor(if (info.chgUp) upC else dnC)
             val base = "POC " + MktData.mkFmt(info.poc) +
                 " · VA " + MktData.mkFmt(info.val_) + "~" + MktData.mkFmt(info.vah) +
-                " · " + info.count + "根 · " + lastSrc
+                " · " + info.count + "根 · " + lastSrc +
+                (if (info.sup.isNotEmpty()) "\n支撑 " +
+                    info.sup.take(3).joinToString(" / ") { MktData.mkFmt(it) }
+                else "")
             leg.text = if (info.legRow.isEmpty()) base else base + "\n" + info.legRow
             mkStatus("POC " + MktData.mkFmt(info.poc) + (prelimTag ?: ""), false)
         }

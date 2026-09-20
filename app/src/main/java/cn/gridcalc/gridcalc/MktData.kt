@@ -32,7 +32,8 @@ data class Profile(
     val rv: DoubleArray, val ru: DoubleArray, val rd: DoubleArray,
     val vaUp: Int, val vaDn: Int,
     val lo: Double, val hi: Double,
-    val poc: Double, val vah: Double, val val_: Double
+    val poc: Double, val vah: Double, val val_: Double,
+    val sup: List<Double>
 ) {
     val pocRow: Int get() {
         var bi = 0
@@ -107,12 +108,14 @@ object MktData {
         return base to quote
     }
 
-    // 币分支参战腿:BN(USD报价时跳过)/OK/BB/GT/KU/MX+BTC限定GK
+    // 币分支参战腿:BTC钉死币安单源,其余base走OK/BB/GT/KU/MX
+    // (BN在USD报价时跳过,唯BTCUSD裸接口已验真货保留)+BTC限定GK
+    const val PIN = "BN"
     fun cryptoLegs(sym: String): List<String> {
         val (base, quote) = splitBaseQuote(sym)
+        if (base == "BTC") return listOf("BN")
         val legs = mutableListOf("OK", "BB", "GT", "KU", "MX")
         if (quote != "USD") legs.add(0, "BN")
-        if (base == "BTC") legs.add("GK")
         return legs
     }
 
@@ -129,7 +132,7 @@ object MktData {
         val moz = "Mozilla/5.0"
         val ks: List<KLine> = when (v) {
             "BN" -> {
-                if (quote == "USD") throw Exception("skip USD")
+                if (quote == "USD" && base != "BTC") throw Exception("skip USD")
                 val a = JSONArray(get(
                     "https://data-api.binance.vision/api/v3/klines?symbol=$base$quote&interval=${iv[0]}&limit=$mq",
                     timeoutMs = timeoutMs))
@@ -462,8 +465,10 @@ object MktData {
         }
     }
 
+    // 终画选优:PIN源(BN)有≥3根直接钉死,否则按报价成交额qv选优(照稿子)
     fun aggregate(vs: List<VendorKs>): Agg {
-        val win = vs.maxByOrNull { v -> v.k.sumOf { numD(it.qv) } }!!
+        val win = vs.find { it.v == PIN && it.k.size >= 3 }
+            ?: vs.maxByOrNull { v -> v.k.sumOf { numD(it.qv) } }!!
         val disp = win.k.sortedBy { it.t }.takeLast(240)
         return Agg(disp, vendorName(win.v))
     }
@@ -524,8 +529,20 @@ object MktData {
             if (vu < 0 && vd < 0) break
             if (vu >= vd) sum += rv[++up] else sum += rv[--dn]
         }
+        // 支撑位(照稿子):从高价行往低价行扫,行量相对已见最高腰斩即支撑,
+        // 触发后以当前行为新基准继续,返回行中点价
+        val supRows = mutableListOf<Int>()
+        var smax = -1.0
+        for (i in rows - 1 downTo 0) {
+            if (rv[i] > smax) smax = rv[i]
+            else if (smax > 0 && rv[i] <= smax * 0.5) {
+                supRows.add(i)
+                smax = rv[i]
+            }
+        }
         return Profile(rv, ru, rd, up, dn, lo, hi,
-            lo + ww * (poc + 0.5), lo + ww * (up + 1), lo + ww * dn)
+            lo + ww * (poc + 0.5), lo + ww * (up + 1), lo + ww * dn,
+            supRows.map { lo + ww * (it + 0.5) })
     }
 
     // ---------- 格式化(照搬稿子) ----------

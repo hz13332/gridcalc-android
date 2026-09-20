@@ -26,7 +26,8 @@ import kotlin.math.roundToInt
 data class MktInfo(
     val ohlc: String, val chgUp: Boolean,
     val legRow: String, val poc: Double,
-    val vah: Double, val val_: Double, val count: Int
+    val vah: Double, val val_: Double, val count: Int,
+    val sup: List<Double>
 )
 
 class MktView @JvmOverloads constructor(
@@ -236,7 +237,7 @@ class MktView @JvmOverloads constructor(
         val ohlc = MktData.fmtDT(info.t) + " 开 " + MktData.mkFmt(info.o) +
             " 高 " + MktData.mkFmt(info.h) + " 低 " + MktData.mkFmt(info.l) +
             " 收 " + MktData.mkFmt(info.c)
-        onInfo?.invoke(MktInfo(ohlc, chg >= 0, legRow, vp.poc, vp.vah, vp.val_, n))
+        onInfo?.invoke(MktInfo(ohlc, chg >= 0, legRow, vp.poc, vp.vah, vp.val_, n, vp.sup))
     }
 
     private fun chartW(W: Float, m: Float, axisW: Float): Float {
