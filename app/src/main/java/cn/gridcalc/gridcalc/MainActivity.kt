@@ -31,13 +31,10 @@ class MainActivity : Activity() {
     private lateinit var tabFav: LinearLayout
     private lateinit var tabCalc: LinearLayout
     private lateinit var tabSetup: LinearLayout
-    private lateinit var tabMkt: LinearLayout
     private lateinit var tabCalcIcon: ImageView
     private lateinit var tabCalcLabel: TextView
     private lateinit var tabSetupIcon: ImageView
     private lateinit var tabSetupLabel: TextView
-    private lateinit var tabMktIcon: ImageView
-    private lateinit var tabMktLabel: TextView
     private lateinit var tabFavIcon: ImageView
     private lateinit var tabFavLabel: TextView
 
@@ -55,8 +52,23 @@ class MainActivity : Activity() {
     private lateinit var themeLight: View
     private lateinit var themeDark: View
 
-    private var tab = "mkt"
+    private var tab = "fav"
     private var mode = "follow"
+
+    companion object {
+        const val ANIM_TAB = 0
+        const val ANIM_FROM_R = 1
+        const val ANIM_FROM_L = 2
+    }
+
+    private val pgBezier by lazy {
+        android.view.animation.AnimationUtils.loadInterpolator(
+            this, R.interpolator.pg_bezier)
+    }
+    private val pgEaseOut by lazy {
+        android.view.animation.AnimationUtils.loadInterpolator(
+            this, R.interpolator.pg_ease_out)
+    }
 
     // ---------- 主题 ----------
 
@@ -293,6 +305,41 @@ class MainActivity : Activity() {
 
     // ---------- 界面 ----------
 
+    // 打孔屏适配(对标稿子viewport-fit=cover+safe-area-inset):edge-to-edge,
+    // 状态栏/导航栏透明,内容区按systemBars insets垫高;浅色主题配深色状态栏图标。
+    // 纯框架API实现(minSdk26,无外部依赖)。
+    private fun edgeToEdge(light: Boolean) {
+        if (android.os.Build.VERSION.SDK_INT >= 30) {
+            window.setDecorFitsSystemWindows(false)
+        } else {
+            @Suppress("DEPRECATION")
+            window.decorView.systemUiVisibility =
+                View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
+                    View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
+                    View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
+                    (if (light) View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR else 0)
+        }
+        window.statusBarColor = android.graphics.Color.TRANSPARENT
+        window.navigationBarColor = android.graphics.Color.TRANSPARENT
+        if (android.os.Build.VERSION.SDK_INT >= 30) {
+            window.insetsController?.setSystemBarsAppearance(
+                if (light) android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS else 0,
+                android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS)
+        }
+        val root = findViewById<View>(android.R.id.content)
+        root.setOnApplyWindowInsetsListener { _, insets ->
+            @Suppress("DEPRECATION")
+            val top = insets.systemWindowInsetTop
+            @Suppress("DEPRECATION")
+            val bottom = insets.systemWindowInsetBottom
+            body.setPadding(0, top, 0, 0)
+            val bar = findViewById<View>(R.id.tabbar)
+            bar.setPadding(bar.paddingLeft, bar.paddingTop, bar.paddingRight, bottom)
+            insets
+        }
+        root.requestApplyInsets()
+    }
+
     private fun watchKeyboard() {
         val content = findViewById<View>(android.R.id.content)
         val bar = findViewById<View>(R.id.tabbar)
@@ -304,16 +351,50 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun showTab(name: String) {
-        tab = name
+    private fun showTab(name: String) = showTab(name, ANIM_TAB, null)
+
+    // 页面转场(对标稿子pgIn/pgR/pgL):现行单Activity换View结构,用ViewPropertyAnimator;
+    // Tab切换淡入+上浮8px/220ms/ease-out;自选进→右进48px,行情返回→左进48px,
+    // 260ms/cubic-bezier(.32,.72,.35,1);插值器见res/interpolator。
+    fun showTab(name: String, anim: Int, activeTab: String? = null) {
+        tab = activeTab ?: name
         body.removeAllViews()
-        body.addView(when (name) {
+        val v = when (name) {
             "mkt" -> mktPage
             "setup" -> settingsPage
             "fav" -> favPage
             else -> calcPage
-        })
+        }
+        body.addView(v)
+        playPageAnim(v, anim)
         paintTabs()
+    }
+
+    private fun playPageAnim(v: View, anim: Int) {
+        v.animate().cancel()
+        val d = resources.displayMetrics.density
+        v.translationX = 0f
+        v.translationY = 0f
+        when (anim) {
+            ANIM_FROM_R -> {
+                v.alpha = 0f
+                v.translationX = 48f * d
+                v.animate().alpha(1f).translationX(0f)
+                    .setDuration(260).setInterpolator(pgBezier).start()
+            }
+            ANIM_FROM_L -> {
+                v.alpha = 0f
+                v.translationX = -48f * d
+                v.animate().alpha(1f).translationX(0f)
+                    .setDuration(260).setInterpolator(pgBezier).start()
+            }
+            else -> {
+                v.alpha = 0f
+                v.translationY = 8f * d
+                v.animate().alpha(1f).translationY(0f)
+                    .setDuration(220).setInterpolator(pgEaseOut).start()
+            }
+        }
     }
 
     private fun paintTabs() {
@@ -323,8 +404,6 @@ class MainActivity : Activity() {
         tabCalcLabel.setTextColor(if (tab == "calc") primary else sub)
         tabSetupIcon.setColorFilter(if (tab == "setup") primary else sub)
         tabSetupLabel.setTextColor(if (tab == "setup") primary else sub)
-        tabMktIcon.setColorFilter(if (tab == "mkt") primary else sub)
-        tabMktLabel.setTextColor(if (tab == "mkt") primary else sub)
         tabFavIcon.setColorFilter(if (tab == "fav") primary else sub)
         tabFavLabel.setTextColor(if (tab == "fav") primary else sub)
     }
@@ -393,6 +472,7 @@ class MainActivity : Activity() {
         else R.style.Theme_GridCalc_Light)
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+        edgeToEdge(actual != "dark")
 
         body = findViewById(R.id.body)
         val inf = LayoutInflater.from(this)
@@ -403,27 +483,27 @@ class MainActivity : Activity() {
         favPage = inf.inflate(R.layout.page_fav, body, false)
         favPanel = FavPanel(this, favPage) { s ->
             mktPanel.setSym(s)
-            showTab("mkt")
+            showTab("mkt", ANIM_FROM_R, "fav")
+            (mktPage as? android.widget.ScrollView)?.scrollTo(0, 0)
             mktPanel.mkLoad()
         }
         mktPanel.onFavChanged = { favPanel.repaint() }
+        mktPage.findViewById<Button>(R.id.mkt_back).setOnClickListener {
+            showTab("fav", ANIM_FROM_L)
+        }
 
         tabFav = findViewById(R.id.tab_fav)
 
         tabCalc = findViewById(R.id.tab_calc)
         tabSetup = findViewById(R.id.tab_setup)
-        tabMkt = findViewById(R.id.tab_mkt)
         tabCalcIcon = findViewById(R.id.tab_calc_icon)
         tabCalcLabel = findViewById(R.id.tab_calc_label)
         tabSetupIcon = findViewById(R.id.tab_setup_icon)
         tabSetupLabel = findViewById(R.id.tab_setup_label)
-        tabMktIcon = findViewById(R.id.tab_mkt_icon)
-        tabMktLabel = findViewById(R.id.tab_mkt_label)
         tabFavIcon = findViewById(R.id.tab_fav_icon)
         tabFavLabel = findViewById(R.id.tab_fav_label)
         tabCalc.setOnClickListener { showTab("calc") }
         tabSetup.setOnClickListener { showTab("setup") }
-        tabMkt.setOnClickListener { showTab("mkt") }
         tabFav.setOnClickListener { showTab("fav") }
 
         val ids = mapOf("C" to R.id.in_C, "L" to R.id.in_L, "Pl" to R.id.in_Pl,
@@ -484,6 +564,10 @@ class MainActivity : Activity() {
             paintDbl()
         }
         watchKeyboard()
-        showTab(savedInstanceState?.getString("tab") ?: "mkt")
+        // v3.4起行情Tab已删:旧存档的mkt归一到fav
+        val startTab = savedInstanceState?.getString("tab")?.takeIf {
+            it == "fav" || it == "calc" || it == "setup"
+        } ?: "fav"
+        showTab(startTab)
     }
 }

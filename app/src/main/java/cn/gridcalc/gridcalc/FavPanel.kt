@@ -14,6 +14,8 @@ import android.view.ViewGroup
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.PopupWindow
+import android.widget.ScrollView
 import android.widget.TextView
 import java.util.Locale
 import org.json.JSONArray
@@ -80,8 +82,15 @@ object FavStore {
 class FavPanel(private val act: MainActivity, page: View, private val onPick: (String) -> Unit) {
 
     private val searchInp: EditText = page.findViewById(R.id.fav_search)
-    private val resultsBox: LinearLayout = page.findViewById(R.id.fav_results)
     private val favList: LinearLayout = page.findViewById(R.id.fav_list)
+
+    // 搜索结果浮层(对标稿子#favResults绝对定位浮层,不挤占列表;滚动条隐藏)
+    private val resultsBox: LinearLayout = LinearLayout(act).apply {
+        orientation = LinearLayout.VERTICAL
+        val p = dp(10f).toInt()
+        setPadding(p, dp(4f).toInt(), p, dp(4f).toInt())
+    }
+    private var resPopup: PopupWindow? = null
 
     private val handler = Handler(Looper.getMainLooper())
     private var fsRunnable: Runnable? = null
@@ -98,8 +107,8 @@ class FavPanel(private val act: MainActivity, page: View, private val onPick: (S
             ViewGroup.LayoutParams.WRAP_CONTENT)
     }
 
-    // 行容器:左pick(品种+角标)右可选＋
-    private fun rowView(s: String, tag: String, add: (() -> Unit)?): View {
+    // 行容器:左pick(品种+角标)右可选＋;go非空时点行走go(结果浮层先收起再直达)
+    private fun rowView(s: String, tag: String, add: (() -> Unit)?, go: (() -> Unit)? = null): View {
         val row = LinearLayout(act).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -153,7 +162,7 @@ class FavPanel(private val act: MainActivity, page: View, private val onPick: (S
             ad.setOnClickListener { add() }
             row.addView(ad)
         }
-        pick.setOnClickListener { onPick(s) }
+        pick.setOnClickListener { (go ?: { onPick(s) }).invoke() }
         return row
     }
 
@@ -216,32 +225,62 @@ class FavPanel(private val act: MainActivity, page: View, private val onPick: (S
         }
     }
 
+    private fun hideResults() {
+        // 世代+1:浮层关闭后旧异步回包一律丢弃(对标稿子FSGen++)
+        fsGen++
+        fsRunnable?.let { handler.removeCallbacks(it) }
+        resPopup?.dismiss()
+        resPopup = null
+    }
+
     private fun showResults(items: List<SugItem>, q: String) {
         resultsBox.removeAllViews()
         val mine = FavStore.get(act).map { it.s }.toSet()
         val show = MktSuggest.rankFav(items, q, mine)
         if (show.isEmpty()) {
             resultsBox.addView(note("无匹配"))
-            return
         }
         for (it in show) {
-            val row = rowView(it.s, it.tag) {
+            val row = rowView(it.s, it.tag, {
                 if (FavStore.isFav(act, it.s)) return@rowView
                 FavStore.add(act, it.s, MktData.symType(it.s))
-                fsGen++
                 searchInp.setText("")
-                resultsBox.removeAllViews()
+                hideResults()
                 repaint()
-            }
+            }, {
+                hideResults()
+                onPick(it.s)
+            })
             resultsBox.addView(row)
         }
+        // 浮层锚定搜索框,高按内容量最高260dp(对标稿子max-height)
+        resPopup?.dismiss()
+        (resultsBox.parent as? ViewGroup)?.removeView(resultsBox)
+        val scroll = ScrollView(act).apply {
+            isVerticalScrollBarEnabled = false
+            addView(resultsBox)
+        }
+        val w = searchInp.width
+        if (w <= 0) return
+        scroll.measure(
+            View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+        val h = minOf(scroll.measuredHeight, dp(260f).toInt())
+        if (h <= 0) return
+        val pw = PopupWindow(scroll, w, h, false)
+        pw.setBackgroundDrawable(
+            act.resources.getDrawable(R.drawable.card_bg, act.theme))
+        pw.elevation = dp(8f)
+        pw.isOutsideTouchable = true
+        resPopup = pw
+        pw.showAsDropDown(searchInp, 0, dp(4f).toInt())
     }
 
     private fun scheduleSearch() {
         fsRunnable?.let { handler.removeCallbacks(it) }
         val q = searchInp.text.toString().trim().uppercase(Locale.US)
         if (q.isEmpty()) {
-            resultsBox.removeAllViews()
+            hideResults()
             return
         }
         val r = Runnable {
@@ -292,11 +331,11 @@ class FavPanel(private val act: MainActivity, page: View, private val onPick: (S
             override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
             override fun afterTextChanged(s: Editable?) = scheduleSearch()
         })
-        // 失焦150ms后清结果(对标稿子blur,让位于＋/点选)
+        // 失焦150ms后收浮层(对标稿子blur,让位于＋/点选)
         searchInp.setOnFocusChangeListener { _, hasFocus ->
             if (!hasFocus) {
                 handler.postDelayed({
-                    if (!searchInp.hasFocus()) resultsBox.removeAllViews()
+                    if (!searchInp.hasFocus()) hideResults()
                 }, 150)
             }
         }
@@ -305,7 +344,7 @@ class FavPanel(private val act: MainActivity, page: View, private val onPick: (S
                 keyCode == KeyEvent.KEYCODE_ESCAPE
             ) {
                 searchInp.setText("")
-                resultsBox.removeAllViews()
+                hideResults()
                 act.hideKeyboard(searchInp)
                 true
             } else false

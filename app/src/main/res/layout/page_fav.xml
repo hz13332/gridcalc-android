@@ -52,11 +52,6 @@
                 android:textSize="17sp"
                 android:typeface="monospace" />
             <LinearLayout
-                android:id="@+id/fav_results"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical" />
-            <LinearLayout
                 android:id="@+id/fav_list"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
