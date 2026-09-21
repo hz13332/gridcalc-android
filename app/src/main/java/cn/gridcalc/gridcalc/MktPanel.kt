@@ -3,6 +3,10 @@ package cn.gridcalc.gridcalc
 import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
+import android.graphics.Color
+import android.text.SpannableStringBuilder
+import android.text.Spanned
+import android.text.style.ForegroundColorSpan
 import android.os.Handler
 import android.os.Looper
 import android.text.Editable
@@ -34,6 +38,10 @@ class MktPanel(private val act: MainActivity, page: View) {
     private val leg: TextView = page.findViewById(R.id.mkt_leg)
     private val srcNote: TextView = page.findViewById(R.id.mkt_srcnote)
     private val chart: MktView = page.findViewById(R.id.mkt_chart)
+    private val favBtn: Button = page.findViewById(R.id.mkt_fav)
+
+    // 自选变更(收藏/删除)时通知自选页重绘;由MainActivity接线
+    var onFavChanged: (() -> Unit)? = null
 
     private var tf = "M"
     private var reqSeq = 0
@@ -132,8 +140,30 @@ class MktPanel(private val act: MainActivity, page: View) {
     private fun pickSug(it: SugItem) {
         symInp.setText(it.s)
         symInp.setSelection(it.s.length)
+        paintStar()
         hideSug()
         mkLoad()
+    }
+
+    // ---------- 自选收藏(对标稿子favBtn) ----------
+    fun paintStar() {
+        val s = symInp.text.toString().trim().uppercase(Locale.US)
+        favBtn.text = if (s.isNotEmpty() && FavStore.isFav(act, s)) "★" else "☆"
+    }
+
+    private fun toggleFav() {
+        val s = symInp.text.toString().trim().uppercase(Locale.US)
+        if (s.isEmpty()) return
+        if (FavStore.isFav(act, s)) FavStore.remove(act, s)
+        else FavStore.add(act, s, MktData.symType(s))
+        paintStar()
+        onFavChanged?.invoke()
+    }
+
+    fun setSym(s: String) {
+        symInp.setText(s)
+        symInp.setSelection(s.length)
+        paintStar()
     }
 
     // 回车/查看:下拉开着且有选中行→用选中项,否则按输入框文字直接加载
@@ -173,6 +203,8 @@ class MktPanel(private val act: MainActivity, page: View) {
     init {
         paintTf()
         goBtn.setOnClickListener { pickOrLoad() }
+        favBtn.setOnClickListener { toggleFav() }
+        paintStar()
         val done = { v: View, after: () -> Unit ->
             act.hideKeyboard(v)
             after()
@@ -207,7 +239,10 @@ class MktPanel(private val act: MainActivity, page: View) {
         symInp.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
             override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
-            override fun afterTextChanged(s: Editable?) = scheduleSug()
+            override fun afterTextChanged(s: Editable?) {
+                scheduleSug()
+                paintStar()
+            }
         })
         kcountInp.setOnEditorActionListener { v, actionId, _ ->
             if (actionId == EditorInfo.IME_ACTION_DONE) {
@@ -232,14 +267,30 @@ class MktPanel(private val act: MainActivity, page: View) {
             val dnC = act.attrColor("colorRed")
             ohlc.text = info.ohlc
             ohlc.setTextColor(if (info.chgUp) upC else dnC)
-            val base = "POC " + MktData.mkFmt(info.poc) +
-                " · VA " + MktData.mkFmt(info.val_) + "~" + MktData.mkFmt(info.vah) +
-                " · " + info.count + "根 · " + lastSrc +
-                (if (info.sup.isNotEmpty()) "\n支撑 " +
-                    info.sup.take(3).joinToString(" / ") { MktData.mkFmt(it) }
-                else "")
-            leg.text = if (info.legRow.isEmpty()) base else base + "\n" + info.legRow
-            mkStatus("POC " + MktData.mkFmt(info.poc) + (prelimTag ?: ""), false)
+            // 图例(照稿子v3.3+定稿结构):第1行=绿标第一支撑+第二支撑(并排同行),
+            // 第2行=根数·来源独占一行,其余支撑/十字行跟后竖排;
+            // POC/VA只算不显示;状态行报第一支撑价,无则暂无支撑
+            val sup = info.supShow
+            val legText = SpannableStringBuilder()
+            if (sup.isNotEmpty()) {
+                val markStart = legText.length
+                legText.append("■ 支撑 " + MktData.mkFmt(sup[0]))
+                legText.setSpan(
+                    ForegroundColorSpan(Color.parseColor("#3DDC84")),
+                    markStart, markStart + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                if (sup.size > 1) {
+                    legText.append("  第二支撑 " + MktData.mkFmt(sup[1]))
+                }
+                legText.append("\n")
+            }
+            legText.append(info.count.toString() + "根 · " + lastSrc)
+            if (info.legRow.isNotEmpty()) legText.append("\n" + info.legRow)
+            if (sup.size > 2) legText.append("\n支撑 " +
+                sup.slice(2..minOf(3, sup.size - 1))
+                    .joinToString(" / ") { MktData.mkFmt(it) })
+            leg.text = legText
+            mkStatus((if (sup.isNotEmpty()) "支撑 " + MktData.mkFmt(sup[0])
+            else "暂无支撑") + (prelimTag ?: ""), false)
         }
     }
 

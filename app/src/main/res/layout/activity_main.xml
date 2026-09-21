@@ -23,6 +23,26 @@
         android:paddingLeft="12dp"
         android:paddingRight="12dp">
         <LinearLayout
+            android:id="@+id/tab_fav"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:orientation="vertical">
+            <ImageView
+                android:id="@+id/tab_fav_icon"
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:src="@drawable/tab_fav" />
+            <TextView
+                android:id="@+id/tab_fav_label"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="3dp"
+                android:text="自选"
+                android:textSize="11sp" />
+        </LinearLayout>
+        <LinearLayout
             android:id="@+id/tab_mkt"
             android:layout_width="0dp"
             android:layout_height="match_parent"

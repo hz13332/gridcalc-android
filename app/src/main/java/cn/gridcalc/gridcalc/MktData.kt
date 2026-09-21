@@ -529,15 +529,41 @@ object MktData {
             if (vu < 0 && vd < 0) break
             if (vu >= vd) sum += rv[++up] else sum += rv[--dn]
         }
-        // 支撑位(照稿子):从高价行往低价行扫,行量相对已见最高腰斩即支撑,
-        // 触发后以当前行为新基准继续,返回行中点价
+        // 支撑位(照稿子v3.3):首沿从高价行往低价行扫,行量相对运行最高腰斩即第一支撑;
+        // 后继沿:抛弃旧峰,下方须先出现爬升再取新峰,峰下腰斩为下一支撑;
+        // 守卫防越界,行0可入选。返回行中点价数组(现价过滤由调用方做)。
         val supRows = mutableListOf<Int>()
         var smax = -1.0
+        var b = -1
         for (i in rows - 1 downTo 0) {
             if (rv[i] > smax) smax = rv[i]
             else if (smax > 0 && rv[i] <= smax * 0.5) {
-                supRows.add(i)
-                smax = rv[i]
+                b = i
+                break
+            }
+        }
+        var gi = 0
+        while (b >= 0 && gi++ < rows) {
+            supRows.add(b)
+            var m2 = -1.0
+            var m2row = -1
+            var climbed = false
+            var prev = rv[b]
+            for (i in b - 1 downTo 0) {
+                if (rv[i] > prev) climbed = true
+                prev = rv[i]
+                if (climbed && rv[i] > m2) {
+                    m2 = rv[i]
+                    m2row = i
+                }
+            }
+            if (m2row < 0) break
+            b = -1
+            for (i in m2row - 1 downTo 0) {
+                if (rv[i] <= m2 * 0.5) {
+                    b = i
+                    break
+                }
             }
         }
         return Profile(rv, ru, rd, up, dn, lo, hi,

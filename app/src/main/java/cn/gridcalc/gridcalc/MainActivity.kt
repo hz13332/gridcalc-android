@@ -26,6 +26,9 @@ class MainActivity : Activity() {
     private lateinit var settingsPage: View
     private lateinit var mktPage: View
     private lateinit var mktPanel: MktPanel
+    private lateinit var favPage: View
+    private lateinit var favPanel: FavPanel
+    private lateinit var tabFav: LinearLayout
     private lateinit var tabCalc: LinearLayout
     private lateinit var tabSetup: LinearLayout
     private lateinit var tabMkt: LinearLayout
@@ -35,6 +38,8 @@ class MainActivity : Activity() {
     private lateinit var tabSetupLabel: TextView
     private lateinit var tabMktIcon: ImageView
     private lateinit var tabMktLabel: TextView
+    private lateinit var tabFavIcon: ImageView
+    private lateinit var tabFavLabel: TextView
 
     private val inp = mutableMapOf<String, EditText>()
     private lateinit var feeInp: EditText
@@ -305,6 +310,7 @@ class MainActivity : Activity() {
         body.addView(when (name) {
             "mkt" -> mktPage
             "setup" -> settingsPage
+            "fav" -> favPage
             else -> calcPage
         })
         paintTabs()
@@ -319,6 +325,8 @@ class MainActivity : Activity() {
         tabSetupLabel.setTextColor(if (tab == "setup") primary else sub)
         tabMktIcon.setColorFilter(if (tab == "mkt") primary else sub)
         tabMktLabel.setTextColor(if (tab == "mkt") primary else sub)
+        tabFavIcon.setColorFilter(if (tab == "fav") primary else sub)
+        tabFavLabel.setTextColor(if (tab == "fav") primary else sub)
     }
 
     private fun paintThemeSeg() {
@@ -392,6 +400,15 @@ class MainActivity : Activity() {
         settingsPage = inf.inflate(R.layout.page_settings, body, false)
         mktPage = inf.inflate(R.layout.page_mkt, body, false)
         mktPanel = MktPanel(this, mktPage)
+        favPage = inf.inflate(R.layout.page_fav, body, false)
+        favPanel = FavPanel(this, favPage) { s ->
+            mktPanel.setSym(s)
+            showTab("mkt")
+            mktPanel.mkLoad()
+        }
+        mktPanel.onFavChanged = { favPanel.repaint() }
+
+        tabFav = findViewById(R.id.tab_fav)
 
         tabCalc = findViewById(R.id.tab_calc)
         tabSetup = findViewById(R.id.tab_setup)
@@ -402,9 +419,12 @@ class MainActivity : Activity() {
         tabSetupLabel = findViewById(R.id.tab_setup_label)
         tabMktIcon = findViewById(R.id.tab_mkt_icon)
         tabMktLabel = findViewById(R.id.tab_mkt_label)
+        tabFavIcon = findViewById(R.id.tab_fav_icon)
+        tabFavLabel = findViewById(R.id.tab_fav_label)
         tabCalc.setOnClickListener { showTab("calc") }
         tabSetup.setOnClickListener { showTab("setup") }
         tabMkt.setOnClickListener { showTab("mkt") }
+        tabFav.setOnClickListener { showTab("fav") }
 
         val ids = mapOf("C" to R.id.in_C, "L" to R.id.in_L, "Pl" to R.id.in_Pl,
             "Ph" to R.id.in_Ph, "Po" to R.id.in_Po, "N" to R.id.in_N,

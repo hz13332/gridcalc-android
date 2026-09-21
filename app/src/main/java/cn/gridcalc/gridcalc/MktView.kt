@@ -18,16 +18,17 @@ import kotlin.math.roundToInt
 
 // ---------- 行情 VPVR · 绘制层 ----------
 // 照搬设计稿 renderMK:K线+右侧分布柱(涨#2962FF跌#FF6D00,VA内外透明度,
-// 低价在下)+POC绿线+价格轴6档+时间轴+十字(横吸K线纵自由,价签反算价)。
+// 低价在下)+第一支撑绿线+价格轴6档+时间轴+十字(横吸K线纵自由,价签反算价)。
 // 图已锁定:无缩放/复位/平移手势,可见窗口恒为全量(MK.view=null常态),
 // 只由图上方输入(品种+周期+K数)决定;单指拖动仅移动十字,
 // 纵向滚动交还父ScrollView。
+// v3.3:只留现价之下支撑(supShow),绿线画第一支撑;POC/VA只算不显示。
 
 data class MktInfo(
     val ohlc: String, val chgUp: Boolean,
     val legRow: String, val poc: Double,
     val vah: Double, val val_: Double, val count: Int,
-    val sup: List<Double>
+    val supShow: List<Double>
 )
 
 class MktView @JvmOverloads constructor(
@@ -185,11 +186,15 @@ class MktView @JvmOverloads constructor(
         }
         paint.alpha = 255
 
-        // POC绿线
-        val py = y(vp.poc)
-        paint.color = Color.parseColor("#3DDC84")
-        paint.strokeWidth = dp(2f)
-        c.drawLine(m, py, m + chartW(W, m, axisW) + m + profW(W, m, axisW), py, paint)
+        // 第一支撑绿线(只留现价之下,无则不画)
+        val curPx = ks.last().c
+        val supShow = vp.sup.filter { it < curPx }
+        if (supShow.isNotEmpty()) {
+            val py = y(supShow[0])
+            paint.color = Color.parseColor("#3DDC84")
+            paint.strokeWidth = dp(2f)
+            c.drawLine(m, py, m + chartW(W, m, axisW) + m + profW(W, m, axisW), py, paint)
+        }
 
         // 时间轴5档
         paint.color = mut
@@ -237,7 +242,7 @@ class MktView @JvmOverloads constructor(
         val ohlc = MktData.fmtDT(info.t) + " 开 " + MktData.mkFmt(info.o) +
             " 高 " + MktData.mkFmt(info.h) + " 低 " + MktData.mkFmt(info.l) +
             " 收 " + MktData.mkFmt(info.c)
-        onInfo?.invoke(MktInfo(ohlc, chg >= 0, legRow, vp.poc, vp.vah, vp.val_, n, vp.sup))
+        onInfo?.invoke(MktInfo(ohlc, chg >= 0, legRow, vp.poc, vp.vah, vp.val_, n, supShow))
     }
 
     private fun chartW(W: Float, m: Float, axisW: Float): Float {

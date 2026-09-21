@@ -72,6 +72,16 @@
                     android:text="查看"
                     android:textColor="?attr/colorInk"
                     android:textSize="15sp" />
+                <Button
+                    android:id="@+id/mkt_fav"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:layout_gravity="bottom"
+                    android:layout_marginLeft="6dp"
+                    android:background="@drawable/btn_ghost"
+                    android:text="☆"
+                    android:textColor="?attr/colorInk"
+                    android:textSize="18sp" />
             </LinearLayout>
             <LinearLayout
                 android:layout_width="match_parent"
