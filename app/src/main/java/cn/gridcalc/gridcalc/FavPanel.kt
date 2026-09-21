@@ -28,6 +28,7 @@ data class FavItem(val s: String, val t: String)
 object FavStore {
     private const val PF = "gridcalc_fav"
     private const val KEY = "gc_fav"
+    private const val SORTKEY = "gc_favsort"
 
     fun tag(t: String): String = when (t) {
         "crypto" -> "币"
@@ -73,16 +74,32 @@ object FavStore {
     fun remove(c: Context, s: String) {
         set(c, get(c).filter { it.s != s })
     }
+
+    // 排序模式:off默认/asc距近/desc距远(对标稿子gc_favsort)
+    fun getSort(c: Context): String {
+        val v = prefs(c).getString(SORTKEY, "off") ?: "off"
+        return if (v == "asc" || v == "desc") v else "off"
+    }
+
+    fun setSort(c: Context, v: String) {
+        prefs(c).edit().putString(SORTKEY, v).apply()
+    }
 }
 
-// ---------- 自选页 · 面板接线(对标稿子page-fav/paintFav/favSearch) ----------
+// ---------- 自选页 · 面板接线(对标稿子page-fav/paintFav/favSearch/favDist) ----------
 // 点行直达(行情页加载),长按600ms确认删除,搜索精确>前缀>包含排序,
-// 已收藏剔除,＋后清场。
+// 已收藏剔除,＋后清场;行右距离列(距第一支撑pct+现价+涨跌色块),右上排序键循环。
 
-class FavPanel(private val act: MainActivity, page: View, private val onPick: (String) -> Unit) {
+class FavPanel(
+    private val act: MainActivity,
+    page: View,
+    private val mkt: MktPanel,
+    private val onPick: (String) -> Unit
+) {
 
     private val searchInp: EditText = page.findViewById(R.id.fav_search)
     private val favList: LinearLayout = page.findViewById(R.id.fav_list)
+    private val sortBtn: Button = page.findViewById(R.id.fav_sort)
 
     // 搜索结果浮层(对标稿子#favResults绝对定位浮层,不挤占列表;滚动条隐藏)
     private val resultsBox: LinearLayout = LinearLayout(act).apply {
@@ -210,6 +227,61 @@ class FavPanel(private val act: MainActivity, page: View, private val onPick: (S
             .show()
     }
 
+    private fun fmtPct(v: Double): String =
+        (if (v >= 0) "+" else "") + String.format(Locale.US, "%.2f", v) + "%"
+
+    // 行右距离列(对标稿子.rq/.dist/.px/.cg):pct首位15px加粗,现价,涨跌色块(红涨绿跌);
+    // 失败行px'—'+cg空+dc为why,无缓存为'…'
+    private fun distViews(d: DistR?): View {
+        val upC = android.graphics.Color.parseColor("#f23645")
+        val dnC = android.graphics.Color.parseColor("#0aa182")
+        val rq = LinearLayout(act).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.END or Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        val dc = TextView(act).apply {
+            text = if (d == null) "…" else if (d.ok) fmtPct(d.pct) else d.why
+            setTextColor(act.attrColor("colorInk"))
+            textSize = 15f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            typeface = android.graphics.Typeface.MONOSPACE
+        }
+        rq.addView(dc)
+        val px = TextView(act).apply {
+            text = if (d != null && d.ok) MktData.mkFmt(d.price) else "—"
+            textSize = 16f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            typeface = android.graphics.Typeface.MONOSPACE
+            if (d != null && d.ok) setTextColor(if (d.chg >= 0) upC else dnC)
+            else setTextColor(act.attrColor("colorInk"))
+            val lp = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT)
+            lp.leftMargin = dp(8f).toInt()
+            layoutParams = lp
+        }
+        rq.addView(px)
+        val cg = TextView(act).apply {
+            text = if (d != null && d.ok) fmtPct(d.chg) else ""
+            setTextColor(android.graphics.Color.WHITE)
+            textSize = 11f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            if (d != null && d.ok) setBackgroundResource(
+                if (d.chg >= 0) R.drawable.pill_dist_up else R.drawable.pill_dist_dn)
+            val p = dp(7f).toInt()
+            setPadding(p, dp(3f).toInt(), p, dp(3f).toInt())
+            val lp = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT)
+            lp.leftMargin = dp(8f).toInt()
+            layoutParams = lp
+        }
+        rq.addView(cg)
+        return rq
+    }
+
     fun repaint() {
         favList.removeAllViews()
         val a = FavStore.get(act)
@@ -217,11 +289,54 @@ class FavPanel(private val act: MainActivity, page: View, private val onPick: (S
             favList.addView(note("暂无自选，在行情页输入品种后点 ☆ 收藏"))
             return
         }
-        for (it in a) {
-            val row = rowView(it.s, FavStore.tag(it.t), null)
+        val tf = mkt.curTf()
+        val n = mkt.curN()
+        data class Row(val it: FavItem, val d: DistR?)
+        val rows = a.map { Row(it, FavDist.cached(it.s, tf, n)) }
+        // 排序:按|pct|,无值沉底(对标稿子dv/x.d.ok)
+        val dv = { r: Row ->
+            if (r.d != null && r.d.ok) Math.abs(r.d.pct)
+            else Double.POSITIVE_INFINITY
+        }
+        val sorted = when (FavStore.getSort(act)) {
+            "asc" -> rows.sortedBy { dv(it) }
+            "desc" -> rows.sortedByDescending { dv(it) }
+            else -> rows
+        }
+        for (r in sorted) {
+            val row = rowView(r.it.s, FavStore.tag(r.it.t), null)
+            val vw = row as LinearLayout
+            (vw.getChildAt(0) as LinearLayout).addView(distViews(r.d))
             // pick是行内第一个子View
-            armDelete((row as LinearLayout).getChildAt(0), it.s)
+            armDelete(vw.getChildAt(0), r.it.s)
             favList.addView(row)
+        }
+    }
+
+    // 逐个品种后台拉取,到齐重画(对标稿子refreshFavDist)
+    fun refreshFavDist() {
+        val syms = FavStore.get(act).map { it.s }.distinct()
+        if (syms.isEmpty()) return
+        val tf = mkt.curTf()
+        val n = mkt.curN()
+        Thread {
+            syms.map { s ->
+                Thread {
+                    try {
+                        FavDist.compute(s, tf, n)
+                    } catch (_: Exception) {
+                    }
+                }.also { it.start() }
+            }.forEach { it.join() }
+            act.runOnUiThread { repaint() }
+        }.start()
+    }
+
+    private fun paintSortBtn() {
+        sortBtn.text = when (FavStore.getSort(act)) {
+            "asc" -> "排序：距近"
+            "desc" -> "排序：距远"
+            else -> "排序：默认"
         }
     }
 
@@ -326,6 +441,19 @@ class FavPanel(private val act: MainActivity, page: View, private val onPick: (S
     }
 
     init {
+        paintSortBtn()
+        // 排序键循环默认/距近/距远(对标稿子favSort)
+        sortBtn.setOnClickListener {
+            val nx = when (FavStore.getSort(act)) {
+                "off" -> "asc"
+                "asc" -> "desc"
+                else -> "off"
+            }
+            FavStore.setSort(act, nx)
+            paintSortBtn()
+            repaint()
+            refreshFavDist()
+        }
         searchInp.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
             override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
@@ -350,5 +478,6 @@ class FavPanel(private val act: MainActivity, page: View, private val onPick: (S
             } else false
         }
         repaint()
+        refreshFavDist()
     }
 }

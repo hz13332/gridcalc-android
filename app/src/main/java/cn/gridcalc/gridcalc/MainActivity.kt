@@ -481,7 +481,7 @@ class MainActivity : Activity() {
         mktPage = inf.inflate(R.layout.page_mkt, body, false)
         mktPanel = MktPanel(this, mktPage)
         favPage = inf.inflate(R.layout.page_fav, body, false)
-        favPanel = FavPanel(this, favPage) { s ->
+        favPanel = FavPanel(this, favPage, mktPanel) { s ->
             mktPanel.setSym(s)
             showTab("mkt", ANIM_FROM_R, "fav")
             (mktPage as? android.widget.ScrollView)?.scrollTo(0, 0)

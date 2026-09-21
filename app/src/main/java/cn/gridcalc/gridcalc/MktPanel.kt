@@ -166,6 +166,11 @@ class MktPanel(private val act: MainActivity, page: View) {
         paintStar()
     }
 
+    // 自选距离键用(对标稿子favKey读tfSeg/kcount)
+    fun curTf(): String = tf
+    fun curN(): Int = kcountInp.text.toString().trim().toDoubleOrNull()
+        ?.let { minOf(100, Math.round(it).toInt()) } ?: 30
+
     // 回车/查看:下拉开着且有选中行→用选中项,否则按输入框文字直接加载
     private fun pickOrLoad() {
         val pw = sugPopup
