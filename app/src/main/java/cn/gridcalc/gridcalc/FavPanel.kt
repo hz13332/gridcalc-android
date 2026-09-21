@@ -230,11 +230,9 @@ class FavPanel(
     private fun fmtPct(v: Double): String =
         (if (v >= 0) "+" else "") + String.format(Locale.US, "%.2f", v) + "%"
 
-    // 行右距离列(对标稿子.rq/.dist/.px/.cg):pct首位15px加粗,现价,涨跌色块(红涨绿跌);
-    // 失败行px'—'+cg空+dc为why,无缓存为'…'
+    // 行右距离列(对标稿子.rq/.dist终态):只留距第一支撑pct,15px加粗首位;
+    // 失败行为why(—超时/—无源),无缓存为'…'
     private fun distViews(d: DistR?): View {
-        val upC = android.graphics.Color.parseColor("#f23645")
-        val dnC = android.graphics.Color.parseColor("#0aa182")
         val rq = LinearLayout(act).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.END or Gravity.CENTER_VERTICAL
@@ -249,36 +247,6 @@ class FavPanel(
             typeface = android.graphics.Typeface.MONOSPACE
         }
         rq.addView(dc)
-        val px = TextView(act).apply {
-            text = if (d != null && d.ok) MktData.mkFmt(d.price) else "—"
-            textSize = 16f
-            setTypeface(typeface, android.graphics.Typeface.BOLD)
-            typeface = android.graphics.Typeface.MONOSPACE
-            if (d != null && d.ok) setTextColor(if (d.chg >= 0) upC else dnC)
-            else setTextColor(act.attrColor("colorInk"))
-            val lp = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT)
-            lp.leftMargin = dp(8f).toInt()
-            layoutParams = lp
-        }
-        rq.addView(px)
-        val cg = TextView(act).apply {
-            text = if (d != null && d.ok) fmtPct(d.chg) else ""
-            setTextColor(android.graphics.Color.WHITE)
-            textSize = 11f
-            setTypeface(typeface, android.graphics.Typeface.BOLD)
-            if (d != null && d.ok) setBackgroundResource(
-                if (d.chg >= 0) R.drawable.pill_dist_up else R.drawable.pill_dist_dn)
-            val p = dp(7f).toInt()
-            setPadding(p, dp(3f).toInt(), p, dp(3f).toInt())
-            val lp = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT)
-            lp.leftMargin = dp(8f).toInt()
-            layoutParams = lp
-        }
-        rq.addView(cg)
         return rq
     }
 

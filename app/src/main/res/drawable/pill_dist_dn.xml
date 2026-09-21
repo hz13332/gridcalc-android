@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<!-- 自选距离列涨跌色块·跌(对标稿子.cg.dn #0aa182,绿跌) -->
-<shape xmlns:android="http://schemas.android.com/apk/res/android"
-    android:shape="rectangle">
-    <solid android:color="#0aa182" />
-    <corners android:radius="4dp" />
-</shape>
