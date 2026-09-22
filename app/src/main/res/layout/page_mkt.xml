@@ -34,12 +34,13 @@
                 android:textColor="?attr/colorPrimary"
                 android:textSize="14sp" />
             <TextView
-                android:layout_width="wrap_content"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginBottom="10dp"
-                android:text="行情 · VPVR"
+                android:layout_marginBottom="28dp"
+                android:gravity="center"
+                android:text="行情"
                 android:textColor="?attr/colorInk"
-                android:textSize="16sp"
+                android:textSize="34sp"
                 android:textStyle="bold" />
             <LinearLayout
                 android:layout_width="match_parent"
@@ -97,10 +98,12 @@
                     android:textColor="?attr/colorInk"
                     android:textSize="18sp" />
             </LinearLayout>
+            <!-- 周期行(稿:周/月/季键高41,行与第二行同栅格) -->
             <LinearLayout
+                android:id="@+id/mkt_tf_row"
                 android:layout_width="match_parent"
-                android:layout_height="48dp"
-                android:layout_marginTop="10dp"
+                android:layout_height="41dp"
+                android:layout_marginTop="6dp"
                 android:orientation="horizontal">
                 <Button
                     android:id="@+id/mkt_tf_w"
@@ -134,42 +137,49 @@
                     android:textColor="?attr/colorInk"
                     android:textSize="15sp" />
             </LinearLayout>
+            <!-- 第二行(稿):根数输入框常显(宽=周+月) + 右侧▾确认键(宽=季),
+                 高41,与周期行同栅格(运行时由syncGrid精确定宽) -->
             <LinearLayout
+                android:id="@+id/mkt_row2"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
-                android:orientation="vertical">
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginBottom="5dp"
-                    android:text="K线数量（5~100）"
-                    android:textColor="?attr/colorSub"
-                    android:textSize="14sp"
-                    android:fontFamily="sans-serif-medium" />
+                android:layout_height="41dp"
+                android:layout_marginTop="6dp"
+                android:orientation="horizontal">
                 <EditText
                     android:id="@+id/mkt_kcount"
-                    android:layout_width="match_parent"
-                    android:layout_height="48dp"
+                    android:layout_width="0dp"
+                    android:layout_height="41dp"
+                    android:layout_weight="1"
                     android:background="@drawable/input_bg"
+                    android:contentDescription="K线数量(5~100)"
                     android:importantForAutofill="no"
                     android:inputType="number"
                     android:imeOptions="actionDone"
                     android:singleLine="true"
-                    android:paddingLeft="10dp"
-                    android:paddingRight="10dp"
+                    android:paddingLeft="12dp"
+                    android:paddingRight="12dp"
                     android:text="30"
                     android:textColor="?attr/colorInk"
                     android:textColorHint="?attr/colorFaint"
-                    android:textSize="17sp"
+                    android:textSize="16sp"
                     android:typeface="monospace" />
+                <Button
+                    android:id="@+id/mkt_win"
+                    android:layout_width="0dp"
+                    android:layout_height="41dp"
+                    android:layout_marginLeft="4dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/btn_ghost"
+                    android:text="▾"
+                    android:textColor="?attr/colorInk"
+                    android:textSize="18sp" />
             </LinearLayout>
             <TextView
                 android:id="@+id/mkt_srcnote"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
-                android:text="币：六家现货选量最大 · 股：Nasdaq/雅虎/东方 · 金银：App内查看 · 有一家能用即画"
+                android:text="币：六家现货选量最大 · 股：Nasdaq/雅虎/东方 · 金银/商品：东财期货 · 有一家能用即画"
                 android:textColor="?attr/colorSub"
                 android:textSize="11sp" />
         </LinearLayout>
@@ -188,7 +198,8 @@
                 android:layout_height="wrap_content"
                 android:text="输入品种后查看"
                 android:textColor="?attr/colorSub"
-                android:textSize="13sp" />
+                android:textSize="13sp"
+                android:visibility="gone" />
             <TextView
                 android:id="@+id/mkt_ohlc"
                 android:layout_width="match_parent"

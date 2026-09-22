@@ -2,10 +2,16 @@ package cn.gridcalc.gridcalc
 
 import android.app.AlertDialog
 import android.content.Context
+import android.graphics.Color
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.os.Handler
 import android.os.Looper
 import android.text.Editable
+import android.text.SpannableString
+import android.text.Spanned
 import android.text.TextWatcher
+import android.text.style.ForegroundColorSpan
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.MotionEvent
@@ -18,6 +24,7 @@ import android.widget.PopupWindow
 import android.widget.ScrollView
 import android.widget.TextView
 import java.util.Locale
+import java.util.concurrent.atomic.AtomicInteger
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -35,6 +42,7 @@ object FavStore {
         "gold" -> "黄金"
         "silver" -> "白银"
         "stock" -> "美股"
+        "cmdty" -> "商品"
         else -> t
     }
 
@@ -113,7 +121,23 @@ class FavPanel(
     private var fsRunnable: Runnable? = null
     private var fsGen = 0
 
+    // 距离重试环(稿FAVRetry):行→胶囊映射用于行内逐条补数;
+    // hidden=离开自选页即停表清计时器,distSeq 递增丢弃在途旧结果
+    private val capsules = mutableMapOf<String, TextView>()
+    private var retry: Runnable? = null
+    private var hidden = true
+    private var distSeq = 0
+
     private fun dp(v: Float): Float = act.resources.displayMetrics.density * v
+
+    // 稿.favrow .fb-* 徽标配色(固定hex,不随主题)
+    private fun badgeColor(t: String): Int = when (t) {
+        "crypto" -> Color.parseColor("#f5a623")
+        "gold" -> Color.parseColor("#b8860b")
+        "silver" -> Color.parseColor("#7a8a99")
+        "cmdty" -> Color.parseColor("#8e6bd8")
+        else -> Color.parseColor("#1e80ff") // stock及未标类型
+    }
 
     private fun note(t: String): TextView = TextView(act).apply {
         text = t
@@ -183,21 +207,36 @@ class FavPanel(
         return row
     }
 
-    // 长按600ms确认删除(对标稿子touchstart 600ms+confirm,桌面右键同效)
+    // 长按600ms确认删除(对标稿子touchstart 600ms+confirm,桌面右键同效);
+    // MOVE按touch slop容差判"真移动"才取消——手指微抖/合成swipe的原地MOVE不该杀长按
     private fun armDelete(pick: View, s: String) {
         var lpT: Runnable? = null
         var fired = false
+        var dx = 0f
+        var dy = 0f
+        val slop = android.view.ViewConfiguration.get(act).scaledTouchSlop
         pick.setOnTouchListener { _, e ->
             when (e.action) {
                 MotionEvent.ACTION_DOWN -> {
                     fired = false
+                    dx = e.x
+                    dy = e.y
                     lpT = Runnable {
                         fired = true
                         askDelete(s) { fired = false }
                     }.also { handler.postDelayed(it, 600) }
                     false
                 }
-                MotionEvent.ACTION_MOVE, MotionEvent.ACTION_CANCEL -> {
+                MotionEvent.ACTION_MOVE -> {
+                    val ddx = e.x - dx
+                    val ddy = e.y - dy
+                    if (ddx * ddx + ddy * ddy > (slop * slop).toFloat()) {
+                        lpT?.let { handler.removeCallbacks(it) }
+                        lpT = null
+                    }
+                    false
+                }
+                MotionEvent.ACTION_CANCEL -> {
                     lpT?.let { handler.removeCallbacks(it) }
                     lpT = null
                     false
@@ -230,35 +269,132 @@ class FavPanel(
     private fun fmtPct(v: Double): String =
         (if (v >= 0) "+" else "") + String.format(Locale.US, "%.2f", v) + "%"
 
-    // 行右距离列(对标稿子.rq/.dist终态):只留距第一支撑pct,15px加粗首位;
-    // 失败行为why(—超时/—无源),无缓存为'…'
-    private fun distViews(d: DistR?): View {
-        val rq = LinearLayout(act).apply {
+    // 胶囊dc(照稿.i.dist):ok且pct>=0绿#0aa182=现价在第一支撑上方,
+    // pct<0红#f23645=跌破(取价格上方最近支撑,负值);min-width104/pad9×12/r9/白字17粗;
+    // 无数据'…'或失败why为纯文本15px ink无底色
+    private fun paintDist(dc: TextView, d: DistR?): TextView {
+        if (d != null && d.ok) {
+            dc.text = fmtPct(d.pct)
+            dc.setTextColor(Color.WHITE)
+            dc.textSize = 17f
+            dc.setTypeface(dc.typeface, Typeface.BOLD)
+            dc.minWidth = dp(104f).toInt()
+            dc.setPadding(dp(12f).toInt(), dp(9f).toInt(),
+                dp(12f).toInt(), dp(9f).toInt())
+            dc.background = GradientDrawable().apply {
+                setColor(Color.parseColor(if (d.pct >= 0) "#0aa182" else "#f23645"))
+                cornerRadius = dp(9f)
+            }
+        } else {
+            dc.text = if (d == null) "…" else d.why
+            dc.setTextColor(act.attrColor("colorInk"))
+            dc.textSize = 15f
+            dc.setTypeface(dc.typeface, Typeface.BOLD)
+            dc.background = null
+            dc.minWidth = 0
+            dc.setPadding(0, 0, 0, 0)
+        }
+        return dc
+    }
+
+    // 自选行雪球式版式(照稿):行>pick>[名称列fcol(名称19px/700+fbadge徽标+代码),
+    // 距离列rq>dc胶囊];点行直达行情,长按600ms删除
+    private fun favRowView(f: FavItem, d: DistR?): View {
+        val row = LinearLayout(act).apply {
             orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.END or Gravity.CENTER_VERTICAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(2f).toInt(), dp(14f).toInt(),
+                dp(2f).toInt(), dp(14f).toInt())
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT)
+        }
+        val pick = LinearLayout(act).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            isClickable = true
+            isFocusable = true
+        }
+        val cn = MktSuggest.favName(f.s)
+        val fcol = LinearLayout(act).apply {
+            orientation = LinearLayout.VERTICAL
             layoutParams = LinearLayout.LayoutParams(0,
                 ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         }
-        val dc = TextView(act).apply {
-            text = if (d == null) "…" else if (d.ok) fmtPct(d.pct) else d.why
+        val fname = TextView(act).apply {
+            text = if (cn.isEmpty()) f.s else cn
             setTextColor(act.attrColor("colorInk"))
-            textSize = 15f
-            setTypeface(typeface, android.graphics.Typeface.BOLD)
-            typeface = android.graphics.Typeface.MONOSPACE
+            textSize = 19f
+            setTypeface(typeface, Typeface.BOLD)
         }
+        fcol.addView(fname)
+        // 代码行(照稿):fsub恒在、徽标恒渲染,仅代码在favName非空时带
+        val fsub = LinearLayout(act).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            val p = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT)
+            p.topMargin = dp(3f).toInt()
+            layoutParams = p
+        }
+        val bd = TextView(act).apply {
+            text = FavStore.tag(f.t)
+            setTextColor(Color.WHITE)
+            textSize = 11f
+            setTypeface(typeface, Typeface.BOLD)
+            background = GradientDrawable().apply {
+                setColor(badgeColor(f.t))
+                cornerRadius = dp(4f)
+            }
+            setPadding(dp(5f).toInt(), dp(1f).toInt(),
+                dp(5f).toInt(), dp(1f).toInt())
+        }
+        fsub.addView(bd)
+        if (cn.isNotEmpty()) {
+            val code = TextView(act).apply {
+                text = f.s
+                setTextColor(act.attrColor("colorSub"))
+                textSize = 13f
+                val p = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT)
+                p.leftMargin = dp(6f).toInt()
+                layoutParams = p
+            }
+            fsub.addView(code)
+        }
+        fcol.addView(fsub)
+        val rq = LinearLayout(act).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.END or Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT)
+        }
+        val dc = paintDist(TextView(act), d)
         rq.addView(dc)
-        return rq
+        pick.addView(fcol)
+        pick.addView(rq)
+        row.addView(pick)
+        pick.setOnClickListener { onPick(f.s) }
+        armDelete(pick, f.s)
+        capsules[f.s] = dc
+        return row
     }
 
     fun repaint() {
         favList.removeAllViews()
+        capsules.clear()
         val a = FavStore.get(act)
         if (a.isEmpty()) {
             favList.addView(note("暂无自选，在行情页输入品种后点 ☆ 收藏"))
             return
         }
-        val tf = mkt.curTf()
-        val n = mkt.curN()
+        // 距离窗口读distWin:已提交冻结/未提交跟随周期控件+根数(稿favKey=distWin)
+        val (tf, n) = mkt.distWin()
         data class Row(val it: FavItem, val d: DistR?)
         val rows = a.map { Row(it, FavDist.cached(it.s, tf, n)) }
         // 排序:按|pct|,无值沉底(对标稿子dv/x.d.ok)
@@ -271,41 +407,78 @@ class FavPanel(
             "desc" -> rows.sortedByDescending { dv(it) }
             else -> rows
         }
-        for (r in sorted) {
-            val row = rowView(r.it.s, FavStore.tag(r.it.t), null)
-            val vw = row as LinearLayout
-            (vw.getChildAt(0) as LinearLayout).addView(distViews(r.d))
-            // pick是行内第一个子View
-            armDelete(vw.getChildAt(0), r.it.s)
-            favList.addView(row)
-        }
+        for (r in sorted) favList.addView(favRowView(r.it, r.d))
     }
 
-    // 逐个品种后台拉取,到齐重画(对标稿子refreshFavDist)
+    // 距离刷新+重试环(照稿refreshFavDist):读distWin窗;到一个补一个(行内逐条补数);
+    // 全到齐后有失败且仍在自选页→5秒自动重拉;成功TTL5分钟/失败TTL5秒见FavDist
     fun refreshFavDist() {
+        retry?.let { handler.removeCallbacks(it) }
+        retry = null
+        val (tf, n) = mkt.distWin()
         val syms = FavStore.get(act).map { it.s }.distinct()
         if (syms.isEmpty()) return
-        val tf = mkt.curTf()
-        val n = mkt.curN()
-        Thread {
-            syms.map { s ->
-                Thread {
-                    try {
-                        FavDist.compute(s, tf, n)
-                    } catch (_: Exception) {
-                    }
-                }.also { it.start() }
-            }.forEach { it.join() }
-            act.runOnUiThread { repaint() }
-        }.start()
+        val seq = ++distSeq
+        val total = syms.size
+        val done = AtomicInteger(0)
+        val bad = AtomicInteger(0)
+        for (s in syms) {
+            Thread {
+                var r: DistR? = null
+                try {
+                    r = FavDist.compute(s, tf, n)
+                } catch (_: Exception) {
+                }
+                if (r == null || !r.ok) bad.incrementAndGet()
+                act.runOnUiThread {
+                    if (seq != distSeq || hidden) return@runOnUiThread
+                    capsules[s]?.let { paintDist(it, r) }
+                    if (done.incrementAndGet() == total) finishRefresh(bad.get())
+                }
+            }.start()
+        }
     }
 
-    private fun paintSortBtn() {
-        sortBtn.text = when (FavStore.getSort(act)) {
-            "asc" -> "排序：距近"
-            "desc" -> "排序：距远"
-            else -> "排序：默认"
+    private fun finishRefresh(bad: Int) {
+        // 稿:有失败&&列表非空&&仍在自选页 → FAVRetry=5s后重拉
+        if (bad > 0 && FavStore.get(act).isNotEmpty() && !hidden) {
+            val r2 = Runnable { refreshFavDist() }
+            retry = r2
+            handler.postDelayed(r2, 5000)
         }
+        // 排序非off时按新到值重排(稿order!=='off'→paintFav)
+        if (FavStore.getSort(act) != "off") repaint()
+    }
+
+    // 进自选页(稿showTab('fav')→refreshFavDist):重绘+重刷距离
+    fun onShow() {
+        hidden = false
+        repaint()
+        refreshFavDist()
+    }
+
+    // 离开自选页(稿else clearTimeout(FAVRetry)):停表清计时器,在途旧结果作废
+    fun onHide() {
+        hidden = true
+        distSeq++
+        retry?.let { handler.removeCallbacks(it) }
+        retry = null
+    }
+
+    // 列头(照稿.favhead):"距支撑 ▲▼"双箭头常显,仅颜色区分asc/desc
+    // (激活colorPrimary,未激活#c2c6cf),13px ink-subtle,右缘与胶囊列对齐(见XML)
+    private fun paintSortBtn() {
+        val cur = FavStore.getSort(act)
+        val span = SpannableString("距支撑 ▲▼")
+        val up = if (cur == "asc") act.attrColor("colorPrimary")
+        else Color.parseColor("#c2c6cf")
+        val dn = if (cur == "desc") act.attrColor("colorPrimary")
+        else Color.parseColor("#c2c6cf")
+        span.setSpan(ForegroundColorSpan(up), 4, 5, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        span.setSpan(ForegroundColorSpan(dn), 5, 6, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        sortBtn.text = span
+        sortBtn.setTextColor(act.attrColor("colorSub"))
+        sortBtn.textSize = 13f
     }
 
     private fun hideResults() {

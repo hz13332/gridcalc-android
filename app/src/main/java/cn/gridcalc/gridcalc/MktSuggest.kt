@@ -18,7 +18,7 @@ object MktSuggest {
     private val TOPS = listOf("AAPL", "TSLA", "NVDA", "MSFT", "AMZN", "META",
         "GOOGL", "AMD", "COIN", "MSTR", "NFLX", "BABA", "TSM", "PLTR")
 
-    // 稿子CNNAME原样照搬(中文名→代码)
+    // 稿子CNNAME原样照搬(中文名→代码),v3.7 增补 17 种大宗商品 *00Y
     private val CNNAME = listOf(
         "美光" to "MU", "苹果" to "AAPL", "特斯拉" to "TSLA", "英伟达" to "NVDA",
         "微软" to "MSFT", "亚马逊" to "AMZN", "谷歌" to "GOOGL", "超微" to "AMD",
@@ -27,8 +27,17 @@ object MktSuggest {
         "拼多多" to "PDD", "京东" to "JD", "理想" to "LI", "蔚来" to "NIO",
         "小鹏" to "XPEV", "摩根大通" to "JPM", "辉瑞" to "PFE", "可口可乐" to "KO",
         "麦当劳" to "MCD", "迪士尼" to "DIS", "贝宝" to "PYPL", "思科" to "CSCO",
-        "比特币" to "BTCUSDT", "黄金" to "XAUUSD", "白银" to "XAGUSD"
+        "比特币" to "BTCUSDT", "黄金" to "XAUUSD", "白银" to "XAGUSD",
+        "原油" to "CL00Y", "布伦特原油" to "B00Y", "天然气" to "NG00Y",
+        "燃油" to "HO00Y", "汽油" to "RB00Y", "铜" to "HG00Y", "铂金" to "PL00Y",
+        "钯金" to "PA00Y", "玉米" to "ZC00Y", "小麦" to "ZW00Y", "大豆" to "ZS00Y",
+        "豆粕" to "ZM00Y", "豆油" to "ZL00Y", "燕麦" to "ZO00Y", "稻谷" to "ZR00Y",
+        "棉花" to "CT00Y", "糖" to "SB00Y"
     )
+
+    // 反查中文名(对标稿子favName):命中第一个值相等的键,无则空串
+    fun favName(s: String): String =
+        CNNAME.firstOrNull { it.second == s }?.first ?: ""
 
     private val SPOT_QUOTES = setOf("USDT", "USD", "USDC")
 

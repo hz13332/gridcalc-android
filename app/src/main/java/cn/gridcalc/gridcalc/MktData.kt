@@ -49,6 +49,8 @@ object MktData {
     fun symType(s: String): String {
         val u = (s ?: "").trim().uppercase(Locale.US)
         if (u.isEmpty()) return ""
+        // 稿序:*00Y 优先识别为商品(金银期货码 GC00Y/SI00Y 也归商品线)
+        if (Regex("00Y$").containsMatchIn(u)) return "cmdty"
         if (u.contains("XAU") || u.contains("GOLD") || u.startsWith("GC=F")) return "gold"
         if (u.contains("XAG") || u.contains("SILVER") || u.startsWith("SI=F")) return "silver"
         if (u.endsWith("USDT") || u.endsWith("USD") || u.endsWith("USDC") ||
@@ -384,17 +386,29 @@ object MktData {
         return listOf(VendorKs("NQ", ks.takeLast(n)))
     }
 
-    // 东方财富push2his美股(secid=105.SYM):行=date,open,close,high,low,volume,amount
-    // (oc在hl前);Q取3倍月数供toQuarterly合成(照搬);v取份额成交量f56(与NQ/YH
-    // 同股数口径直接比),qv取金额f57
+    // 东货行情 secid 映射(照稿 EMID):金银 101.GC00Y/101.SI00Y + 17 种大宗商品 *00Y,
+    // 未命中映射按 105.<代码> 走美股。代码原样大写(含数字/=,不再剥字符)。
+    private val EMID = mapOf(
+        "GC=F" to "101.GC00Y", "SI=F" to "101.SI00Y", "CL00Y" to "102.CL00Y",
+        "B00Y" to "112.B00Y", "NG00Y" to "102.NG00Y", "HO00Y" to "102.HO00Y",
+        "RB00Y" to "102.RB00Y", "HG00Y" to "101.HG00Y", "PL00Y" to "102.PL00Y",
+        "PA00Y" to "102.PA00Y", "ZC00Y" to "103.ZC00Y", "ZW00Y" to "103.ZW00Y",
+        "ZS00Y" to "103.ZS00Y", "ZM00Y" to "103.ZM00Y", "ZL00Y" to "103.ZL00Y",
+        "ZO00Y" to "103.ZO00Y", "ZR00Y" to "103.ZR00Y", "CT00Y" to "108.CT00Y",
+        "SB00Y" to "108.SB00Y"
+    )
+
+    // 东方财富push2his(secid按EMID:商品/贵金属期货,未命中105.SYM美股):行=date,
+    // open,close,high,low,volume,amount(oc在hl前);Q取3倍月数供toQuarterly合成
+    // (照搬,mq上限300);v取份额成交量f56(与NQ/YH同股数口径直接比),qv取金额f57
     fun fetchEastmoney(sym: String, tf: String, count: Int, timeoutMs: Int = 10000): List<VendorKs> {
-        var base = sym.uppercase(Locale.US).replace(Regex("[^A-Z]"), "")
-        if (base.isEmpty()) base = "AAPL"
+        val code = sym.trim().uppercase(Locale.US)
+        val secid = EMID[code] ?: ("105." + code)
         val n = max(5, min(200, count))
-        val mq = if (tf == "Q") min(n * 3, 100) else n
+        val mq = if (tf == "Q") min(n * 3, 300) else n
         val klt = if (tf == "W") "102" else "103"
         val j = JSONObject(get(
-            "https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=105.$base&klt=$klt&fqt=1&lmt=$mq&end=20500000" +
+            "https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=$secid&klt=$klt&fqt=1&lmt=$mq&end=20500000" +
                 "&fields1=f1,f2,f3,f4,f5,f6,f7,f8&fields2=f51,f52,f53,f54,f55,f56,f57,f58" +
                 "&ut=f057cbcbce2a86e2866ab8877db1d059&forcect=1",
             timeoutMs = timeoutMs))
@@ -418,6 +432,11 @@ object MktData {
         val ks = if (tf == "Q") toQuarterly(out) else out
         return listOf(VendorKs("ED", ks.takeLast(n)))
     }
+
+    // 贵金属/大宗商品单源:只走东财期货(稿 fetchMetals 线路 101.GC00Y/101.SI00Y
+    // 与 17 种商品 *00Y),Yahoo 贵金属线路已按稿删除;Q 合成/截根由 fetchEastmoney 承担
+    fun fetchMetals(sym: String, tf: String, count: Int, timeoutMs: Int = 10000): List<VendorKs> =
+        fetchEastmoney(sym, tf, count, timeoutMs)
 
     fun vendorName(v: String): String = when (v) {
         "BN" -> "Binance"

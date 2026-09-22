@@ -1,8 +1,10 @@
 package cn.gridcalc.gridcalc
 
 // ---------- 自选距离列(对标稿子favDist/refreshFavDist终态) ----------
-// 每行距第一支撑pct+现价+涨跌幅;key=type|SYM|tf|n(tf/n读行情页),
-// 5分钟缓存;股票/币走现有legs,贵金属直接无源;失败why按耗时判—超时/—无源。
+// 每行距第一支撑pct+现价+涨跌幅;key=type|SYM|tf|n字符串键(tf/n读distWin冻结窗),
+// 成功缓存5分钟/失败只压5秒让重试环真能再拉;币/股走现有legs,
+// 贵金属与17种商品走东财单源(稿fetchMetals:GC=F/SI=F/*00Y),不再无源;
+// 支撑:价在第一支撑上方取最高支撑(绿),全部支撑在上方(已跌破)取最近一条(红,负值)。
 
 data class DistR(
     val ok: Boolean,
@@ -13,17 +15,20 @@ data class DistR(
 )
 
 object FavDist {
-    private const val TTL = 5 * 60 * 1000L
+    private const val TTL_OK = 5 * 60 * 1000L
+    private const val TTL_FAIL = 5 * 1000L
 
     private val cache = mutableMapOf<String, Pair<Long, DistR>>()
 
+    // 字符串键(照稿favKey().key):对象作键会永远miss,此处自查为字符串拼接
     fun key(s: String, tf: String, n: Int): String =
         MktData.symType(s) + "|" + s + "|" + tf + "|" + n
 
     @Synchronized
     fun cached(s: String, tf: String, n: Int): DistR? {
         val h = cache[key(s, tf, n)] ?: return null
-        if (System.currentTimeMillis() - h.first >= TTL) return null
+        val ttl = if (h.second.ok) TTL_OK else TTL_FAIL
+        if (System.currentTimeMillis() - h.first >= ttl) return null
         return h.second
     }
 
@@ -33,7 +38,8 @@ object FavDist {
         val t0 = System.currentTimeMillis()
         var r = DistR(false)
         try {
-            val vs = when (MktData.symType(s)) {
+            val type = MktData.symType(s)
+            val vs = when (type) {
                 "crypto" -> MktData.cryptoLegs(s).mapNotNull {
                     try {
                         MktData.fetchCryptoLeg(it, s, tf, n)
@@ -52,20 +58,23 @@ object FavDist {
                         null
                     }
                 }
+                // 贵金属/商品:东财单源(稿favDist分支:gold→GC=F silver→SI=F cmdty→s)
+                "gold" -> try { MktData.fetchMetals("GC=F", tf, n) } catch (_: Exception) { null }
+                "silver" -> try { MktData.fetchMetals("SI=F", tf, n) } catch (_: Exception) { null }
+                "cmdty" -> try { MktData.fetchMetals(s, tf, n) } catch (_: Exception) { null }
                 else -> null
             }
             if (vs != null && vs.isNotEmpty()) {
                 val ag = MktData.aggregate(vs)
                 val vp = MktData.profileOf(ag.ks)
                 val cur = ag.ks.last().c
+                val prv = if (ag.ks.size > 1) ag.ks[ag.ks.size - 2].c else cur
+                val chg = (cur - prv) / prv * 100.0
                 val below = vp.sup.filter { it < cur }
-                if (below.isNotEmpty()) {
-                    val prv = if (ag.ks.size > 1) ag.ks[ag.ks.size - 2].c else cur
-                    r = DistR(
-                        true,
-                        (cur - below[0]) / cur * 100.0, cur,
-                        (cur - prv) / prv * 100.0
-                    )
+                val sup = if (below.isNotEmpty()) below[0]
+                else vp.sup.filter { it >= cur }.minOrNull()
+                if (sup != null) {
+                    r = DistR(true, (cur - sup) / cur * 100.0, cur, chg)
                 }
             }
         } catch (_: Exception) {

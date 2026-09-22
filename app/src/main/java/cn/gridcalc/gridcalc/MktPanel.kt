@@ -2,6 +2,7 @@ package cn.gridcalc.gridcalc
 
 import android.view.View
 import android.view.ViewGroup
+import android.view.Gravity
 import android.view.inputmethod.EditorInfo
 import android.graphics.Color
 import android.text.SpannableStringBuilder
@@ -16,10 +17,24 @@ import android.view.LayoutInflater
 import android.widget.BaseAdapter
 import android.widget.Button
 import android.widget.EditText
+import android.widget.LinearLayout
 import android.widget.ListView
 import android.widget.PopupWindow
 import android.widget.TextView
 import java.util.Locale
+
+// ---------- 自选距离窗口冻结(照稿 var DISTTF=null, DISTN=null) ----------
+// 未提交时 distWin() 跟随行情页周期控件+根数;点▾"确认"后 commitDistWin() 冻结,
+// 直到下次确认。行情 K 线加载(mkLoad)不读 DistWin,仍实时跟随控件。
+object DistWin {
+    @Volatile var tf: String? = null
+    @Volatile var n: Int = 0
+
+    fun commit(curTf: String, curN: Int) {
+        tf = curTf
+        n = curN
+    }
+}
 
 // ---------- 行情 VPVR · 面板接线 ----------
 // 照搬设计稿 mkLoad/renderMK 的文字侧:品种+K数+周/月/季分段+查看,
@@ -39,15 +54,21 @@ class MktPanel(private val act: MainActivity, page: View) {
     private val srcNote: TextView = page.findViewById(R.id.mkt_srcnote)
     private val chart: MktView = page.findViewById(R.id.mkt_chart)
     private val favBtn: Button = page.findViewById(R.id.mkt_fav)
+    private val row2: LinearLayout = page.findViewById(R.id.mkt_row2)
+    private val winBtn: Button = page.findViewById(R.id.mkt_win)
+    private var winPop: PopupWindow? = null
 
     // 自选变更(收藏/删除)时通知自选页重绘;由MainActivity接线
     var onFavChanged: (() -> Unit)? = null
+    // 点▾确认提交距离窗口后,通知自选页重刷距离(稿winGo:commit+refresh+收菜单)
+    var onDistCommitted: (() -> Unit)? = null
 
     private var tf = "M"
     private var reqSeq = 0
     private var lastKs: List<KLine> = emptyList()
     private var lastSrc = ""
     private var lastMkt = ""
+    private var lastType = ""
     // 首家先画注记:非空时状态行显示"POC x（初步·源）",终画前清掉
     private var prelimTag: String? = null
 
@@ -171,6 +192,85 @@ class MktPanel(private val act: MainActivity, page: View) {
     fun curN(): Int = kcountInp.text.toString().trim().toDoubleOrNull()
         ?.let { minOf(100, Math.round(it).toInt()) } ?: 30
 
+    // 自选距离窗口(照稿distWin):已提交返回冻结值,未提交跟随周期控件+当前根数
+    fun distWin(): Pair<String, Int> =
+        DistWin.tf?.let { it to DistWin.n } ?: (tf to curN())
+
+    // 点▾确认(照稿commitDistWin):按当前周期控件+根数冻结窗口
+    fun commitDistWin() {
+        DistWin.commit(tf, curN())
+    }
+
+    // ▾确认菜单(照稿winPop):与箭头等宽/等高/同右缘,高41文字居中;
+    // 点确认=提交窗口+重刷自选距离+收菜单;点菜单外部收起(outsideTouchable)
+    private fun toggleWinPop() {
+        val wasShowing = winPop?.isShowing == true
+        winPop?.dismiss()
+        if (wasShowing) return
+        val go = Button(act).apply {
+            text = "确认"
+            textSize = 15f
+            gravity = Gravity.CENTER
+            setTextColor(act.attrColor("colorInk"))
+            setBackgroundResource(android.R.color.transparent)
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(41f).toInt())
+            setOnClickListener {
+                commitDistWin()
+                onDistCommitted?.invoke()
+                winPop?.dismiss()
+            }
+        }
+        val pw = PopupWindow(go, winBtn.width, dp(41f).toInt(), false).apply {
+            setBackgroundDrawable(act.resources.getDrawable(R.drawable.card_bg, act.theme))
+            elevation = dp(8f)
+            isOutsideTouchable = true
+            isFocusable = true
+        }
+        winPop = pw
+        pw.showAsDropDown(winBtn, 0, dp(4f).toInt())
+    }
+
+    // 行情页同栅格(照稿第二行注释):间隙单边4dp(稿gap:4px,相邻不可双边各4dp),
+    // k=(W-8dp)/3取整、余数补最后键;周期行三键等宽k/k/末键、高41;
+    // 第二行输入框=周+月同宽(2k+4dp)、▾=末键宽(W-2k-8dp),与季键同宽同右缘;
+    // 仅在数值变化时改layoutParams,避免layout回环
+    private fun syncGrid() {
+        val w = row2.width
+        if (w <= 0) return
+        val g = dp(4f).toInt()
+        val k = (w - 2 * g) / 3
+        val last = w - 2 * k - 2 * g
+        if (k <= 0 || last <= 0) return
+        for ((i, b) in listOf(tfW, tfM, tfQ).withIndex()) {
+            val lp = b.layoutParams as LinearLayout.LayoutParams
+            val bw = if (i == 2) last else k
+            val rm = if (i == 2) 0 else g
+            if (lp.width != bw || lp.weight != 0f ||
+                lp.leftMargin != 0 || lp.rightMargin != rm
+            ) {
+                lp.width = bw
+                lp.weight = 0f
+                lp.leftMargin = 0
+                lp.rightMargin = rm
+                b.layoutParams = lp
+            }
+        }
+        val kw = 2 * k + g
+        val klp = kcountInp.layoutParams as LinearLayout.LayoutParams
+        if (klp.width != kw || klp.weight != 0f) {
+            klp.width = kw
+            klp.weight = 0f
+            kcountInp.layoutParams = klp
+        }
+        val wlp = winBtn.layoutParams as LinearLayout.LayoutParams
+        if (wlp.width != last || wlp.weight != 0f) {
+            wlp.width = last
+            wlp.weight = 0f
+            winBtn.layoutParams = wlp
+        }
+    }
+
     // 回车/查看:下拉开着且有选中行→用选中项,否则按输入框文字直接加载
     private fun pickOrLoad() {
         val pw = sugPopup
@@ -210,6 +310,9 @@ class MktPanel(private val act: MainActivity, page: View) {
         goBtn.setOnClickListener { pickOrLoad() }
         favBtn.setOnClickListener { toggleFav() }
         paintStar()
+        // ▾确认菜单 + 同栅格宽度(稿:第二行与周期行同栅格,布局完成后按实际宽计算)
+        winBtn.setOnClickListener { toggleWinPop() }
+        row2.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> syncGrid() }
         val done = { v: View, after: () -> Unit ->
             act.hideKeyboard(v)
             after()
@@ -294,8 +397,8 @@ class MktPanel(private val act: MainActivity, page: View) {
                 sup.slice(2..minOf(3, sup.size - 1))
                     .joinToString(" / ") { MktData.mkFmt(it) })
             leg.text = legText
-            mkStatus((if (sup.isNotEmpty()) "支撑 " + MktData.mkFmt(sup[0])
-            else "暂无支撑") + (prelimTag ?: ""), false)
+            // 稿:成功态不显示"支撑xxx"状态文字(mktstatus默认display:none)
+            mkStatus("", false)
         }
     }
 
@@ -313,9 +416,15 @@ class MktPanel(private val act: MainActivity, page: View) {
         }
     }
 
+    // 稿mkStatus:mktstatus 仅 err 时 display:block,成功/拉取中一律收起
     private fun mkStatus(t: String, err: Boolean) {
-        status.text = t
-        status.setTextColor(act.attrColor(if (err) "colorRed" else "colorSub"))
+        if (err && t.isNotEmpty()) {
+            status.visibility = View.VISIBLE
+            status.text = t
+            status.setTextColor(act.attrColor("colorRed"))
+        } else {
+            status.visibility = View.GONE
+        }
     }
 
     fun mkLoad() {
@@ -332,12 +441,16 @@ class MktPanel(private val act: MainActivity, page: View) {
         }
         val n = minOf(100, count.toInt())
         val type = MktData.symType(s)
+        lastType = type
+        val su = s.trim().uppercase(Locale.US)
+        // 稿MK.mkt:cmdty用CNNAME中文名(有则"中文名 代码",无则代码),其余按类型前缀
         val mkt = when (type) {
-            "crypto" -> "币 "
-            "gold" -> "黄金 "
-            "silver" -> "白银 "
-            else -> "美股 "
-        } + s.trim().uppercase(Locale.US)
+            "cmdty" -> MktSuggest.favName(su).let { if (it.isEmpty()) su else it + " " + su }
+            "crypto" -> "币 $su"
+            "gold" -> "黄金 $su"
+            "silver" -> "白银 $su"
+            else -> "美股 $su"
+        }
         prelimTag = null
         val seq = ++reqSeq
         if (type == "stock") {
@@ -348,11 +461,18 @@ class MktPanel(private val act: MainActivity, page: View) {
             loadCryptoParallel(s, n, mkt, seq)
             return
         }
+        // 贵金属/商品东财单源(稿ysym:gold→GC=F、silver→SI=F、cmdty→原码*00Y,
+        // 经EMID映射到101.GC00Y/101.SI00Y与17种商品*00Y),Yahoo贵金属线已删;
+        // K线用当前控件值加载,不受距离窗口冻结影响
+        val ysym = when (type) {
+            "gold" -> "GC=F"
+            "silver" -> "SI=F"
+            else -> su
+        }
         mkStatus("拉取中…", false)
         Thread {
             try {
-                val vs = if (type == "gold") MktData.fetchYahooDaily("GC=F", tf, n)
-                else MktData.fetchYahooDaily("SI=F", tf, n)
+                val vs = MktData.fetchMetals(ysym, tf, n)
                 val ag = MktData.aggregate(vs)
                 act.runOnUiThread {
                     if (seq != reqSeq) return@runOnUiThread
@@ -373,9 +493,12 @@ class MktPanel(private val act: MainActivity, page: View) {
         lastSrc = ag.src
         lastMkt = mkt
         chart.setData(ag.ks)
-        srcNote.text = mkt + " · " + ag.src + " · 可见 " + ag.ks.size +
-            " 根 · " + MktData.fmtDT(ag.ks.first().t) + "~" +
-            MktData.fmtDT(ag.ks.last().t)
+        // 稿srcNote=可见区间;v3.7 金银/商品标注东财期货来源(稿fetchMetals线路
+        // 101.GC00Y/101.SI00Y),股票/币仍标聚合源名
+        val src = if (lastType == "gold" || lastType == "silver" || lastType == "cmdty")
+            "东财期货" else ag.src
+        srcNote.text = MktData.fmtDT(ag.ks.first().t) + "~" +
+            MktData.fmtDT(ag.ks.last().t) + " · " + src + (prelimTag ?: "")
     }
 
     // ---------- 股票三源并行(Nasdaq+YahooDaily+东方财富)+首家先画 ----------

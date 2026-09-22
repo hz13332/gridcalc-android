@@ -368,6 +368,10 @@ class MainActivity : Activity() {
         body.addView(v)
         playPageAnim(v, anim)
         paintTabs()
+        // 距离重试环随自选页显隐(稿showTab('fav')→refreshFavDist,离开→清FAVRetry)
+        if (::favPanel.isInitialized) {
+            if (name == "fav") favPanel.onShow() else favPanel.onHide()
+        }
     }
 
     private fun playPageAnim(v: View, anim: Int) {
@@ -488,6 +492,8 @@ class MainActivity : Activity() {
             mktPanel.mkLoad()
         }
         mktPanel.onFavChanged = { favPanel.repaint() }
+        // 点▾确认=提交距离窗口+重刷自选距离+收菜单(稿winGo;收菜单在MktPanel内)
+        mktPanel.onDistCommitted = { favPanel.refreshFavDist() }
         mktPage.findViewById<Button>(R.id.mkt_back).setOnClickListener {
             showTab("fav", ANIM_FROM_L)
         }
