@@ -52,8 +52,12 @@ class MktPanel(private val act: MainActivity, page: View) {
     private val ohlc: TextView = page.findViewById(R.id.mkt_ohlc)
     private val leg: TextView = page.findViewById(R.id.mkt_leg)
     private val srcNote: TextView = page.findViewById(R.id.mkt_srcnote)
+    private val price: TextView = page.findViewById(R.id.mkt_price)
+    private val tgt: TextView = page.findViewById(R.id.mkt_tgt)
     private val chart: MktView = page.findViewById(R.id.mkt_chart)
     private val favBtn: Button = page.findViewById(R.id.mkt_fav)
+    private val dock: LinearLayout = page.findViewById(R.id.mkt_input_dock)
+    private val searchBtn: View = page.findViewById(R.id.mkt_search)
     private val row2: LinearLayout = page.findViewById(R.id.mkt_row2)
     private val winBtn: Button = page.findViewById(R.id.mkt_win)
     private var winPop: PopupWindow? = null
@@ -69,6 +73,7 @@ class MktPanel(private val act: MainActivity, page: View) {
     private var lastSrc = ""
     private var lastMkt = ""
     private var lastType = ""
+    private var lastSym = ""
     // 首家先画注记:非空时状态行显示"POC x（初步·源）",终画前清掉
     private var prelimTag: String? = null
 
@@ -307,6 +312,17 @@ class MktPanel(private val act: MainActivity, page: View) {
 
     init {
         paintTf()
+        // 稿mktSearch(1155):点🔍展开原隐藏品种输入坞并聚焦品种输入框(只展不收,同稿display='')
+        searchBtn.setOnClickListener {
+            dock.visibility = View.VISIBLE
+            symInp.requestFocus()
+            symInp.post {
+                val imm = act.getSystemService(android.content.Context.INPUT_METHOD_SERVICE)
+                    as? android.view.inputmethod.InputMethodManager
+                imm?.showSoftInput(
+                    symInp, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
+            }
+        }
         goBtn.setOnClickListener { pickOrLoad() }
         favBtn.setOnClickListener { toggleFav() }
         paintStar()
@@ -379,6 +395,8 @@ class MktPanel(private val act: MainActivity, page: View) {
             // 第2行=根数·来源独占一行,其余支撑/十字行跟后竖排;
             // POC/VA只算不显示;状态行报第一支撑价,无则暂无支撑
             val sup = info.supShow
+            // 稿renderMK(764):supShow(现价之下支撑)→linkCalc 软联动(计算页最低价/目标爆仓价上限)
+            act.linkCalc(sup)
             val legText = SpannableStringBuilder()
             if (sup.isNotEmpty()) {
                 val markStart = legText.length
@@ -443,6 +461,7 @@ class MktPanel(private val act: MainActivity, page: View) {
         val type = MktData.symType(s)
         lastType = type
         val su = s.trim().uppercase(Locale.US)
+        lastSym = su
         // 稿MK.mkt:cmdty用CNNAME中文名(有则"中文名 代码",无则代码),其余按类型前缀
         val mkt = when (type) {
             "cmdty" -> MktSuggest.favName(su).let { if (it.isEmpty()) su else it + " " + su }
@@ -493,12 +512,41 @@ class MktPanel(private val act: MainActivity, page: View) {
         lastSrc = ag.src
         lastMkt = mkt
         chart.setData(ag.ks)
-        // 稿srcNote=可见区间;v3.7 金银/商品标注东财期货来源(稿fetchMetals线路
-        // 101.GC00Y/101.SI00Y),股票/币仍标聚合源名
-        val src = if (lastType == "gold" || lastType == "silver" || lastType == "cmdty")
-            "东财期货" else ag.src
+        // 稿D2(843) srcNote=纯日期区间:去掉「 · 来源(初步·来源)」后缀;
+        // 来源仍由图例「N根·源」承载(金银/商品=东财期货)
         srcNote.text = MktData.fmtDT(ag.ks.first().t) + "~" +
-            MktData.fmtDT(ag.ks.last().t) + " · " + src + (prelimTag ?: "")
+            MktData.fmtDT(ag.ks.last().t)
+        // 稿mkhead(291)只保留30px现价;mkid品种名/mkChg涨跌徽标全树零命中,无需再删
+        price.text = MktData.mkFmt(ag.ks.lastOrNull()?.c)
+        paintTgt(ag, seq)
+    }
+
+    // 稿TGT:美股详情在图例行下显示机构目标均价(Nasdaq聚合);
+    // 非股/拉取失败/已切换品种(seq过期)一律隐藏,行样式照稿.tgtRow(12sp colorSub)
+    private fun paintTgt(ag: Agg, seq: Int) {
+        if (lastType != "stock" || seq != reqSeq) {
+            tgt.visibility = View.GONE
+            return
+        }
+        val cur = ag.ks.lastOrNull()?.c ?: 0.0
+        val sym = lastSym
+        Thread {
+            val r = MktData.fetchTgt(sym)
+            act.runOnUiThread {
+                if (seq != reqSeq || lastType != "stock") return@runOnUiThread
+                if (r == null || cur <= 0) {
+                    tgt.visibility = View.GONE
+                    return@runOnUiThread
+                }
+                val pct = (r.avg - cur) / cur * 100
+                tgt.text = "机构目标均价 " + MktData.mkFmt(r.avg) + "（" + r.n + "家 · " +
+                    (if (pct >= 0) "高于" else "低于") + "当前价 " +
+                    String.format(Locale.US, "%.2f", Math.abs(pct)) + "%）"
+                tgt.visibility = View.VISIBLE
+                // 稿PH(406-414):机构目标均价>现价且>当前最低价才写计算页最高价(同值不扰手改)
+                act.linkPhigh(r.avg, cur)
+            }
+        }.start()
     }
 
     // ---------- 股票三源并行(Nasdaq+YahooDaily+东方财富)+首家先画 ----------

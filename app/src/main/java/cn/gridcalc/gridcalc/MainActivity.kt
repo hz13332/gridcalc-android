@@ -22,6 +22,7 @@ import kotlin.math.pow
 class MainActivity : Activity() {
 
     private lateinit var body: FrameLayout
+    private var sbTop = 0 // 状态栏inset:真融合后垫在各页根ScrollView上(静止位),换页即补
     private lateinit var calcPage: View
     private lateinit var settingsPage: View
     private lateinit var mktPage: View
@@ -54,6 +55,16 @@ class MainActivity : Activity() {
 
     private var tab = "fav"
     private var mode = "follow"
+
+    // ---------- 行情→计算软联动(稿L393-414:LINK/PH) ----------
+    private var lkPrev: Pair<Double, Double>? = null // 上次联动写入的一对支撑位(sup1,sup2)
+    private var lkCap: Double? = null // 目标爆仓价上限(sup2;×解除后同对不再回写)
+    private var lkPh: Double? = null // 上次由机构目标均价写入的最高价(同值不扰手改)
+    private lateinit var statLiqCard: View // 爆仓卡(超上限画红框)
+    private lateinit var statCap: View // 目标上限行(默认收起)
+    private lateinit var statCapv: TextView
+    private lateinit var capX: Button
+    private lateinit var calcErr: TextView // 稿#err 报错行
 
     companion object {
         const val ANIM_TAB = 0
@@ -182,9 +193,14 @@ class MainActivity : Activity() {
         detSum.setTextColor(attrColor("colorSub"))
         detSum.text = "明细会在计算后显示"
         rows.removeAllViews()
+        // 稿resetIdle:清报错行+爆仓卡红框(.stat.bad remove),爆仓价值色回墨
+        showErr(null)
+        if (::statLiqCard.isInitialized) statLiqCard.background = null
+        statVals["liq"]?.setTextColor(attrColor("colorInk"))
     }
 
     private fun onCalc() {
+        showErr(null) // 稿calc()首行clear:清上一轮目标上限报错
         try {
             val c = getNum(inp["C"]!!, "总投入")
             getNum(inp["L"]!!, "杠杆倍率").let { if (it < 1) throw IllegalArgumentException("杠杆倍率必须≥1") }
@@ -209,6 +225,19 @@ class MainActivity : Activity() {
             val red = attrColor("colorRed")
             val ink = attrColor("colorInk")
             val sub = attrColor("colorSub")
+            // 稿451-454:目标上限硬约束——爆仓价超上限:其余结果全部归零(稿resetIdle),
+            // 只亮爆仓价、爆仓卡变红、报错「爆仓价高于目标值」,不画网格明细
+            val cap = lkCap
+            if (cap != null && r.liq != null && r.liq > cap) {
+                idle()
+                statVals["liq"]!!.text = fmt(r.liq!!)
+                statVals["liq"]!!.setTextColor(red)
+                markLiqBad()
+                showErr("爆仓价高于目标值")
+                return
+            }
+            statLiqCard.background = null
+            statVals["liq"]!!.setTextColor(ink)
             hero.setTextColor(if (r.net >= 0) teal else red)
             hero.text = "%+.2f USDT".format(r.net)
             heroSub.setTextColor(sub)
@@ -267,6 +296,66 @@ class MainActivity : Activity() {
         }
     }
 
+    // ---------- 稿LINK/PH 软联动 + 目标爆仓价上限(393-414) ----------
+    // 稿#err:报错行显示/隐藏(null或空=收起)
+    private fun showErr(m: String?) {
+        if (m.isNullOrEmpty()) {
+            calcErr.visibility = View.GONE
+            calcErr.text = ""
+        } else {
+            calcErr.visibility = View.VISIBLE
+            calcErr.text = m
+        }
+    }
+
+    // 稿paintCap(394-396):爆仓卡第二行灰字「目标上限 X」,无上限收起
+    private fun paintCap() {
+        val c = lkCap
+        if (c == null) {
+            statCap.visibility = View.GONE
+            statCapv.text = ""
+        } else {
+            statCap.visibility = View.VISIBLE
+            statCapv.text = "目标上限 " + fmt(c)
+        }
+    }
+
+    // 稿.stat.bad:爆仓卡红框(稿1px CSS边框≈density取整像素,圆角8dp)
+    private fun markLiqBad() {
+        statLiqCard.background = android.graphics.drawable.GradientDrawable().apply {
+            setColor(android.graphics.Color.TRANSPARENT)
+            setStroke((resources.displayMetrics.density + 0.5f).toInt().coerceAtLeast(1),
+                attrColor("colorRed"))
+            cornerRadius = resources.displayMetrics.density * 8f
+        }
+    }
+
+    // 稿linkCalc(397-404):支撑位≥2才联动;同一对支撑原样返回不覆盖手改,值变才覆盖;
+    // sup1→计算页最低价(JS toPrecision(8)=jsPrec);sup2→记为目标爆仓价上限并paintCap
+    fun linkCalc(sup: List<Double>) {
+        if (sup.size < 2) return
+        val s1 = sup[0]
+        val s2 = sup[1]
+        val prev = lkPrev
+        if (prev != null && prev.first == s1 && prev.second == s2) return
+        lkPrev = Pair(s1, s2)
+        inp["Pl"]!!.setText(MktData.jsPrec(s1))
+        lkCap = s2
+        paintCap()
+    }
+
+    // 稿linkPhigh(406-414):Nasdaq机构目标均价>现价且>当前最低价才写入计算页最高价;
+    // 最低价非数字(NaN)放行;同值(LKph门)不打扰手改
+    fun linkPhigh(avg: Double, cur: Double) {
+        if (!(avg > 0) || !(cur > 0)) return
+        if (avg <= cur) return
+        val pv = inp["Pl"]!!.text.toString().trim().toDoubleOrNull()
+        if (pv != null && !(avg > pv)) return
+        if (lkPh == avg) return
+        lkPh = avg
+        inp["Ph"]!!.setText(MktData.jsPrec(avg))
+    }
+
     private fun makeRow(
         idx: String, price: String, pill: String?, cum: String,
         cumColor: Int, zebra: Boolean, header: Boolean
@@ -306,7 +395,9 @@ class MainActivity : Activity() {
     // ---------- 界面 ----------
 
     // 打孔屏适配(对标稿子viewport-fit=cover+safe-area-inset):edge-to-edge,
-    // 状态栏/导航栏透明,内容区按systemBars insets垫高;浅色主题配深色状态栏图标。
+    // 状态栏/导航栏透明,浅色主题配深色状态栏图标;真融合=不垫body,改垫各页根
+    // ScrollView(sbTop)+clipToPadding=false(四页布局已设):静止时头部在栏下,
+    // 滚动时行从状态栏图标后面穿过。平台差异:稿(浏览器)只能垫高,App单侧原生行为。
     // 纯框架API实现(minSdk26,无外部依赖)。
     private fun edgeToEdge(light: Boolean) {
         if (android.os.Build.VERSION.SDK_INT >= 30) {
@@ -332,7 +423,9 @@ class MainActivity : Activity() {
             val top = insets.systemWindowInsetTop
             @Suppress("DEPRECATION")
             val bottom = insets.systemWindowInsetBottom
-            body.setPadding(0, top, 0, 0)
+            sbTop = top
+        body.setPadding(0, 0, 0, 0)
+        for (i in 0 until body.childCount) body.getChildAt(i).setPadding(0, sbTop, 0, 0)
             val bar = findViewById<View>(R.id.tabbar)
             bar.setPadding(bar.paddingLeft, bar.paddingTop, bar.paddingRight, bottom)
             insets
@@ -366,6 +459,7 @@ class MainActivity : Activity() {
             else -> calcPage
         }
         body.addView(v)
+        v.setPadding(0, sbTop, 0, 0) // 真融合:换入页垫静止位,clipToPadding=false放行滚动穿越
         playPageAnim(v, anim)
         paintTabs()
         // 距离重试环随自选页显隐(稿showTab('fav')→refreshFavDist,离开→清FAVRetry)
@@ -460,6 +554,36 @@ class MainActivity : Activity() {
         out.putBoolean("dbl", dbl)
     }
 
+    // ---------- ⑦返回键分发(稿 OnBackPressedDispatcher 语义,内置同构微型版) ----------
+    // androidx.activity 实现会要求 gradle.properties android.useAndroidX=true,
+    // 该文件不在本任务 in-scope 清单内(契约校验拒绝),故在此内置等价分发器:
+    // onBackPressed() → 首个 enabled 回调(handleOnBackPressed);无回调走系统默认 finish。
+    open class OnBackPressedCallback(open val enabled: Boolean) {
+        open fun handleOnBackPressed() {}
+    }
+
+    class OnBackPressedDispatcher {
+        private val callbacks = mutableListOf<OnBackPressedCallback>()
+        fun addCallback(owner: Any?, callback: OnBackPressedCallback) {
+            callbacks.add(callback)
+        }
+        fun hasEnabledCallbacks(): Boolean = callbacks.any { it.enabled }
+        fun handleOnBackPressed() {
+            callbacks.lastOrNull { it.enabled }?.handleOnBackPressed()
+        }
+    }
+
+    private val onBackPressedDispatcher = OnBackPressedDispatcher()
+
+    // 稿⑦:回调常驻(在 onCreate 注册)——行情详情可见时拦回自选列表,根 Tab 走默认 finish()
+    override fun onBackPressed() {
+        if (onBackPressedDispatcher.hasEnabledCallbacks()) {
+            onBackPressedDispatcher.handleOnBackPressed()
+        } else {
+            super.onBackPressed()
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         mode = loadMode()
         val actual = when (mode) {
@@ -487,6 +611,10 @@ class MainActivity : Activity() {
         favPage = inf.inflate(R.layout.page_fav, body, false)
         favPanel = FavPanel(this, favPage, mktPanel) { s ->
             mktPanel.setSym(s)
+            // 稿L383 showMkt(){… window.scrollTo(0,0)}:打开行情详情时复位自选页滚动,
+            // 深滚后进详情→返回,自选静止位回垫高位 top≥136(A9)。仅此详情往返路径复位;
+            // Tab往返走 showTab,稿L366-373无复位,不新增任何 Tab 复位逻辑。
+            (favPage as? android.widget.ScrollView)?.scrollTo(0, 0)
             showTab("mkt", ANIM_FROM_R, "fav")
             (mktPage as? android.widget.ScrollView)?.scrollTo(0, 0)
             mktPanel.mkLoad()
@@ -497,6 +625,13 @@ class MainActivity : Activity() {
         mktPage.findViewById<Button>(R.id.mkt_back).setOnClickListener {
             showTab("fav", ANIM_FROM_L)
         }
+        // 稿⑦返回键OnBackPressedDispatcher:仅行情详情可见时拦回自选列表,根Tab默认finish()
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                if (body.indexOfChild(mktPage) >= 0) showTab("fav", ANIM_FROM_L)
+                else finish()
+            }
+        })
 
         tabFav = findViewById(R.id.tab_fav)
 
@@ -535,6 +670,21 @@ class MainActivity : Activity() {
         statVals["sell"] = calcPage.findViewById(R.id.stat_sell)
         detSum = calcPage.findViewById(R.id.det_sum)
         rows = calcPage.findViewById(R.id.rows)
+        // 稿③LINK爆仓上限卡:第二行灰字「目标上限 X」+×解除
+        // (稿capX: LKcap=null;paintCap;去红;清错;calc())
+        statLiqCard = calcPage.findViewById(R.id.stat_liq_card)
+        statCap = calcPage.findViewById(R.id.stat_cap)
+        statCapv = calcPage.findViewById(R.id.stat_capv)
+        calcErr = calcPage.findViewById(R.id.calc_err)
+        capX = calcPage.findViewById(R.id.capX)
+        capX.setOnClickListener {
+            lkCap = null
+            paintCap()
+            statLiqCard.background = null
+            statVals["liq"]?.setTextColor(attrColor("colorInk"))
+            showErr(null)
+            onCalc()
+        }
 
         feeInp = settingsPage.findViewById(R.id.in_fee)
         mmrInp = settingsPage.findViewById(R.id.in_mmr)

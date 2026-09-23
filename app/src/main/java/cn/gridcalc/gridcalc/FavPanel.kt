@@ -429,7 +429,8 @@ class FavPanel(
                     r = FavDist.compute(s, tf, n)
                 } catch (_: Exception) {
                 }
-                if (r == null || !r.ok) bad.incrementAndGet()
+                // 稿970:无支撑(soft,数据已到)≠拉取失败,不进5秒重试环
+                if (r == null || (!r.ok && !r.soft)) bad.incrementAndGet()
                 act.runOnUiThread {
                     if (seq != distSeq || hidden) return@runOnUiThread
                     capsules[s]?.let { paintDist(it, r) }

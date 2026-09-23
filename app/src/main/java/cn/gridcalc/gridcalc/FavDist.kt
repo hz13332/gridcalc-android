@@ -5,13 +5,15 @@ package cn.gridcalc.gridcalc
 // 成功缓存5分钟/失败只压5秒让重试环真能再拉;币/股走现有legs,
 // 贵金属与17种商品走东财单源(稿fetchMetals:GC=F/SI=F/*00Y),不再无源;
 // 支撑:价在第一支撑上方取最高支撑(绿),全部支撑在上方(已跌破)取最近一条(红,负值)。
+// 无支撑软分支(稿NOSUP):数据已到但该窗口算不出支撑→soft+「—无支撑」,按成功缓5分钟、不进5秒重试。
 
 data class DistR(
     val ok: Boolean,
     val pct: Double = 0.0,
     val price: Double = 0.0,
     val chg: Double = 0.0,
-    val why: String = "—"
+    val why: String = "—",
+    val soft: Boolean = false
 )
 
 object FavDist {
@@ -27,7 +29,7 @@ object FavDist {
     @Synchronized
     fun cached(s: String, tf: String, n: Int): DistR? {
         val h = cache[key(s, tf, n)] ?: return null
-        val ttl = if (h.second.ok) TTL_OK else TTL_FAIL
+        val ttl = if (h.second.ok || h.second.soft) TTL_OK else TTL_FAIL
         if (System.currentTimeMillis() - h.first >= ttl) return null
         return h.second
     }
@@ -75,11 +77,15 @@ object FavDist {
                 else vp.sup.filter { it >= cur }.minOrNull()
                 if (sup != null) {
                     r = DistR(true, (cur - sup) / cur * 100.0, cur, chg)
+                } else {
+                    // 稿NOSUP软分支:数据拉到了,只是该窗口算不出支撑位(≠「—无源」)
+                    r = DistR(false, soft = true, why = "—无支撑")
                 }
             }
         } catch (_: Exception) {
         }
-        if (!r.ok) r = DistR(
+        // 仅真失败(数据没到)才标无源/超时;soft按成功走5分钟缓存、不进5秒重试环
+        if (!r.ok && !r.soft) r = DistR(
             false,
             why = if (System.currentTimeMillis() - t0 >= 9000) "—超时" else "—无源"
         )

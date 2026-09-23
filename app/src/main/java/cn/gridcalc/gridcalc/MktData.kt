@@ -2,6 +2,8 @@ package cn.gridcalc.gridcalc
 
 import org.json.JSONArray
 import org.json.JSONObject
+import java.math.BigDecimal
+import java.math.MathContext
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
@@ -92,6 +94,38 @@ object MktData {
         } finally {
             c.disconnect()
         }
+    }
+
+    // ---------- 机构目标均价(稿TGT:Nasdaq官方分析师接口聚合数) ----------
+    // 成功缓5min/失败缓30s;均价=priceTarget,家数=buy+hold+sell;空数据也按成功缓
+    data class Tgt(val avg: Double, val n: Int)
+    private val tgtLock = Any()
+    private val tgtMap = mutableMapOf<String, Triple<Tgt?, Long, Boolean>>()
+    fun fetchTgt(sym: String): Tgt? {
+        val key = sym.trim().uppercase(Locale.US)
+        if (key.isEmpty()) return null
+        synchronized(tgtLock) {
+            tgtMap[key]?.let { (r, t, ok) ->
+                if (System.currentTimeMillis() - t < (if (ok) 300_000L else 30_000L)) return r
+            }
+        }
+        var r: Tgt? = null
+        var ok = false
+        try {
+            val s = get("https://api.nasdaq.com/api/analyst/$key/targetprice", null, UA, 10000)
+            val j = JSONObject(s)
+            ok = true
+            val co = j.optJSONObject("data")?.optJSONObject("consensusOverview")
+            val avg = co?.optDouble("priceTarget", 0.0) ?: 0.0
+            if (co != null && avg > 0) {
+                val n = co.optInt("buy", 0) + co.optInt("hold", 0) + co.optInt("sell", 0)
+                if (n > 0) r = Tgt(avg, n)
+            }
+        } catch (_: Exception) {
+            ok = false
+        }
+        synchronized(tgtLock) { tgtMap[key] = Triple(r, System.currentTimeMillis(), ok) }
+        return r
     }
 
     // 币:base/quote拆分(照稿子,quote兜底USDT)
@@ -574,6 +608,11 @@ object MktData {
                 if (climbed && rv[i] > m2) {
                     m2 = rv[i]
                     m2row = i
+                } else if (climbed && m2row >= 0 && rv[i] < m2 &&
+                    (i == 0 || rv[i - 1] <= rv[i])
+                ) {
+                    // 稿740死角修复:climb后第一个显著局部峰收口(MU月线30:732.49/334.51)
+                    break
                 }
             }
             if (m2row < 0) break
@@ -589,6 +628,11 @@ object MktData {
             lo + ww * (poc + 0.5), lo + ww * (up + 1), lo + ww * dn,
             supRows.map { lo + ww * (it + 0.5) })
     }
+
+    // ---------- 联动写值格式(稿 JS x.toPrecision(8) 等价) ----------
+    // 8位有效数字、去尾随零、不用科学计数;与稿 linkCalc/linkPhigh 写入计算页的值同格式
+    fun jsPrec(x: Double): String =
+        BigDecimal.valueOf(x).round(MathContext(8)).stripTrailingZeros().toPlainString()
 
     // ---------- 格式化(照搬稿子) ----------
 

@@ -19,64 +19,75 @@
             android:background="@drawable/card_bg"
             android:orientation="vertical"
             android:padding="14dp">
-            <Button
-                android:id="@+id/mkt_back"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="4dp"
-                android:background="@android:color/transparent"
-                android:minHeight="0dp"
-                android:minWidth="0dp"
-                android:paddingLeft="0dp"
-                android:paddingTop="2dp"
-                android:paddingBottom="2dp"
-                android:text="‹ 自选"
-                android:textColor="?attr/colorPrimary"
-                android:textSize="14sp" />
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="28dp"
-                android:gravity="center"
-                android:text="行情"
-                android:textColor="?attr/colorInk"
-                android:textSize="34sp"
-                android:textStyle="bold" />
+            <!-- 顶栏(稿D6替代):‹纯箭头返回自选 + 居中「行情」34sp/800 + 右侧🔍线条图标;
+                 margin 0 0 28dp 照稿;无···、无标题副标题 -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:layout_marginBottom="28dp"
+                android:gravity="center_vertical"
                 android:orientation="horizontal">
-                <LinearLayout
+                <Button
+                    android:id="@+id/mkt_back"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:background="@android:color/transparent"
+                    android:contentDescription="返回自选"
+                    android:minHeight="0dp"
+                    android:minWidth="0dp"
+                    android:paddingLeft="10dp"
+                    android:paddingRight="10dp"
+                    android:paddingTop="8dp"
+                    android:paddingBottom="8dp"
+                    android:text="‹"
+                    android:textColor="?attr/colorInk"
+                    android:textSize="26sp" />
+                <TextView
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    android:layout_marginRight="6dp"
                     android:layout_weight="1"
-                    android:orientation="vertical">
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginBottom="5dp"
-                        android:text="交易品种"
-                        android:textColor="?attr/colorSub"
-                        android:textSize="14sp"
-                        android:fontFamily="sans-serif-medium" />
-                    <EditText
-                        android:id="@+id/mkt_sym"
-                        android:layout_width="match_parent"
-                        android:layout_height="48dp"
-                        android:background="@drawable/input_bg"
-                        android:hint="BTCUSDT / AAPL"
-                        android:importantForAutofill="no"
-                        android:inputType="textNoSuggestions"
-                        android:imeOptions="actionDone"
-                        android:singleLine="true"
-                        android:paddingLeft="10dp"
-                        android:paddingRight="10dp"
-                        android:textColor="?attr/colorInk"
-                        android:textColorHint="?attr/colorFaint"
-                        android:textSize="17sp"
-                        android:typeface="monospace" />
-                </LinearLayout>
+                    android:gravity="center"
+                    android:text="行情"
+                    android:textColor="?attr/colorInk"
+                    android:textSize="34sp"
+                    android:textStyle="bold" />
+                <ImageButton
+                    android:id="@+id/mkt_search"
+                    android:layout_width="44dp"
+                    android:layout_height="44dp"
+                    android:background="@android:color/transparent"
+                    android:contentDescription="搜索品种"
+                    android:padding="10dp"
+                    android:scaleType="centerInside"
+                    android:src="@android:drawable/ic_menu_search"
+                    android:tint="?attr/colorInk" />
+            </LinearLayout>
+            <!-- 品种输入坞(稿mktInputDock):默认隐藏,点顶栏🔍展开并聚焦品种输入框;
+                 稿坞内只有 品种输入/查看/星标,无品种名标签 -->
+            <LinearLayout
+                android:id="@+id/mkt_input_dock"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:visibility="gone">
+                <EditText
+                    android:id="@+id/mkt_sym"
+                    android:layout_width="0dp"
+                    android:layout_height="48dp"
+                    android:layout_weight="1"
+                    android:layout_marginRight="6dp"
+                    android:background="@drawable/input_bg"
+                    android:hint="品种 BTCUSDT/AAPL"
+                    android:importantForAutofill="no"
+                    android:inputType="textNoSuggestions"
+                    android:imeOptions="actionDone"
+                    android:singleLine="true"
+                    android:paddingLeft="10dp"
+                    android:paddingRight="10dp"
+                    android:textColor="?attr/colorInk"
+                    android:textColorHint="?attr/colorFaint"
+                    android:textSize="17sp"
+                    android:typeface="monospace" />
                 <Button
                     android:id="@+id/mkt_go"
                     android:layout_width="84dp"
@@ -174,14 +185,6 @@
                     android:textColor="?attr/colorInk"
                     android:textSize="18sp" />
             </LinearLayout>
-            <TextView
-                android:id="@+id/mkt_srcnote"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:text="币：六家现货选量最大 · 股：Nasdaq/雅虎/东方 · 金银/商品：东财期货 · 有一家能用即画"
-                android:textColor="?attr/colorSub"
-                android:textSize="11sp" />
         </LinearLayout>
 
         <!-- 行情图 -->
@@ -200,6 +203,26 @@
                 android:textColor="?attr/colorSub"
                 android:textSize="13sp"
                 android:visibility="gone" />
+            <!-- 稿mkhead:只保留30px现价(mkid品种名小字/mkChg涨跌徽标全树零命中,布局/样式/绘制三处均无) -->
+            <TextView
+                android:id="@+id/mkt_price"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:text="--"
+                android:textColor="?attr/colorInk"
+                android:textSize="30sp"
+                android:textStyle="bold" />
+            <!-- 稿D2 srcNote:纯日期区间(从输入卡移此,与稿同位;去掉「·来源(初步·来源)」后缀) -->
+            <TextView
+                android:id="@+id/mkt_srcnote"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:layout_marginBottom="6dp"
+                android:text=""
+                android:textColor="?attr/colorSub"
+                android:textSize="11sp" />
             <TextView
                 android:id="@+id/mkt_ohlc"
                 android:layout_width="match_parent"
@@ -221,6 +244,15 @@
                 android:textColor="?attr/colorSub"
                 android:textSize="12sp"
                 android:typeface="monospace" />
+            <!-- 稿TGT:机构目标均价行(Nasdaq聚合,仅美股显示,失败隐藏) -->
+            <TextView
+                android:id="@+id/mkt_tgt"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:textColor="?attr/colorSub"
+                android:textSize="12sp"
+                android:visibility="gone" />
         </LinearLayout>
     </LinearLayout>
 </ScrollView>

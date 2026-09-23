@@ -278,6 +278,16 @@
                         android:textSize="15sp" />
                 </LinearLayout>
             </GridLayout>
+            <!-- 稿.err:爆仓价超标等硬约束报错(默认收起) -->
+            <TextView
+                android:id="@+id/calc_err"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:text=""
+                android:textColor="?attr/colorRed"
+                android:textSize="13sp"
+                android:visibility="gone" />
         </LinearLayout>
 
         <!-- 计算结果 -->
@@ -320,9 +330,11 @@
                 android:layout_marginTop="8dp"
                 android:columnCount="2"
                 android:rowCount="2">
+                <!-- 爆仓价卡:稿.stat+cap 目标上限行(超标红框由代码画) -->
                 <LinearLayout
+                    android:id="@+id/stat_liq_card"
                     android:layout_width="0dp"
-                    android:layout_height="48dp"
+                    android:layout_height="wrap_content"
                     android:layout_columnWeight="1"
                     android:orientation="vertical">
                     <TextView
@@ -339,6 +351,37 @@
                         android:textColor="?attr/colorInk"
                         android:textSize="15sp"
                         android:typeface="monospace" />
+                    <LinearLayout
+                        android:id="@+id/stat_cap"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:visibility="gone">
+                        <TextView
+                            android:id="@+id/stat_capv"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text=""
+                            android:textColor="?attr/colorSub"
+                            android:textSize="10.5sp" />
+                        <Button
+                            android:id="@+id/capX"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:background="@android:color/transparent"
+                            android:minHeight="0dp"
+                            android:minWidth="0dp"
+                            android:paddingLeft="4dp"
+                            android:paddingRight="4dp"
+                            android:paddingTop="0dp"
+                            android:paddingBottom="0dp"
+                            android:text="×"
+                            android:textColor="?attr/colorSub"
+                            android:textSize="13sp" />
+                    </LinearLayout>
                 </LinearLayout>
                 <LinearLayout
                     android:layout_width="0dp"
