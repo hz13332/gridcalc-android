@@ -395,29 +395,46 @@ object MktData {
         val df = java.text.SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
             timeZone = utc
         }
-        val enc = URLEncoder.encode(sym.trim().uppercase(Locale.US), "UTF-8")
-        val j = JSONObject(get(
-            "https://api.nasdaq.com/api/quote/$enc/historical?assetclass=stocks&fromdate=${df.format(from.time)}&limit=9999",
-            accept = "application/json", ua = "Mozilla/5.0", timeoutMs = timeoutMs))
-        val rows = j.optJSONObject("data")?.optJSONObject("tradesTable")?.optJSONArray("rows")
-            ?: JSONArray()
-        fun num(x: Any?): Double {
-            val v = x?.toString()?.replace("$", "")?.replace(",", "")?.toDoubleOrNull()
-            return v ?: 0.0
-        }
-        val daily = mutableListOf<KLine>()
-        for (i in 0 until rows.length()) {
-            val r = rows.optJSONObject(i) ?: continue
-            val t = parseNasdaqDate(r.optString("date", ""))
-            val h = num(r.opt("high"))
-            if (t == 0L || !(h > 0)) continue
-            daily.add(KLine(t, num(r.opt("open")), h, num(r.opt("low")),
-                num(r.opt("close")), num(r.opt("volume")), 0.0))
-        }
+        val fromdate = df.format(from.time)
+        // assetclass=stocks 只收正股:SPY/QQQ 等 Arca ETF 回 code1001 Symbol not exists。
+        // 先按 stocks 取,回包没有可用行再按 etf 取同一接口——类别由服务端回包判定,
+        // 不按代码名单写死;正股首腿即中,行为与耗时不变。详情页与自选距离共用本函数。
+        var daily = nasdaqDaily(sym, fromdate, "stocks", timeoutMs)
+        if (daily.isEmpty()) daily = nasdaqDaily(sym, fromdate, "etf", timeoutMs)
         daily.sortBy { it.t }
         val ks = resampleDaily(daily, tf)
         if (ks.size < 3) throw Exception("行情拉取失败(网络或品种名不对)")
         return listOf(VendorKs("NQ", ks.takeLast(n)))
+    }
+
+    // nasdaq historical 单一 assetclass 取回日线行;网络/格式失败返回空列表,
+    // 由 fetchNasdaq 决定是否换 etf 类重试(两轮都空才在调用方处按原口径报错)
+    private fun nasdaqDaily(
+        sym: String, fromdate: String, assetClass: String, timeoutMs: Int
+    ): MutableList<KLine> {
+        val out = mutableListOf<KLine>()
+        try {
+            val enc = URLEncoder.encode(sym.trim().uppercase(Locale.US), "UTF-8")
+            val j = JSONObject(get(
+                "https://api.nasdaq.com/api/quote/$enc/historical?assetclass=$assetClass&fromdate=$fromdate&limit=9999",
+                accept = "application/json", ua = "Mozilla/5.0", timeoutMs = timeoutMs))
+            val rows = j.optJSONObject("data")?.optJSONObject("tradesTable")?.optJSONArray("rows")
+                ?: JSONArray()
+            fun num(x: Any?): Double {
+                val v = x?.toString()?.replace("$", "")?.replace(",", "")?.toDoubleOrNull()
+                return v ?: 0.0
+            }
+            for (i in 0 until rows.length()) {
+                val r = rows.optJSONObject(i) ?: continue
+                val t = parseNasdaqDate(r.optString("date", ""))
+                val h = num(r.opt("high"))
+                if (t == 0L || !(h > 0)) continue
+                out.add(KLine(t, num(r.opt("open")), h, num(r.opt("low")),
+                    num(r.opt("close")), num(r.opt("volume")), 0.0))
+            }
+        } catch (_: Exception) {
+        }
+        return out
     }
 
     // 东货行情 secid 映射(照稿 EMID):金银 101.GC00Y/101.SI00Y + 17 种大宗商品 *00Y,
@@ -432,12 +449,38 @@ object MktData {
         "SB00Y" to "108.SB00Y"
     )
 
-    // 东方财富push2his(secid按EMID:商品/贵金属期货,未命中105.SYM美股):行=date,
+    // 稿emSecid(730-740):美股按交易所取 secid:105=纳斯达克 106=纽交所 107=美股Arca;
+    // 不写死105(纽交所ORCL/IBM/VISA等105查不到→整路无源),轻量报价接口探一次、命中即缓存;
+    // 全不中回落旧值105.<code>让调用方照常报无源。全树唯一 secid 拼接点收口于此。
+    private val EMMKT = java.util.concurrent.ConcurrentHashMap<String, String>()
+
+    internal fun emSecid(code: String): String {
+        EMID[code]?.let { return it }
+        EMMKT[code]?.let { return it }
+        for (m in listOf("105", "106", "107")) {
+            val sid = "$m.$code"
+            try {
+                val j = JSONObject(get(
+                    "https://push2.eastmoney.com/api/qt/stock/get?secid=$sid&fields=f57" +
+                        "&ut=fa5fd1943c7b386f172d6893dbfba10b",
+                    timeoutMs = 6000))
+                val d = j.optJSONObject("data")
+                if (d != null && d.optString("f57").isNotEmpty()) {
+                    EMMKT[code] = sid
+                    return sid
+                }
+            } catch (e: Exception) {
+            }
+        }
+        return "105.$code"
+    }
+
+    // 东方财富push2his(secid按EMID:商品/贵金属期货,未命中走emSecid美股探测):行=date,
     // open,close,high,low,volume,amount(oc在hl前);Q取3倍月数供toQuarterly合成
     // (照搬,mq上限300);v取份额成交量f56(与NQ/YH同股数口径直接比),qv取金额f57
     fun fetchEastmoney(sym: String, tf: String, count: Int, timeoutMs: Int = 10000): List<VendorKs> {
         val code = sym.trim().uppercase(Locale.US)
-        val secid = EMID[code] ?: ("105." + code)
+        val secid = emSecid(code) // ⑤收口:EMID优先→105/106/107探测并缓存(稿emSecid)
         val n = max(5, min(200, count))
         val mq = if (tf == "Q") min(n * 3, 300) else n
         val klt = if (tf == "W") "102" else "103"

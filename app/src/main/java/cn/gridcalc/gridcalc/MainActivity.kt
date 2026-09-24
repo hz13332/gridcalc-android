@@ -132,7 +132,9 @@ class MainActivity : Activity() {
         val buys = lines.filter { it < po - eps }
         val m = sells.size
         val bc = buys.size
-        if (m < 1 || bc < 1) throw IllegalArgumentException("触发价必须在最低价和最高价之间,且上下都要有格子")
+        // 稿liqOf守卫(494):仅校验上方有格子——触发价低于最低档时下方买格可为0
+        // (仓位全由触发价处建仓构成、均价=触发价;实测GRPO 1.237~1.345/14格/触发1.29→币安1.199,我们1.18)
+        if (m < 1) throw IllegalArgumentException("触发价上方要有格子")
         val sumS = sells.sum()
         val sumB = buys.sum()
         // 加倍建仓:初始持仓翻倍,卖出总额多出一份到顶全平(M·q·Ph)
@@ -203,7 +205,8 @@ class MainActivity : Activity() {
         showErr(null) // 稿calc()首行clear:清上一轮目标上限报错
         try {
             val c = getNum(inp["C"]!!, "总投入")
-            getNum(inp["L"]!!, "杠杆倍率").let { if (it < 1) throw IllegalArgumentException("杠杆倍率必须≥1") }
+            val l = getNum(inp["L"]!!, "杠杆倍率")
+            if (l < 1) throw IllegalArgumentException("杠杆倍率必须≥1")
             val pl = getNum(inp["Pl"]!!, "最低价")
             val ph = getNum(inp["Ph"]!!, "最高价")
             val po = getNum(inp["Po"]!!, "触发价")
@@ -212,7 +215,8 @@ class MainActivity : Activity() {
             if (c <= 0) throw IllegalArgumentException("总投入必须大于0")
             if (pl <= 0) throw IllegalArgumentException("最低价必须大于0")
             if (ph <= pl) throw IllegalArgumentException("最高价必须大于最低价")
-            if (!(po > pl && po < ph)) throw IllegalArgumentException("触发价必须在最低价和最高价之间")
+            // ④触发价允许低于最低档(下方买格为0,calcGrid仅校验上方);仅拦非正数与≥最高价
+            if (!(po > 0 && po < ph)) throw IllegalArgumentException("触发价必须在最低价和最高价之间")
             if (n < 1) throw IllegalArgumentException("网格数量必须≥1")
             if (q <= 0) throw IllegalArgumentException("每格数量必须大于0")
             val fee = getNum(feeInp, "手续费率") / 100.0
@@ -243,7 +247,8 @@ class MainActivity : Activity() {
             heroSub.setTextColor(sub)
             heroSub.text = "收益率 %+.2f%% · %d卖%d买 · 见底权益约%.2fU".format(
                 r.roe, r.m, r.b, r.eqBottom)
-            statVals["liq"]!!.text = r.liq?.let { fmt(it) } ?: "永不爆仓"
+            // ④稿582:强平价≤0显示0.00(不再显示负数);null=永不爆仓
+            statVals["liq"]!!.text = r.liq?.let { if (it <= 0) "0.00" else fmt(it) } ?: "永不爆仓"
             statVals["roe"]!!.text = "%+.2f%%".format(r.roe)
             statVals["pos"]!!.text = "%.4f".format(r.q0)
             statVals["sell"]!!.text = fmt(r.sellT)
@@ -281,6 +286,8 @@ class MainActivity : Activity() {
                     "%+.2f".format(r.net),
                     if (r.net >= 0) teal else red, zebra, false))
             }
+            // ⑥每次成功计算追加一条记录(稿609 logRec位置:目标上限超标路径已提前return,不记录)
+            logRec(r, pl, ph, n, c, l, po, q, fee, mmr)
         } catch (e: Exception) {
             val msg = e.message ?: "出错"
             if ("还没有填" in msg) {
@@ -294,6 +301,196 @@ class MainActivity : Activity() {
             heroSub.text = msg
             statVals.values.forEach { it.text = "--" }
         }
+    }
+
+    // ---------- ⑥计算记录(稿615-656 logRec/recCSV/recExport/recClear:localStorage→SharedPreferences) ----------
+    // 表头27列与稿RHEAD逐列一致;档位线列竖线分隔全量;上限2000条(超限从头剔除)。
+    // 范围缩小(用户指令):App每格数量一律手填→数量来源恒「手填」;自动算数量列保留但恒空(与稿导出schema一致便于合并)。
+    private val RECCAP = 2000
+    private var recs = mutableListOf<org.json.JSONObject>()
+    private lateinit var recCount: TextView
+    private var pendingExport = false
+    private val recPref get() = getSharedPreferences("gridcalc_records_v1", Context.MODE_PRIVATE)
+
+    private fun recLoad() {
+        try {
+            val s = recPref.getString("recs", null)
+            recs = if (s.isNullOrEmpty()) mutableListOf() else {
+                val a = org.json.JSONArray(s)
+                (0 until a.length()).mapNotNull { a.optJSONObject(it) }.toMutableList()
+            }
+        } catch (e: Exception) {
+            recs = mutableListOf()
+        }
+        while (recs.size > RECCAP) recs.removeAt(0)
+        recPaint()
+    }
+
+    private fun recSave() {
+        try {
+            recPref.edit().putString("recs", org.json.JSONArray(recs).toString()).apply()
+        } catch (e: Exception) {
+        }
+        recPaint()
+    }
+
+    private fun recPaint() {
+        if (::recCount.isInitialized) recCount.text = "已记录 ${recs.size} 条"
+    }
+
+    // JS toPrecision(10):10位有效数字、去尾零(数值化后与稿+号还原等价)
+    private fun prec10(v: Double): String =
+        java.math.BigDecimal(v).round(java.math.MathContext(10)).stripTrailingZeros().toPlainString()
+
+    // JS String(number):整数值不带.0(469→"469"),其余最短往返
+    private fun numStr(v: Double): String =
+        if (v.isFinite() && v == Math.floor(v) && Math.abs(v) < 1e15) v.toLong().toString() else v.toString()
+
+    // 稿logRec(623):每次成功计算追加一条;交易对/品种/现价取当前行情页上下文
+    private fun logRec(
+        r: CalcResult, pl: Double, ph: Double, n: Int, c: Double, l: Double,
+        po: Double, q: Double, fee: Double, mmr: Double
+    ) {
+        try {
+            val o = org.json.JSONObject()
+            o.put("t", java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US)
+                .format(java.util.Date()))
+            o.put("sym", mktPanel.curSym())
+            o.put("typ", mktPanel.curTyp())
+            o.put("mark", mktPanel.curPx() ?: org.json.JSONObject.NULL)
+            o.put("Pl", pl); o.put("Ph", ph); o.put("N", n); o.put("g", "geo")
+            o.put("C", c); o.put("L", l); o.put("Po", po); o.put("q", q)
+            o.put("man", "手填")
+            o.put("auto", "")
+            o.put("liq", r.liq ?: org.json.JSONObject.NULL)
+            o.put("cap", lkCap ?: org.json.JSONObject.NULL)
+            o.put("dbl", if (dbl) "是" else "否")
+            o.put("pos", r.q0); o.put("cost", r.cost0); o.put("sell", r.sellT)
+            o.put("net", r.net); o.put("roe", r.roe)
+            o.put("B", r.b); o.put("M", r.m)
+            o.put("fee", fee); o.put("mmr", mmr)
+            o.put("lines", gridLines(pl, ph, n).joinToString("|") { prec10(it) })
+            recs.add(o)
+            while (recs.size > RECCAP) recs.removeAt(0)
+            recSave()
+        } catch (e: Exception) {
+        }
+    }
+
+    private val RHEAD = listOf(
+        "时间", "交易对", "品种类型", "现价", "最低价", "最高价", "网格数", "网格模式", "保证金", "杠杆", "触发价",
+        "每格数量", "数量来源", "自动算数量", "预估强平价", "目标上限", "加倍建仓", "持仓数量", "建仓成本", "卖出总额", "净收益", "收益率",
+        "买格", "卖格", "手续费率", "维持保证金率", "档位线"
+    )
+
+    private fun csvCell(v: String): String =
+        if (v.any { it == ',' || it == '"' || it == '\n' }) "\"" + v.replace("\"", "\"\"") + "\"" else v
+
+    // 稿recCSV(636):27列一一对应;liq null→永不爆仓、≤0→0.00;档位线竖线全量
+    private fun recCsv(): String {
+        val sb = StringBuilder(RHEAD.joinToString(","))
+        for (r in recs) {
+            sb.append('\n')
+            val liqCell = if (r.isNull("liq")) "永不爆仓"
+            else { val x = r.optDouble("liq"); if (x <= 0) "0.00" else prec10(x) }
+            val mark = if (r.isNull("mark")) "" else numStr(r.optDouble("mark"))
+            val cap = if (r.isNull("cap")) "" else numStr(r.optDouble("cap"))
+            val row = listOf(
+                r.optString("t"), r.optString("sym"), r.optString("typ"), mark,
+                numStr(r.optDouble("Pl")), numStr(r.optDouble("Ph")),
+                r.optInt("N").toString(), r.optString("g"),
+                numStr(r.optDouble("C")), numStr(r.optDouble("L")),
+                numStr(r.optDouble("Po")), numStr(r.optDouble("q")),
+                r.optString("man"), r.optString("auto"), liqCell, cap, r.optString("dbl"),
+                numStr(r.optDouble("pos")), numStr(r.optDouble("cost")), numStr(r.optDouble("sell")),
+                numStr(r.optDouble("net")), numStr(r.optDouble("roe")),
+                r.optInt("B").toString(), r.optInt("M").toString(),
+                numStr(r.optDouble("fee")), numStr(r.optDouble("mmr")), r.optString("lines")
+            )
+            sb.append(row.joinToString(",") { csvCell(it) })
+        }
+        return sb.toString()
+    }
+
+    // 稿recExport(643):UTF-8 BOM + 文件名 gridcalc_yyyyMMdd_HHmm.csv → 公共下载目录
+    private fun exportCsv() {
+        if (recs.isEmpty()) {
+            android.app.AlertDialog.Builder(this)
+                .setMessage("还没有记录：先在计算页点一次「计算」")
+                .setPositiveButton("确定", null).show()
+            return
+        }
+        val name = "gridcalc_" +
+            java.text.SimpleDateFormat("yyyyMMdd_HHmm", java.util.Locale.US).format(java.util.Date()) +
+            ".csv"
+        val data = "\uFEFF" + recCsv()
+        if (android.os.Build.VERSION.SDK_INT >= 29) {
+            var ok = false
+            try {
+                val v = android.content.ContentValues()
+                v.put(android.provider.MediaStore.Downloads.DISPLAY_NAME, name)
+                v.put(android.provider.MediaStore.Downloads.MIME_TYPE, "text/csv")
+                v.put(android.provider.MediaStore.Downloads.RELATIVE_PATH,
+                    android.os.Environment.DIRECTORY_DOWNLOADS)
+                v.put(android.provider.MediaStore.Downloads.IS_PENDING, 1)
+                val uri = contentResolver.insert(
+                    android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, v)
+                if (uri != null) {
+                    contentResolver.openOutputStream(uri)?.use {
+                        it.write(data.toByteArray(Charsets.UTF_8))
+                        it.flush()
+                    }
+                    v.clear()
+                    v.put(android.provider.MediaStore.Downloads.IS_PENDING, 0)
+                    contentResolver.update(uri, v, null, null)
+                    ok = true
+                }
+            } catch (e: Exception) {
+                ok = false
+            }
+            finishExport(ok)
+        } else {
+            if (checkSelfPermission(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                pendingExport = true
+                requestPermissions(arrayOf(android.Manifest.permission.WRITE_EXTERNAL_STORAGE), 1001)
+                return
+            }
+            var ok = false
+            try {
+                val dir = android.os.Environment.getExternalStoragePublicDirectory(
+                    android.os.Environment.DIRECTORY_DOWNLOADS)
+                dir.mkdirs()
+                java.io.File(dir, name).writeBytes(data.toByteArray(Charsets.UTF_8))
+                ok = true
+            } catch (e: Exception) {
+                ok = false
+            }
+            finishExport(ok)
+        }
+    }
+
+    private fun finishExport(ok: Boolean) {
+        android.app.AlertDialog.Builder(this)
+            .setMessage(if (ok) "已导出 ${recs.size} 条记录" else "导出失败")
+            .setPositiveButton("确定", null).show()
+    }
+
+    // 稿recClear(652):二次确认后清空
+    private fun clearRecords() {
+        if (recs.isEmpty()) {
+            android.app.AlertDialog.Builder(this).setMessage("没有记录")
+                .setPositiveButton("确定", null).show()
+            return
+        }
+        android.app.AlertDialog.Builder(this)
+            .setMessage("确定清空全部 ${recs.size} 条记录？清空后无法恢复。")
+            .setPositiveButton("确定") { _, _ ->
+                recs.clear()
+                recSave()
+            }
+            .setNegativeButton("取消", null)
+            .show()
     }
 
     // ---------- 稿LINK/PH 软联动 + 目标爆仓价上限(393-414) ----------
@@ -545,6 +742,24 @@ class MainActivity : Activity() {
         v.clearFocus()
     }
 
+    // ⑥API<29写公共下载目录需运行时授权;授权回来后继续导出
+    override fun onRequestPermissionsResult(
+        requestCode: Int, permissions: Array<out String>, grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == 1001 && pendingExport) {
+            pendingExport = false
+            if (grantResults.isNotEmpty() &&
+                grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                exportCsv()
+            } else {
+                android.app.AlertDialog.Builder(this)
+                    .setMessage("没有存储权限,无法导出到下载目录")
+                    .setPositiveButton("确定", null).show()
+            }
+        }
+    }
+
     override fun onSaveInstanceState(out: Bundle) {
         super.onSaveInstanceState(out)
         out.putString("tab", tab)
@@ -704,6 +919,11 @@ class MainActivity : Activity() {
             onCalc()
         }
         paintDbl()
+        // ⑥设置页「数据」卡片:计数+导出CSV+清空记录(稿recLoad/recPaint/recExport/recClear)
+        recCount = settingsPage.findViewById(R.id.rec_count)
+        settingsPage.findViewById<Button>(R.id.rec_export).setOnClickListener { exportCsv() }
+        settingsPage.findViewById<Button>(R.id.rec_clear).setOnClickListener { clearRecords() }
+        recLoad()
         themeFollow = settingsPage.findViewById(R.id.theme_follow)
         themeLight = settingsPage.findViewById(R.id.theme_light)
         themeDark = settingsPage.findViewById(R.id.theme_dark)

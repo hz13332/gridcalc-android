@@ -186,6 +186,11 @@ class MktPanel(private val act: MainActivity, page: View) {
         onFavChanged?.invoke()
     }
 
+    // ⑥记录字段(稿MK.sym/MK.typ/mkCurPx):App无标记价→现价取最后一根收盘
+    fun curSym(): String = lastSym
+    fun curTyp(): String = MktData.symType(lastSym)
+    fun curPx(): Double? = lastKs.lastOrNull()?.c
+
     fun setSym(s: String) {
         symInp.setText(s)
         symInp.setSelection(s.length)

@@ -109,6 +109,11 @@ class FavPanel(
     private val favList: LinearLayout = page.findViewById(R.id.fav_list)
     private val sortBtn: Button = page.findViewById(R.id.fav_sort)
 
+    init {
+        // 距离持久化层启动即挂上applicationContext,首帧repaint就能读到上次成功值
+        FavDist.attach(act)
+    }
+
     // 搜索结果浮层(对标稿子#favResults绝对定位浮层,不挤占列表;滚动条隐藏)
     private val resultsBox: LinearLayout = LinearLayout(act).apply {
         orientation = LinearLayout.VERTICAL
@@ -274,7 +279,9 @@ class FavPanel(
     // 无数据'…'或失败why为纯文本15px ink无底色
     private fun paintDist(dc: TextView, d: DistR?): TextView {
         if (d != null && d.ok) {
-            dc.text = fmtPct(d.pct)
+            // 沿用旧值(时间明显陈旧)弱提示:超24小时带「·旧值」,防止误读为实时
+            dc.text = fmtPct(d.pct) +
+                if (d.ts > 0 && System.currentTimeMillis() - d.ts > FavDist.STALE_MS) "·旧值" else ""
             dc.setTextColor(Color.WHITE)
             dc.textSize = 17f
             dc.setTypeface(dc.typeface, Typeface.BOLD)
@@ -396,7 +403,10 @@ class FavPanel(
         // 距离窗口读distWin:已提交冻结/未提交跟随周期控件+根数(稿favKey=distWin)
         val (tf, n) = mkt.distWin()
         data class Row(val it: FavItem, val d: DistR?)
-        val rows = a.map { Row(it, FavDist.cached(it.s, tf, n)) }
+        // 冷启动/断网首帧:display()兜底沿用持久化旧值,不先画无源
+        val rows = a.map {
+            Row(it, FavDist.display(it.s, tf, n, FavDist.cached(it.s, tf, n)))
+        }
         // 排序:按|pct|,无值沉底(对标稿子dv/x.d.ok)
         val dv = { r: Row ->
             if (r.d != null && r.d.ok) Math.abs(r.d.pct)
@@ -411,8 +421,10 @@ class FavPanel(
     }
 
     // 距离刷新+重试环(照稿refreshFavDist):读distWin窗;到一个补一个(行内逐条补数);
-    // 全到齐后有失败且仍在自选页→5秒自动重拉;成功TTL5分钟/失败TTL5秒见FavDist
-    fun refreshFavDist() {
+    // 全到齐后有失败且仍在自选页→5秒自动重拉;成功TTL5分钟/失败TTL5秒见FavDist。
+    // bg=后台补抓轮(finishRefresh的5s重试走此路):本会话已成功的key直接复用现值、
+    // 不再发请求(幂等),只补从未成功的行,直到全部成功环自停
+    fun refreshFavDist(bg: Boolean = false) {
         retry?.let { handler.removeCallbacks(it) }
         retry = null
         val (tf, n) = mkt.distWin()
@@ -425,15 +437,21 @@ class FavPanel(
         for (s in syms) {
             Thread {
                 var r: DistR? = null
-                try {
-                    r = FavDist.compute(s, tf, n)
-                } catch (_: Exception) {
+                val k = FavDist.key(s, tf, n)
+                val shown = FavDist.cached(s, tf, n) ?: FavDist.lastOk(s, tf, n)
+                if (bg && FavDist.doneOk(k) && shown != null) {
+                    r = shown
+                } else {
+                    try {
+                        r = FavDist.compute(s, tf, n)
+                    } catch (_: Exception) {
+                    }
                 }
                 // 稿970:无支撑(soft,数据已到)≠拉取失败,不进5秒重试环
                 if (r == null || (!r.ok && !r.soft)) bad.incrementAndGet()
                 act.runOnUiThread {
                     if (seq != distSeq || hidden) return@runOnUiThread
-                    capsules[s]?.let { paintDist(it, r) }
+                    capsules[s]?.let { paintDist(it, FavDist.display(s, tf, n, r)) }
                     if (done.incrementAndGet() == total) finishRefresh(bad.get())
                 }
             }.start()
@@ -441,9 +459,10 @@ class FavPanel(
     }
 
     private fun finishRefresh(bad: Int) {
-        // 稿:有失败&&列表非空&&仍在自选页 → FAVRetry=5s后重拉
+        // 稿:有失败&&列表非空&&仍在自选页 → FAVRetry=5s后重拉;
+        // 重拉走bg补抓轮:已成功行幂等跳过,只补未成功行直到全齐
         if (bad > 0 && FavStore.get(act).isNotEmpty() && !hidden) {
-            val r2 = Runnable { refreshFavDist() }
+            val r2 = Runnable { refreshFavDist(bg = true) }
             retry = r2
             handler.postDelayed(r2, 5000)
         }
