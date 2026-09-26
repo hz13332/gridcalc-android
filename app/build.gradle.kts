@@ -11,10 +11,10 @@ android {
         applicationId = "cn.gridcalc.gridcalc"
         minSdk = 26
         targetSdk = 33
-        // 版本号:本地默认 40000(v4.0)；CI 传入 -PciBuildNumber 后为 30000+run，保证单调递增可覆盖安装
+        // 版本号:本地默认 40100(v4.1)；CI 传入 -PciBuildNumber 后为 30000+run，保证单调递增可覆盖安装
         val ciRun = (findProperty("ciBuildNumber") as String?)?.toIntOrNull()
-        versionCode = if (ciRun != null) 30000 + ciRun else 40000
-        versionName = "4.0"
+        versionCode = if (ciRun != null) 30000 + ciRun else 40100
+        versionName = "4.1"
     }
 
     // 固定签名:本地与 CI 共用同一把钥匙，同签名才能覆盖安装免卸载

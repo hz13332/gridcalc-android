@@ -321,7 +321,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="24dp"
                 android:gravity="center"
-                android:text="输入参数后自动计算"
+                android:text="输入参数后回车计算"
                 android:textColor="?attr/colorSub"
                 android:textSize="13sp" />
             <GridLayout
