@@ -158,16 +158,13 @@ object FavDist {
                             null
                         }
                     }
-                    "stock" -> listOf(
-                        { MktData.fetchNasdaq(s, tf, n) },
-                        { MktData.fetchYahooDaily(s, tf, n) },
-                        { MktData.fetchEastmoney(s, tf, n) }
-                    ).mapNotNull {
-                        try {
-                            it().firstOrNull()
-                        } catch (_: Exception) {
-                            null
-                        }
+                    // 股(美/港/韩)统一走稿§6串行腿:东财→Nasdaq→腾讯→Yahoo命中即停;
+                    // hk/kr 路由进这里(fullSup/lightPx两条取数路径共用本when分发),
+                    // 绝不落 gold/silver/cmdty 的商品兜底分支(漏接=自选恒「—无源」)
+                    "stock", "hk", "kr" -> try {
+                        MktData.fetchStocks(s, tf, n)
+                    } catch (_: Exception) {
+                        null
                     }
                     // 贵金属/商品:东财单源(稿favDist分支:gold→GC=F silver→SI=F cmdty→s)
                     "gold" -> try { MktData.fetchMetals("GC=F", tf, n) } catch (_: Exception) { null }
@@ -209,4 +206,13 @@ object FavDist {
             return r
         }
     }
+
+    // 稿fullSup:重抓支撑(全量K线→profileOf→支撑→pct),后台补抓环走此路;
+    // 类型分发在 compute 内,stock/hk/kr 统一串行腿,不进商品兜底
+    fun fullSup(s: String, tf: String, n: Int): DistR = compute(s, tf, n)
+
+    // 稿lightPx:轻量刷价——有新鲜缓存直接复用(不发请求),过期才回落 fullSup 重抓;
+    // 自选页首帧onShow走此路;同样经 compute 分发,hk/kr 接入
+    fun lightPx(s: String, tf: String, n: Int): DistR =
+        cached(s, tf, n) ?: compute(s, tf, n)
 }

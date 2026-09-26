@@ -162,14 +162,14 @@
                     android:layout_height="41dp"
                     android:layout_weight="1"
                     android:background="@drawable/input_bg"
-                    android:contentDescription="K线数量(5~100)"
+                    android:contentDescription="K线数量(15~100)"
                     android:importantForAutofill="no"
                     android:inputType="number"
                     android:imeOptions="actionDone"
                     android:singleLine="true"
                     android:paddingLeft="12dp"
                     android:paddingRight="12dp"
-                    android:text="30"
+                    android:text="20"
                     android:textColor="?attr/colorInk"
                     android:textColorHint="?attr/colorFaint"
                     android:textSize="16sp"
@@ -236,6 +236,16 @@
                 android:id="@+id/mkt_chart"
                 android:layout_width="match_parent"
                 android:layout_height="260dp" />
+            <!-- v4§7 美元口径说明行(数据源图例下方):汇率/原币/美元报价三态,异步到达后重画 -->
+            <TextView
+                android:id="@+id/mkt_fx"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text=""
+                android:textColor="?attr/colorSub"
+                android:textSize="12sp"
+                android:visibility="gone" />
             <TextView
                 android:id="@+id/mkt_leg"
                 android:layout_width="match_parent"

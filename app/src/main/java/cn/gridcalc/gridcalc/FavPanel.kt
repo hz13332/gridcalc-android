@@ -32,6 +32,9 @@ import org.json.JSONObject
 
 data class FavItem(val s: String, val t: String)
 
+// 稿§2/§3:行的记录侧元数据(该品种最新一条),重绘装配、刷新时按需重算收益比
+private data class RowMeta(val gain: Double?, val net: Double?, val gts: String)
+
 object FavStore {
     private const val PF = "gridcalc_fav"
     private const val KEY = "gc_fav"
@@ -43,6 +46,8 @@ object FavStore {
         "silver" -> "白银"
         "stock" -> "美股"
         "cmdty" -> "商品"
+        "hk" -> "港股"
+        "kr" -> "韩股"
         else -> t
     }
 
@@ -63,10 +68,14 @@ object FavStore {
         return out
     }
 
+    // v4 D10:SP 写全程 try/catch,失败降级为「本次会话内生效」,不崩
     private fun set(c: Context, a: List<FavItem>) {
-        val j = JSONArray()
-        for (it in a) j.put(JSONObject().put("s", it.s).put("t", it.t))
-        prefs(c).edit().putString(KEY, j.toString()).apply()
+        try {
+            val j = JSONArray()
+            for (it in a) j.put(JSONObject().put("s", it.s).put("t", it.t))
+            prefs(c).edit().putString(KEY, j.toString()).apply()
+        } catch (_: Exception) {
+        }
     }
 
     fun isFav(c: Context, s: String): Boolean = get(c).any { it.s == s }
@@ -83,14 +92,35 @@ object FavStore {
         set(c, get(c).filter { it.s != s })
     }
 
-    // 排序模式:off默认/asc距近/desc距远(对标稿子gc_favsort)
+    // 排序模式(稿§2):三键互斥 `dist|gain|ratio : asc|desc|off`;
+    // 旧格式 off/asc/desc 兼容读成 dist:off/asc/desc,写回一律新格式
     fun getSort(c: Context): String {
-        val v = prefs(c).getString(SORTKEY, "off") ?: "off"
-        return if (v == "asc" || v == "desc") v else "off"
+        // v4 D10:SP 读 try/catch,坏值/异常一律回落 dist:off
+        val v = try {
+            prefs(c).getString(SORTKEY, "off")
+        } catch (_: Exception) {
+            null
+        } ?: "off"
+        if (v.contains(':')) {
+            val p = v.split(":")
+            if (p.size == 2 &&
+                (p[0] == "dist" || p[0] == "gain" || p[0] == "ratio") &&
+                (p[1] == "asc" || p[1] == "desc" || p[1] == "off")
+            ) return v
+            return "dist:off"
+        }
+        return when (v) {
+            "asc" -> "dist:asc"
+            "desc" -> "dist:desc"
+            else -> "dist:off"
+        }
     }
 
     fun setSort(c: Context, v: String) {
-        prefs(c).edit().putString(SORTKEY, v).apply()
+        try { // v4 D10:写失败降级为内存态,不崩
+            prefs(c).edit().putString(SORTKEY, v).apply()
+        } catch (_: Exception) {
+        }
     }
 }
 
@@ -107,7 +137,10 @@ class FavPanel(
 
     private val searchInp: EditText = page.findViewById(R.id.fav_search)
     private val favList: LinearLayout = page.findViewById(R.id.fav_list)
-    private val sortBtn: Button = page.findViewById(R.id.fav_sort)
+    // 稿§2 三列头:距支撑104dp/收益率76dp/收益比62dp,与行内三格逐字对齐
+    private val sortDist: Button = page.findViewById(R.id.fav_sort_dist)
+    private val sortGain: Button = page.findViewById(R.id.fav_sort_gain)
+    private val sortRatio: Button = page.findViewById(R.id.fav_sort_ratio)
 
     init {
         // 距离持久化层启动即挂上applicationContext,首帧repaint就能读到上次成功值
@@ -129,6 +162,9 @@ class FavPanel(
     // 距离重试环(稿FAVRetry):行→胶囊映射用于行内逐条补数;
     // hidden=离开自选页即停表清计时器,distSeq 递增丢弃在途旧结果
     private val capsules = mutableMapOf<String, TextView>()
+    // 稿§2 收益比列与行元数据映射(重绘清空,刷新按行重画)
+    private val ratios = mutableMapOf<String, TextView>()
+    private val metas = mutableMapOf<String, RowMeta>()
     private var retry: Runnable? = null
     private var hidden = true
     private var distSeq = 0
@@ -306,7 +342,7 @@ class FavPanel(
 
     // 自选行雪球式版式(照稿):行>pick>[名称列fcol(名称19px/700+fbadge徽标+代码),
     // 距离列rq>dc胶囊];点行直达行情,长按600ms删除
-    private fun favRowView(f: FavItem, d: DistR?): View {
+    private fun favRowView(f: FavItem, d: DistR?, m: RowMeta): View {
         val row = LinearLayout(act).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -374,6 +410,7 @@ class FavPanel(
             fsub.addView(code)
         }
         fcol.addView(fsub)
+        // 稿§2 右三格:距支撑104dp/收益率76dp/收益比62dp,固定格宽与列头逐字对齐
         val rq = LinearLayout(act).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.END or Gravity.CENTER_VERTICAL
@@ -382,19 +419,44 @@ class FavPanel(
                 ViewGroup.LayoutParams.WRAP_CONTENT)
         }
         val dc = paintDist(TextView(act), d)
+        dc.layoutParams = LinearLayout.LayoutParams(
+            dp(104f).toInt(), ViewGroup.LayoutParams.WRAP_CONTENT)
+        dc.gravity = Gravity.CENTER
         rq.addView(dc)
+        val gc = TextView(act).apply {
+            textSize = 14f
+            gravity = Gravity.END or Gravity.CENTER_VERTICAL
+            setTextColor(act.attrColor("colorInk"))
+            layoutParams = LinearLayout.LayoutParams(
+                dp(76f).toInt(), ViewGroup.LayoutParams.WRAP_CONTENT)
+            text = m.gain?.let { fmtPct(it) } ?: "—"
+            gainTip(m)?.let { tooltipText = it } // 悬浮:收益率·净收益USD·保存时间
+        }
+        rq.addView(gc)
+        val rc = TextView(act).apply {
+            textSize = 14f
+            gravity = Gravity.END or Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                dp(62f).toInt(), ViewGroup.LayoutParams.WRAP_CONTENT)
+        }
+        paintRatioCell(rc, d, m)
+        rq.addView(rc)
         pick.addView(fcol)
         pick.addView(rq)
         row.addView(pick)
         pick.setOnClickListener { onPick(f.s) }
         armDelete(pick, f.s)
         capsules[f.s] = dc
+        ratios[f.s] = rc
+        metas[f.s] = m
         return row
     }
 
     fun repaint() {
         favList.removeAllViews()
         capsules.clear()
+        ratios.clear()
+        metas.clear()
         val a = FavStore.get(act)
         if (a.isEmpty()) {
             favList.addView(note("暂无自选，在行情页输入品种后点 ☆ 收藏"))
@@ -402,22 +464,47 @@ class FavPanel(
         }
         // 距离窗口读distWin:已提交冻结/未提交跟随周期控件+根数(稿favKey=distWin)
         val (tf, n) = mkt.distWin()
-        data class Row(val it: FavItem, val d: DistR?)
-        // 冷启动/断网首帧:display()兜底沿用持久化旧值,不先画无源
-        val rows = a.map {
-            Row(it, FavDist.display(it.s, tf, n, FavDist.cached(it.s, tf, n)))
+        data class Row(val it: FavItem, val d: DistR?, val m: RowMeta, val ratio: Double?)
+        // 冷启动/断网首帧:display()兜底沿用持久化旧值,不先画无源;
+        // 记录侧取该品种最新一条(latestRecOf,追加语义下读取取最新)
+        val rows = a.map { f ->
+            val d = FavDist.display(f.s, tf, n, FavDist.cached(f.s, tf, n))
+            val rec = act.latestRecOf(f.s)
+            val roe0 = rec?.optDouble("roe", Double.NaN) ?: Double.NaN
+            val net0 = rec?.optDouble("net", Double.NaN) ?: Double.NaN
+            val m = RowMeta(
+                if (roe0.isFinite()) roe0 else null,
+                if (net0.isFinite()) net0 else null,
+                rec?.optString("t") ?: "")
+            val distPct = if (d != null && d.ok) d.pct else null
+            Row(f, d, m, ratioOf(distPct, m))
         }
-        // 排序:按|pct|,无值沉底(对标稿子dv/x.d.ok)
-        val dv = { r: Row ->
-            if (r.d != null && r.d.ok) Math.abs(r.d.pct)
-            else Double.POSITIVE_INFINITY
+        // 稿§2 排序:三键互斥取当前列;无值行恒沉底(升序降序都沉底)
+        val sort = FavStore.getSort(act)
+        val col = sort.substringBefore(':')
+        val dir = sort.substringAfter(':')
+        val sorted = if (dir == "off") rows else {
+            val has = { r: Row ->
+                when (col) {
+                    "gain" -> r.m.gain != null
+                    "ratio" -> r.ratio != null
+                    else -> r.d != null && r.d.ok
+                }
+            }
+            val key = { r: Row ->
+                when (col) {
+                    "gain" -> r.m.gain ?: 0.0
+                    "ratio" -> r.ratio ?: 0.0
+                    else -> Math.abs(r.d?.pct ?: 0.0)
+                }
+            }
+            val with = rows.filter { has(it) }
+            val without = rows.filter { !has(it) }
+            val sw = if (dir == "asc") with.sortedBy { key(it) }
+            else with.sortedByDescending { key(it) }
+            sw + without
         }
-        val sorted = when (FavStore.getSort(act)) {
-            "asc" -> rows.sortedBy { dv(it) }
-            "desc" -> rows.sortedByDescending { dv(it) }
-            else -> rows
-        }
-        for (r in sorted) favList.addView(favRowView(r.it, r.d))
+        for (r in sorted) favList.addView(favRowView(r.it, r.d, r.m))
     }
 
     // 距离刷新+重试环(照稿refreshFavDist):读distWin窗;到一个补一个(行内逐条补数);
@@ -443,7 +530,8 @@ class FavPanel(
                     r = shown
                 } else {
                     try {
-                        r = FavDist.compute(s, tf, n)
+                        // 稿§5 两条取数路径:后台环=fullSup重抓支撑;首帧=lightPx轻量刷价
+                        r = if (bg) FavDist.fullSup(s, tf, n) else FavDist.lightPx(s, tf, n)
                     } catch (_: Exception) {
                     }
                 }
@@ -451,7 +539,10 @@ class FavPanel(
                 if (r == null || (!r.ok && !r.soft)) bad.incrementAndGet()
                 act.runOnUiThread {
                     if (seq != distSeq || hidden) return@runOnUiThread
-                    capsules[s]?.let { paintDist(it, FavDist.display(s, tf, n, r)) }
+                    val disp = FavDist.display(s, tf, n, r)
+                    capsules[s]?.let { paintDist(it, disp) }
+                    // 距支撑到达后收益比随新值重画(稿:说明行+三列同步)
+                    ratios[s]?.let { rc -> metas[s]?.let { m -> paintRatioCell(rc, disp, m) } }
                     if (done.incrementAndGet() == total) finishRefresh(bad.get())
                 }
             }.start()
@@ -466,8 +557,8 @@ class FavPanel(
             retry = r2
             handler.postDelayed(r2, 5000)
         }
-        // 排序非off时按新到值重排(稿order!=='off'→paintFav)
-        if (FavStore.getSort(act) != "off") repaint()
+        // 排序激活(非off)时按新到值重排(稿order!=='off'→paintFav)
+        if (FavStore.getSort(act).substringAfter(':') != "off") repaint()
     }
 
     // 进自选页(稿showTab('fav')→refreshFavDist):重绘+重刷距离
@@ -485,20 +576,102 @@ class FavPanel(
         retry = null
     }
 
-    // 列头(照稿.favhead):"距支撑 ▲▼"双箭头常显,仅颜色区分asc/desc
-    // (激活colorPrimary,未激活#c2c6cf),13px ink-subtle,右缘与胶囊列对齐(见XML)
-    private fun paintSortBtn() {
+    // 列头(照稿.favhead):"列名 ▲▼"双箭头常显;激活列名墨色+方向箭头主色,
+    // 未激活#c2c6cf;12sp,三列宽104/76/62与行格对齐(见XML)
+    private fun paintSortHead(b: Button, label: String, col: String) {
         val cur = FavStore.getSort(act)
-        val span = SpannableString("距支撑 ▲▼")
-        val up = if (cur == "asc") act.attrColor("colorPrimary")
-        else Color.parseColor("#c2c6cf")
-        val dn = if (cur == "desc") act.attrColor("colorPrimary")
-        else Color.parseColor("#c2c6cf")
-        span.setSpan(ForegroundColorSpan(up), 4, 5, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-        span.setSpan(ForegroundColorSpan(dn), 5, 6, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-        sortBtn.text = span
-        sortBtn.setTextColor(act.attrColor("colorSub"))
-        sortBtn.textSize = 13f
+        val active = cur.startsWith("$col:")
+        val dir = cur.substringAfter(':', "off")
+        val span = SpannableString("$label ▲▼")
+        val gray = Color.parseColor("#c2c6cf")
+        val up = if (active && dir == "asc") act.attrColor("colorPrimary") else gray
+        val dn = if (active && dir == "desc") act.attrColor("colorPrimary") else gray
+        val base = label.length + 1
+        span.setSpan(ForegroundColorSpan(up), base, base + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        span.setSpan(ForegroundColorSpan(dn), base + 1, base + 2, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        b.text = span
+        b.setTextColor(if (active) act.attrColor("colorInk") else act.attrColor("colorSub"))
+        b.textSize = if (col == "ratio") 11f else 12f // 62dp窄列11sp防裁切
+    }
+
+    private fun paintSortHeads() {
+        paintSortHead(sortDist, "距支撑", "dist")
+        paintSortHead(sortGain, "收益率", "gain")
+        paintSortHead(sortRatio, "收益比", "ratio")
+    }
+
+    // 稿§2 循环:升→降→关;互斥(点谁谁生效);收益比首击即降序,另两列首击升序
+    private fun cycleSort(col: String) {
+        val cur = FavStore.getSort(act)
+        val nx = if (cur.startsWith("$col:")) {
+            when (cur.substringAfter(':')) {
+                "asc" -> "$col:desc"
+                "desc" -> "$col:off"
+                else -> if (col == "ratio") "$col:desc" else "$col:asc"
+            }
+        } else {
+            if (col == "ratio") "$col:desc" else "$col:asc"
+        }
+        FavStore.setSort(act, nx)
+        paintSortHeads()
+        repaint()
+        refreshFavDist()
+    }
+
+    // 压缩格式(稿§2):|v|>=1e6→M(2位) >=1e5→K(1位) >=1e3→千分位整数 <1000→两位小数
+    private fun fmtCompact(v: Double): String {
+        val a = Math.abs(v)
+        return when {
+            a >= 1e6 -> String.format(Locale.US, "%.2fM", v / 1e6)
+            a >= 1e5 -> String.format(Locale.US, "%.1fK", v / 1e3)
+            a >= 1e3 -> String.format(Locale.US, "%,.0f", v)
+            else -> String.format(Locale.US, "%.2f", v)
+        }
+    }
+
+    private fun fmtRatio(v: Double): String = fmtCompact(v)
+
+    // 稿§2 收益率列悬浮:收益率+净收益(USD)+保存时间
+    // D7:净收益按规格§2逐字示例「净收益 +86.13 USD」用两位小数千分位(与 MainActivity.fmt 同款),
+    // **不复用 fmtCompact**(会把 86.13 四舍五入成 86.1 / 86.13K,与规格示例不符)
+    private fun gainTip(m: RowMeta): String? {
+        val parts = mutableListOf<String>()
+        m.gain?.let { parts.add("收益率 " + fmtPct(it)) }
+        m.net?.let {
+            parts.add("净收益 " + (if (it >= 0) "+" else "-") +
+                String.format(Locale.US, "%,.2f", Math.abs(it)) + " USD")
+        }
+        if (m.gts.isNotEmpty()) parts.add(m.gts)
+        return if (parts.isEmpty()) null else parts.joinToString(" · ")
+    }
+
+    // 稿§3 收益比 = 收益率(%) ÷ |距支撑|(%) —— 用收益率不能用金额(本金会放大比值);
+    // 缺任一项(无记录/距支撑无源/距支撑=0)→null;老记录只有金额时降级用净收益(提示标明)
+    private fun ratioOf(distPct: Double?, m: RowMeta): Double? {
+        if (distPct == null || distPct == 0.0) return null
+        val g = m.gain ?: m.net ?: return null
+        return g / Math.abs(distPct)
+    }
+
+    private fun paintRatioCell(rc: TextView, d: DistR?, m: RowMeta) {
+        val distPct = if (d != null && d.ok) d.pct else null
+        val r = ratioOf(distPct, m)
+        if (r == null) {
+            rc.text = "—"
+            rc.setTextColor(act.attrColor("colorInk"))
+            rc.tooltipText = null
+            return
+        }
+        rc.text = fmtRatio(r)
+        // 正绿负红
+        rc.setTextColor(if (r >= 0) act.attrColor("colorTeal") else act.attrColor("colorRed"))
+        // D6:距支撑取绝对值——跌破支撑时 distPct 为负,公式本身用 |距支撑|,
+        // 提示里若写「÷ 距支撑 -2.50%」会与「收益比 = 收益率 ÷ |距支撑|%」自相矛盾
+        val distTxt = String.format(Locale.US, "%.2f", Math.abs(distPct!!))
+        rc.tooltipText = "收益比 ${fmtRatio(r)} = " +
+            (if (m.gain == null && m.net != null) "净收益(老记录降级) ${fmtCompact(m.net)}"
+            else "收益率 ${fmtPct(m.gain!!)}") +
+            " ÷ 距支撑 $distTxt%"
     }
 
     private fun hideResults() {
@@ -602,19 +775,11 @@ class FavPanel(
     }
 
     init {
-        paintSortBtn()
-        // 排序键循环默认/距近/距远(对标稿子favSort)
-        sortBtn.setOnClickListener {
-            val nx = when (FavStore.getSort(act)) {
-                "off" -> "asc"
-                "asc" -> "desc"
-                else -> "off"
-            }
-            FavStore.setSort(act, nx)
-            paintSortBtn()
-            repaint()
-            refreshFavDist()
-        }
+        paintSortHeads()
+        // 稿§2 三键互斥:距支撑/收益率 首击升序→降序→关;收益比 首击即降序
+        sortDist.setOnClickListener { cycleSort("dist") }
+        sortGain.setOnClickListener { cycleSort("gain") }
+        sortRatio.setOnClickListener { cycleSort("ratio") }
         searchInp.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
             override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}

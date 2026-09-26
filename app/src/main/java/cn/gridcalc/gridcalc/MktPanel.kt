@@ -54,6 +54,8 @@ class MktPanel(private val act: MainActivity, page: View) {
     private val srcNote: TextView = page.findViewById(R.id.mkt_srcnote)
     private val price: TextView = page.findViewById(R.id.mkt_price)
     private val tgt: TextView = page.findViewById(R.id.mkt_tgt)
+    // v4§7 美元口径说明行(数据源下方;汇率异步到达后重画)
+    private val fxRow: TextView = page.findViewById(R.id.mkt_fx)
     private val chart: MktView = page.findViewById(R.id.mkt_chart)
     private val favBtn: Button = page.findViewById(R.id.mkt_fav)
     private val dock: LinearLayout = page.findViewById(R.id.mkt_input_dock)
@@ -67,6 +69,9 @@ class MktPanel(private val act: MainActivity, page: View) {
     // 点▾确认提交距离窗口后,通知自选页重刷距离(稿winGo:commit+refresh+收菜单)
     var onDistCommitted: (() -> Unit)? = null
 
+    // 稿§4 根数范围 KMIN=15/KMAX=100,越界clamp
+    private val KMIN = 15
+    private val KMAX = 100
     private var tf = "M"
     private var reqSeq = 0
     private var lastKs: List<KLine> = emptyList()
@@ -76,6 +81,16 @@ class MktPanel(private val act: MainActivity, page: View) {
     private var lastSym = ""
     // 首家先画注记:非空时状态行显示"POC x（初步·源）",终画前清掉
     private var prelimTag: String? = null
+    // v4§1/D4:换品种后「取数完成再回填」的待办标记(取数成功/失败两条路都会消费)
+    private var wantRestore = false
+
+    // D4:取数收尾(成功画完图、或已确定失败)之后才回填保存值,保证保存值赢过 linkCalc 的支撑联动
+    private fun finishLoad(seq: Int) {
+        if (seq != reqSeq) return
+        if (!wantRestore) return
+        wantRestore = false
+        act.restoreCalc(lastSym)
+    }
 
     // ---------- 品种联想下拉(对标稿子symList) ----------
     private val sugHandler = Handler(Looper.getMainLooper())
@@ -199,8 +214,15 @@ class MktPanel(private val act: MainActivity, page: View) {
 
     // 自选距离键用(对标稿子favKey读tfSeg/kcount)
     fun curTf(): String = tf
-    fun curN(): Int = kcountInp.text.toString().trim().toDoubleOrNull()
-        ?.let { minOf(100, Math.round(it).toInt()) } ?: 30
+
+    // 稿§4根数:范围15≤n≤100(KMIN/KMAX),越界clamp不报错;空值回落该品种已确认默认
+    fun curN(): Int {
+        val v = kcountInp.text.toString().trim().toDoubleOrNull()
+            ?.let { Math.round(it).toInt() }
+        return (v ?: confirmedN()).coerceIn(KMIN, KMAX)
+    }
+
+    private fun confirmedN(): Int = loadWin().second
 
     // 自选距离窗口(照稿distWin):已提交返回冻结值,未提交跟随周期控件+当前根数
     fun distWin(): Pair<String, Int> =
@@ -209,6 +231,53 @@ class MktPanel(private val act: MainActivity, page: View) {
     // 点▾确认(照稿commitDistWin):按当前周期控件+根数冻结窗口
     fun commitDistWin() {
         DistWin.commit(tf, curN())
+    }
+
+    // ---------- 稿§4 根数/周期按品种默认(gridcalc_win_v1) ----------
+    // ▾确认才落盘;回车/失焦只重画不回填;离开行情页丢弃未确认值;
+    // 换品种各显各的默认;周期按钮与确认同源(都读这一个tf+输入框)
+    private val winPref
+        get() = act.getSharedPreferences("gridcalc_win_v1",
+            android.content.Context.MODE_PRIVATE)
+
+    private fun loadWin(): Pair<String, Int> {
+        try {
+            val s = winPref.getString(lastSym, null)
+            if (!s.isNullOrEmpty()) {
+                val p = s.split("|")
+                val wtf = p[0]
+                val nv = p.getOrNull(1)?.toIntOrNull()
+                if ((wtf == "W" || wtf == "M" || wtf == "Q") && nv != null) {
+                    return wtf to nv.coerceIn(KMIN, KMAX)
+                }
+            }
+        } catch (_: Exception) {
+        }
+        return "M" to 20 // 未确认过:初始默认20(稿§4示例)
+    }
+
+    private fun saveWin() {
+        if (lastSym.isEmpty()) return
+        try {
+            winPref.edit().putString(lastSym, tf + "|" + curN()).apply()
+        } catch (_: Exception) {
+        }
+    }
+
+    // 换品种载入默认:周期按钮与根数输入框同源显示该品种已确认值
+    private fun applyWinDefaults() {
+        val (wtf, wn) = loadWin()
+        tf = wtf
+        paintTf()
+        val typed = kcountInp.text.toString().trim()
+        if (typed != wn.toString()) kcountInp.setText(wn.toString())
+    }
+
+    // 离开行情页(返回键/‹返回/切Tab,由showTab统一钩):丢弃未确认临时值,
+    // 输入框+周期还原成该品种已确认默认(不发请求,纯状态还原)
+    fun onLeave() {
+        if (lastSym.isEmpty()) return
+        applyWinDefaults()
     }
 
     // ▾确认菜单(照稿winPop):与箭头等宽/等高/同右缘,高41文字居中;
@@ -226,7 +295,10 @@ class MktPanel(private val act: MainActivity, page: View) {
             layoutParams = ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(41f).toInt())
             setOnClickListener {
+                // 稿§4:▾确认才把(周期+根数)写成该品种已确认默认;输入框归一到clamp值
+                kcountInp.setText(curN().toString())
                 commitDistWin()
+                saveWin()
                 onDistCommitted?.invoke()
                 winPop?.dismiss()
             }
@@ -457,27 +529,33 @@ class MktPanel(private val act: MainActivity, page: View) {
             mkStatus("先输入品种", true)
             return
         }
-        val count = kcountInp.text.toString().trim().toDoubleOrNull()
-        if (count == null || !(count >= 5)) {
-            mkStatus("K线数量至少填5", true)
-            return
-        }
-        val n = minOf(100, count.toInt())
         val type = MktData.symType(s)
         lastType = type
         val su = s.trim().uppercase(Locale.US)
+        val symChanged = su != lastSym
         lastSym = su
+        // 稿§4:换品种→载入该品种已确认默认(周期+根数,互不串);同品种刷新保留敲过的值
+        if (symChanged) applyWinDefaults()
+        // 根数:空→该品种已确认默认;越界→clamp(15..100),不报错不崩(稿KMIN/KMAX)
+        val n = curN()
         // 稿MK.mkt:cmdty用CNNAME中文名(有则"中文名 代码",无则代码),其余按类型前缀
         val mkt = when (type) {
             "cmdty" -> MktSuggest.favName(su).let { if (it.isEmpty()) su else it + " " + su }
             "crypto" -> "币 $su"
             "gold" -> "黄金 $su"
             "silver" -> "白银 $su"
+            "hk" -> "港股 $su"
+            "kr" -> "韩股 $su"
             else -> "美股 $su"
         }
         prelimTag = null
+        // v4§1 + D4:restoreCalc 必须在**取数之后**调(稿L1427最后调,保存值赢),
+        // 否则 chart.setData→onInfo→linkCalc 会用支撑位覆盖刚回填的最低价/目标上限。
+        // 这里只置标记,实际调用在 renderAgg/失败分支末尾的 finishLoad()
+        wantRestore = symChanged
         val seq = ++reqSeq
-        if (type == "stock") {
+        if (type == "stock" || type == "hk" || type == "kr") {
+            // 港/韩与美同走股票串行腿(稿§6);绝不落到下方商品(gold/silver/cmdty)兜底
             loadStockParallel(s, n, mkt, seq)
             return
         }
@@ -497,6 +575,7 @@ class MktPanel(private val act: MainActivity, page: View) {
         Thread {
             try {
                 val vs = MktData.fetchMetals(ysym, tf, n)
+                MktData.FX.fxify(vs, ysym) // 入表前折算(商品/金银=美元,此处为统一收口的空操作)
                 val ag = MktData.aggregate(vs)
                 act.runOnUiThread {
                     if (seq != reqSeq) return@runOnUiThread
@@ -506,6 +585,7 @@ class MktPanel(private val act: MainActivity, page: View) {
                 act.runOnUiThread {
                     if (seq != reqSeq) return@runOnUiThread
                     mkStatus("行情拉取失败(网络或品种名不对)", true)
+                    finishLoad(seq) // D4:失败也要消费标记,否则下次同品种不再回填
                 }
             }
         }.start()
@@ -523,7 +603,25 @@ class MktPanel(private val act: MainActivity, page: View) {
             MktData.fmtDT(ag.ks.last().t)
         // 稿mkhead(291)只保留30px现价;mkid品种名/mkChg涨跌徽标全树零命中,无需再删
         price.text = MktData.mkFmt(ag.ks.lastOrNull()?.c)
+        paintFx()
+        // D4:onInfo(linkCalc/linkPhigh)已经跑完,此刻再回填=保存值最终赢
+        finishLoad(seq)
         paintTgt(ag, seq)
+    }
+
+    // v4§7 说明行三态:美元报价 / 1 USD=X CUR(汇率日期) / 暂时没取到保持原币
+    private fun paintFx() {
+        if (lastSym.isEmpty()) return
+        fxRow.visibility = View.VISIBLE
+        fxRow.text = MktData.FX.fxText(lastSym)
+    }
+
+    // 汇率异步到达:说明行立即重画;当前正显示的品种按新缓存键重载
+    // (同汇率→缓存命中只重画不发请求;汇率变了→键变→重新抓并按新汇率折算;输入框已被改过则只重画不代载)
+    fun fxArrived() {
+        if (lastSym.isEmpty()) return
+        paintFx()
+        if (symInp.text.toString().trim().uppercase(Locale.US) == lastSym) mkLoad()
     }
 
     // 稿TGT:美股详情在图例行下显示机构目标均价(Nasdaq聚合);
@@ -567,67 +665,33 @@ class MktPanel(private val act: MainActivity, page: View) {
             return
         }
         mkStatus("拉取中…", false)
-        val lock = Any()
-        val total = 3
-        val got = mutableListOf<VendorKs>()
-        var done = 0
-        var stage = 0 // 0未画 1已初画 2已终画
-        fun onArrival(vs: List<VendorKs>?) {
-            var toRender: Pair<VendorKs, String?>? = null
-            var fail = false
-            var toCache: List<VendorKs>? = null
-            synchronized(lock) {
-                if (seq != reqSeq) return
-                if (vs != null && vs.isNotEmpty()) got.addAll(vs)
-                done++
-                if (done >= total && got.isNotEmpty()) {
-                    stage = 2
-                    toRender = MktData.pickStockWinner(got) to null
-                } else if (got.isNotEmpty() && stage == 0) {
-                    stage = 1
-                    toRender = got[0] to
-                        ("（初步·" + MktData.vendorName(got[0].v) + "）")
-                }
-                if (done >= total && got.isNotEmpty()) toCache = got.toList()
-                fail = done >= total && got.isEmpty()
+        // 稿§6:串行 东财→Nasdaq→腾讯→Yahoo,命中即停(常态只发1个请求);
+        // 美/港/韩同走 fetchStocks,汇率折算(入表前)与缓存键带汇率沿用v4§7;
+        // 全部失败才报「行情拉取失败」
+        Thread {
+            var res: List<VendorKs>? = null
+            try {
+                res = MktData.fetchStocks(s, tf, n)
+            } catch (_: Exception) {
             }
-            toCache?.let { MktData.MktCache.put(MktData.MktCache.key(s, tf, n), it) }
-            if (fail) {
-                act.runOnUiThread {
-                    if (seq != reqSeq) return@runOnUiThread
+            val out = res
+            act.runOnUiThread {
+                if (seq != reqSeq) return@runOnUiThread
+                if (out == null || out.isEmpty()) {
                     mkStatus("行情拉取失败(网络或品种名不对)", true)
+                    finishLoad(seq) // D4
+                    return@runOnUiThread
                 }
-                return
-            }
-            toRender?.let { (v, tag) ->
-                act.runOnUiThread { renderStock(v, mkt, seq, tag) }
-            }
-        }
-        Thread {
-            try {
-                onArrival(MktData.fetchNasdaq(s, tf, n))
-            } catch (_: Exception) {
-                onArrival(null)
-            }
-        }.start()
-        Thread {
-            try {
-                onArrival(MktData.fetchYahooDaily(s, tf, n))
-            } catch (_: Exception) {
-                onArrival(null)
-            }
-        }.start()
-        Thread {
-            try {
-                onArrival(MktData.fetchEastmoney(s, tf, n))
-            } catch (_: Exception) {
-                onArrival(null)
+                MktData.FX.fxify(out, s)
+                MktData.MktCache.put(MktData.MktCache.key(s, tf, n), out)
+                renderStock(MktData.pickStockWinner(out), mkt, seq, null)
             }
         }.start()
     }
 
-    // ---------- 币多腿并行(BN/OK/BB/GT/KU/MX/BTC限定GK)+首家先画 ----------
-    // 到齐按报价成交额qv优胜重算(aggregate),与稿子first/all一致
+    // ---------- 币多腿:单线程按 cryptoLegs() 顺序**串行**,命中即停(稿L856-863) ----------
+    // 与 loadStockParallel 同构:一条腿命中即 renderCrypto + return,后续腿不再发请求,
+    // 不再发多余请求浪费大等待时间;BTCUSDT 的 legs 只有 BN 一条,行为不变。
     private fun renderCrypto(vs: List<VendorKs>, mkt: String, seq: Int, prelim: String?) {
         if (seq != reqSeq) return
         prelimTag = prelim
@@ -641,50 +705,30 @@ class MktPanel(private val act: MainActivity, page: View) {
         }
         val legs = MktData.cryptoLegs(s)
         mkStatus("拉取中…", false)
-        val lock = Any()
-        val total = legs.size
-        val got = mutableListOf<VendorKs>()
-        var done = 0
-        var stage = 0 // 0未画 1已初画 2已终画
-        fun onArrival(v: VendorKs?) {
-            var toRender: Pair<List<VendorKs>, String?>? = null
-            var fail = false
-            var toCache: List<VendorKs>? = null
-            synchronized(lock) {
-                if (seq != reqSeq) return
-                if (v != null) got.add(v)
-                done++
-                if (done >= total && got.isNotEmpty()) {
-                    stage = 2
-                    toRender = got.toList() to null
-                } else if (got.isNotEmpty() && stage == 0) {
-                    stage = 1
-                    toRender = listOf(got[0]) to
-                        ("（初步·" + MktData.vendorName(got[0].v) + "）")
+        Thread {
+            for (leg in legs) {
+                if (seq != reqSeq) return@Thread
+                var hit: VendorKs? = null
+                try {
+                    hit = MktData.fetchCryptoLeg(leg, s, tf, n)
+                } catch (_: Exception) {
                 }
-                if (done >= total && got.isNotEmpty()) toCache = got.toList()
-                fail = done >= total && got.isEmpty()
-            }
-            toCache?.let { MktData.MktCache.put(MktData.MktCache.key(s, tf, n), it) }
-            if (fail) {
+                val v = hit
+                if (v == null) continue // 本腿失败才发下一腿
                 act.runOnUiThread {
                     if (seq != reqSeq) return@runOnUiThread
-                    mkStatus("行情拉取失败(网络或品种名不对)", true)
+                    // 折算收口在入表前(v4§7),与股票腿同一位置
+                    MktData.FX.fxify(listOf(v), s)
+                    MktData.MktCache.put(MktData.MktCache.key(s, tf, n), listOf(v))
+                    renderCrypto(listOf(v), mkt, seq, null) // 命中即停
                 }
-                return
+                return@Thread
             }
-            toRender?.let { (vs, tag) ->
-                act.runOnUiThread { renderCrypto(vs, mkt, seq, tag) }
+            act.runOnUiThread {
+                if (seq != reqSeq) return@runOnUiThread
+                mkStatus("行情拉取失败(网络或品种名不对)", true)
+                finishLoad(seq) // D4
             }
-        }
-        for (leg in legs) {
-            Thread {
-                try {
-                    onArrival(MktData.fetchCryptoLeg(leg, s, tf, n))
-                } catch (_: Exception) {
-                    onArrival(null)
-                }
-            }.start()
-        }
+        }.start()
     }
 }

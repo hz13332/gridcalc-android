@@ -35,9 +35,53 @@ object MktSuggest {
         "棉花" to "CT00Y", "糖" to "SB00Y"
     )
 
-    // 反查中文名(对标稿子favName):命中第一个值相等的键,无则空串
+    // 稿§5 港股14个/韩股11个 中英名称表(搜索:中文名 contains,代码 前缀/包含,
+    // 与 CNNAME 合并供联想框与自选搜索框两处命中;大小写不敏感由调用方uppercase保证)
+    private val HKNAME = listOf(
+        "00700" to "腾讯", "09988" to "阿里巴巴", "03690" to "美团", "01810" to "小米",
+        "09618" to "京东", "09868" to "小鹏", "00005" to "汇丰", "00981" to "中芯国际",
+        "02318" to "中国平安", "01024" to "快手", "09633" to "农夫山泉", "09961" to "携程",
+        "02015" to "理想汽车", "01211" to "比亚迪"
+    )
+    private val KRNAME = listOf(
+        "005930" to "三星电子", "000660" to "SK海力士", "035420" to "NAVER",
+        "005380" to "现代汽车", "000270" to "SK Telecom", "035720" to "Kakao",
+        "051910" to "LG化学", "005490" to "POSCO", "000720" to "现代",
+        "005850" to "LG电子", "035900" to "韩华"
+    )
+    // 稿§5 英文别名→上述代码(+商品别名→既有 *00Y 码),全部大写,前缀+包含双向匹配
+    private val ENALIAS = listOf(
+        "BYD" to "01211", "TENCENT" to "00700", "SAMSUNG" to "005930", "HYNIX" to "000660",
+        "NAVER" to "035420", "HYUNDAI" to "005380", "KIA" to "000240", "XIAOMI" to "01810",
+        "MEITUAN" to "03690", "HSBC" to "00005", "SMIC" to "00981", "PINGAN" to "02318",
+        "LGCHEM" to "051910", "COPPER" to "HG00Y", "CU" to "HG00Y",
+        "BRENT" to "B00Y", "BZ" to "B00Y"
+    )
+
+    private fun marketName(s: String): String =
+        HKNAME.firstOrNull { it.first == s }?.second
+            ?: KRNAME.firstOrNull { it.first == s }?.second
+            ?: ""
+
+    // 港韩+英文别名的本地命中(联想框与自选搜索框共用;去重交给调用方)
+    private fun marketLocal(q: String): List<SugItem> {
+        val items = mutableListOf<SugItem>()
+        for ((k, v) in HKNAME + KRNAME) {
+            if (k.contains(q) || v.contains(q)) {
+                if (items.none { it.s == k }) items.add(SugItem(k, v, k.startsWith(q)))
+            }
+        }
+        for ((a, target) in ENALIAS) {
+            if (a.contains(q) && items.none { it.s == target }) {
+                items.add(SugItem(target, favName(target).ifEmpty { a }, a.startsWith(q)))
+            }
+        }
+        return items
+    }
+
+    // 反查中文名(对标稿子favName):命中第一个值相等的键,无则查港韩表,再无则空串
     fun favName(s: String): String =
-        CNNAME.firstOrNull { it.second == s }?.first ?: ""
+        CNNAME.firstOrNull { it.second == s }?.first ?: marketName(s)
 
     private val SPOT_QUOTES = setOf("USDT", "USD", "USDC")
 
@@ -62,6 +106,10 @@ object MktSuggest {
             if (v.startsWith(q) && items.none { it.s == v }) {
                 items.add(SugItem(v, k, true))
             }
+        }
+        // 稿§5:港韩中英名+英文别名也进联想框
+        for (it in marketLocal(q)) {
+            if (items.none { x -> x.s == it.s }) items.add(it)
         }
         return sortTop(items)
     }
@@ -187,6 +235,10 @@ object MktSuggest {
                 items.add(SugItem(v, k, false))
             }
         }
+        // 稿§5:港韩中英名+英文别名也进自选搜索框
+        for (it in marketLocal(q)) {
+            if (items.none { x -> x.s == it.s }) items.add(it)
+        }
         return items
     }
 
@@ -217,7 +269,15 @@ object MktSuggest {
             x.s.startsWith(q) -> 1
             else -> 2
         }
-        return items.filter { (it.s.contains(q) || q.contains(it.s)) && it.s !in mine }
+        // 中文名命中的条目 s=代码、tag=中文名:tag参与过滤;
+        // 英文别名命中按别名→目标代码直接放行(否则 s=00700 配 q=TENCENT 被丢)
+        val aliasTarget = ENALIAS.firstOrNull {
+            it.first == q || it.first.contains(q)
+        }?.second
+        return items.filter {
+            (it.s.contains(q) || q.contains(it.s) || it.tag.contains(q) ||
+                (aliasTarget != null && it.s == aliasTarget)) && it.s !in mine
+        }
             .sortedWith(compareBy<SugItem> { rank(it) })
             .take(12)
     }

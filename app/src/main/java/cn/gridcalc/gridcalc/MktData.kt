@@ -23,7 +23,9 @@ import kotlin.math.min
 
 data class KLine(
     val t: Long, val o: Double, val h: Double,
-    val l: Double, val c: Double, val v: Double, val qv: Double
+    val l: Double, val c: Double, val v: Double, val qv: Double,
+    // v4§7 美元口径:判重标记打在每根K线上(首画/终画共享同批对象,打数组上会二次折算、价格越刷越小)
+    var usd: Boolean = false
 )
 
 data class VendorKs(val v: String, var k: List<KLine>)
@@ -55,6 +57,10 @@ object MktData {
         if (Regex("00Y$").containsMatchIn(u)) return "cmdty"
         if (u.contains("XAU") || u.contains("GOLD") || u.startsWith("GC=F")) return "gold"
         if (u.contains("XAG") || u.contains("SILVER") || u.startsWith("SI=F")) return "silver"
+        // 稿§5:6位数字→韩股(东财177),5位(4位待补零)→港股(东财116)。
+        // 顺序保持 商品→金银→6位韩→5位港→币对→美股;纯数字不会命中币对分支,放币对前安全
+        if (Regex("^\\d{6}$").matches(u)) return "kr"
+        if (Regex("^\\d{4,5}$").matches(u)) return "hk"
         if (u.endsWith("USDT") || u.endsWith("USD") || u.endsWith("USDC") ||
             u.endsWith("BTC") || u.endsWith("ETH") ||
             u.contains("/") || u.contains("-")
@@ -78,13 +84,16 @@ object MktData {
         if (i < a.length()) a.optString(i, "0").toDoubleOrNull()?.toLong() ?: 0L else 0L
 
     internal fun get(
-        url: String, accept: String? = null, ua: String = UA, timeoutMs: Int = 0
+        url: String, accept: String? = null, ua: String = UA, timeoutMs: Int = 0,
+        origin: String? = null
     ): String {
         val c = (URL(url).openConnection() as HttpURLConnection).apply {
             connectTimeout = if (timeoutMs > 0) timeoutMs else 12000
             readTimeout = if (timeoutMs > 0) timeoutMs else 15000
             setRequestProperty("User-Agent", ua)
             if (accept != null) setRequestProperty("Accept", accept)
+            // v4§7:汇率源(frankfurter/er-api)必须显式带Origin,否则网关把CORS头回成null
+            if (origin != null) setRequestProperty("Origin", origin)
             instanceFollowRedirects = true
         }
         try {
@@ -144,13 +153,14 @@ object MktData {
         return base to quote
     }
 
-    // 币分支参战腿:BTC钉死币安单源,其余base走OK/BB/GT/KU/MX
-    // (BN在USD报价时跳过,唯BTCUSD裸接口已验真货保留)+BTC限定GK
+    // 币分支参战腿:BTC钉死币安单源,其余base走GT/OK/BB/KU/MX
+    // (稿§6:Gate提到第2位——BN在前时顺序[BN,GT,OK,…];BN在USD报价时跳过,
+    // 唯BTCUSD裸接口已验真货保留)+BTC限定GK
     const val PIN = "BN"
     fun cryptoLegs(sym: String): List<String> {
         val (base, quote) = splitBaseQuote(sym)
         if (base == "BTC") return listOf("BN")
-        val legs = mutableListOf("OK", "BB", "GT", "KU", "MX")
+        val legs = mutableListOf("GT", "OK", "BB", "KU", "MX")
         if (quote != "USD") legs.add(0, "BN")
         return legs
     }
@@ -437,6 +447,79 @@ object MktData {
         return out
     }
 
+    // 稿§6 腾讯腿(东财/Nasdaq不可达的兜底):美股 us+代码+后缀依次 .OQ/.N/.AR/.P,
+    // 港股 hk+5位补零;字段顺序 [日期,开,收,高,低,量] 与东财(开,高,低,收)不同——
+    // 收在第3位别搞反;取回日线后按 tf 重采样;少于3根视为无效换下一个key;
+    // 来源标签「腾讯」(vendorName TX)
+    // D1:美股 key 必须带 `us` 市场前缀(稿L857 usAAPL.OQ),漏了 `us` 整条腿对美股100%失效
+    fun fetchTencent(sym: String, tf: String, count: Int, timeoutMs: Int = 9000): List<VendorKs> {
+        val u = sym.trim().uppercase(Locale.US)
+        val keys = when (symType(u)) {
+            "hk" -> listOf("hk" + u.padStart(5, '0'))
+            "kr" -> emptyList() // 稿腾讯腿覆盖美股/港股;韩股走东财177与Yahoo .KS
+            else -> listOf("us$u.OQ", "us$u.N", "us$u.AR", "us$u.P")
+        }
+        val n = max(5, min(200, count))
+        for (key in keys) {
+            try {
+                val s = get(
+                    "https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=$key,day,,,320,qfq",
+                    accept = "application/json", timeoutMs = timeoutMs)
+                val d = JSONObject(s).optJSONObject("data")?.optJSONObject(key) ?: continue
+                val rows = d.optJSONArray("qfqday") ?: d.optJSONArray("day") ?: continue
+                val out = mutableListOf<KLine>()
+                for (i in 0 until rows.length()) {
+                    val a = rows.optJSONArray(i) ?: continue
+                    if (a.length() < 6) continue
+                    val t = parseNasdaqDate(a.optString(0).trim().take(10))
+                    val o = a.optDouble(1, 0.0)
+                    val c = a.optDouble(2, 0.0) // 收=第3位(腾讯序)
+                    val h = a.optDouble(3, 0.0)
+                    val l = a.optDouble(4, 0.0)
+                    val v = a.optDouble(5, 0.0)
+                    if (t == 0L || !(h > 0)) continue
+                    out.add(KLine(t, o, h, l, c, v, 0.0))
+                }
+                if (out.size < 3) continue
+                out.sortBy { it.t }
+                val ks = resampleDaily(out, tf).takeLast(n)
+                if (ks.size < 3) continue
+                return listOf(VendorKs("TX", ks))
+            } catch (_: Exception) {
+            }
+        }
+        return emptyList()
+    }
+
+    // Yahoo 符号按市场加后缀(港 .HK / 韩 .KS,美股原样)
+    private fun yahooSym(sym: String): String {
+        val u = sym.trim().uppercase(Locale.US)
+        return when (symType(u)) {
+            "hk" -> "$u.HK"
+            "kr" -> "$u.KS"
+            else -> u
+        }
+    }
+
+    // 稿§6 股票串行腿(美/港/韩共用):东财(6s)→Nasdaq(9s)→腾讯(9s)→Yahoo(9s),
+    // 前一腿失败(抛错或空)才发下一腿,命中即停,常态只发1个请求
+    fun fetchStocks(sym: String, tf: String, count: Int): List<VendorKs> {
+        val legs: List<() -> List<VendorKs>> = listOf(
+            { fetchEastmoney(sym, tf, count, 6000) },
+            { fetchNasdaq(sym, tf, count, 9000) },
+            { fetchTencent(sym, tf, count, 9000) },
+            { fetchYahooDaily(yahooSym(sym), tf, count, 9000) }
+        )
+        for (leg in legs) {
+            try {
+                val vs = leg()
+                if (vs.isNotEmpty()) return vs
+            } catch (_: Exception) {
+            }
+        }
+        throw Exception("行情拉取失败(网络或品种名不对)")
+    }
+
     // 东货行情 secid 映射(照稿 EMID):金银 101.GC00Y/101.SI00Y + 17 种大宗商品 *00Y,
     // 未命中映射按 105.<代码> 走美股。代码原样大写(含数字/=,不再剥字符)。
     private val EMID = mapOf(
@@ -457,6 +540,30 @@ object MktData {
     internal fun emSecid(code: String): String {
         EMID[code]?.let { return it }
         EMMKT[code]?.let { return it }
+        // 稿§5:4/5位→只试116(港股),6位→只试177(韩股),不进105/106/107美股探测;
+        // 4位先补零到5位;探测失败也只用116/177(绝不回落105.),调用方照常报无源
+        val shaped = if (Regex("^\\d{1,5}$").matches(code)) code.padStart(5, '0') else code
+        val fixed = when {
+            Regex("^\\d{5}$").matches(shaped) -> "116"
+            Regex("^\\d{6}$").matches(shaped) -> "177"
+            else -> null
+        }
+        if (fixed != null) {
+            val sid = "$fixed.$shaped"
+            try {
+                val j = JSONObject(get(
+                    "https://push2.eastmoney.com/api/qt/stock/get?secid=$sid&fields=f57" +
+                        "&ut=fa5fd1943c7b386f172d6893dbfba10b",
+                    timeoutMs = 6000))
+                val d = j.optJSONObject("data")
+                if (d != null && d.optString("f57").isNotEmpty()) {
+                    EMMKT[code] = sid
+                    return sid
+                }
+            } catch (_: Exception) {
+            }
+            return sid
+        }
         for (m in listOf("105", "106", "107")) {
             val sid = "$m.$code"
             try {
@@ -526,6 +633,7 @@ object MktData {
         "YH" -> "Yahoo"
         "NQ" -> "Nasdaq"
         "ED" -> "东方财富"
+        "TX" -> "腾讯"
         else -> v
     }
 
@@ -539,8 +647,9 @@ object MktData {
         private const val TTL = 5 * 60 * 1000L
         private val map = LinkedHashMap<String, E>()
 
+        // v4§7:缓存键必须带汇率——汇率变了键就变,强制重新抓,不沿用旧美元价
         fun key(sym: String, tf: String, n: Int): String =
-            sym.trim().uppercase(Locale.US) + "|" + tf + "|" + n
+            sym.trim().uppercase(Locale.US) + "|" + tf + "|" + n + "@" + FX.keyRate(sym)
 
         @Synchronized
         fun get(k: String): List<VendorKs>? {
@@ -557,6 +666,196 @@ object MktData {
             map[k] = E(vs, System.currentTimeMillis())
             while (map.size > 20) {
                 map.remove(map.keys.first())
+            }
+        }
+    }
+
+    // ---------- v4§8 1%价格精度:d = max(0, 2 - floor(log10 v)) ----------
+    // 个位价保留必要小数(6.77→6.77),三位数以上自动取整;6个价格出口统一走这里
+    fun quantD(v: Double): Int {
+        if (!(v > 0) || !v.isFinite()) return 2
+        return Math.max(0, 2 - Math.floor(Math.log10(v)).toInt())
+    }
+
+    fun quantPx(v: Double): String =
+        String.format(Locale.US, "%.${quantD(v)}f", v)
+
+    fun quantCeil(v: Double): String {
+        val d = quantD(v)
+        if (d == 0) return Math.ceil(v).toLong().toString()
+        val f = Math.pow(10.0, d.toDouble())
+        return String.format(Locale.US, "%.${d}f", Math.ceil(v * f) / f)
+    }
+
+    // 明细行价格显示:千分位 + quant精度
+    fun fmtQ(v: Double): String =
+        String.format(Locale.US, "%,.${quantD(v)}f", v)
+
+    fun fmtCeilQ(v: Double): String {
+        val d = quantD(v)
+        val x = if (d == 0) Math.ceil(v)
+        else { val f = Math.pow(10.0, d.toDouble()); Math.ceil(v * f) / f }
+        return String.format(Locale.US, "%,.${d}f", x)
+    }
+
+    // ---------- v4§7 美元口径:汇率层(1 USD = X 外币,原生价→美元 = ÷X) ----------
+    object FX {
+        // 必须显式带Origin(部分网关据此放行CORS头)
+        const val ORIGIN = "https://gridcalc.app"
+        const val TTL = 6 * 60 * 60 * 1000L // 6小时缓存
+        private const val PF = "gridcalc_fx_v1"
+        private const val PKEY = "gc_fx"
+
+        @Volatile var rates = HashMap<String, Double>()
+        @Volatile var dateStr = ""
+        @Volatile var ts = 0L
+        @Volatile var loaded = false
+        @Volatile var inflight = false
+        // 汇率异步到达回调(主线程重画说明行+图表);由MainActivity接线
+        var onReady: (() -> Unit)? = null
+
+        // 币种按代码形状判断(4/5位数字=港股HKD,6位=韩股KRW,其余美元;A股CNY路由未做,币种判断保留)
+        fun curOf(sym: String): String {
+            val u = sym.trim().uppercase(Locale.US)
+            if (Regex("^\\d{4}$").matches(u) || Regex("^\\d{5}$").matches(u)) return "HKD"
+            if (Regex("^\\d{6}$").matches(u)) return "KRW"
+            return "USD"
+        }
+
+        fun rateOf(cur: String): Double? = if (cur == "USD") 1.0 else rates[cur]
+
+        // 缓存键尾缀:美元=1,无汇率=0,有汇率用去尾零十进制串(7.844/1355.05)
+        fun keyRate(sym: String): String {
+            val r = rateOf(curOf(sym)) ?: 0.0
+            if (!(r > 0)) return "0"
+            return java.math.BigDecimal(r).stripTrailingZeros().toPlainString()
+        }
+
+        private fun fmtRate(r: Double): String =
+            String.format(Locale.US, "%,.4f", r).trimEnd('0').trimEnd('.')
+
+        // 行情页说明行三态:美元报价/有汇率(带日期)/取不到保持原币
+        fun fxText(sym: String): String {
+            val cur = curOf(sym)
+            if (cur == "USD") return "美元口径(该品种以美元报价)"
+            val r = rateOf(cur)
+            if (r == null || !(r > 0)) return "美元口径:暂时没取到 $cur 汇率,价格仍按原币显示"
+            return "美元口径:1 USD = ${fmtRate(r)} $cur(汇率 $dateStr)"
+        }
+
+        private fun pref(c: android.content.Context): android.content.SharedPreferences? =
+            try {
+                c.getSharedPreferences(PF, android.content.Context.MODE_PRIVATE)
+            } catch (_: Exception) {
+                null // 写失败降级为内存态,不崩
+            }
+
+        // 只在App打开/回前台时调一次:缓存新鲜则不动网,过期/缺失则发起一次请求(无轮询无定时器)
+        fun ensure(c: android.content.Context) {
+            try {
+                if (!loaded) {
+                    val s = pref(c)?.getString(PKEY, null)
+                    if (!s.isNullOrEmpty()) {
+                        val j = JSONObject(s)
+                        val m = HashMap<String, Double>()
+                        for (k in listOf("HKD", "KRW", "CNY")) {
+                            val v = j.optDouble(k, 0.0)
+                            if (v > 0) m[k] = v
+                        }
+                        if (m.isNotEmpty()) {
+                            rates = m
+                            dateStr = j.optString("date", "")
+                            ts = j.optLong("ts", 0L)
+                            loaded = true
+                        }
+                    }
+                }
+            } catch (_: Exception) {
+            }
+            if (loaded && System.currentTimeMillis() - ts < TTL) return
+            if (inflight) return
+            inflight = true
+            Thread {
+                try {
+                    val (m, d) = fetch()
+                    if (m.isNotEmpty()) {
+                        rates = HashMap(m)
+                        if (d.isNotEmpty()) dateStr = d
+                        ts = System.currentTimeMillis()
+                        loaded = true
+                        try {
+                            val o = JSONObject()
+                            for ((k, v) in m) o.put(k, v)
+                            o.put("date", dateStr)
+                            o.put("ts", ts)
+                            pref(c)?.edit()?.putString(PKEY, o.toString())?.apply()
+                        } catch (_: Exception) {
+                        }
+                    }
+                } catch (_: Exception) {
+                } finally {
+                    inflight = false
+                    // 无论成败都回调:成功→按新汇率重画;失败→说明行切到「暂时没取到/沿用旧缓存」
+                    onReady?.invoke()
+                }
+            }.start()
+        }
+
+        private fun parse(s: String, date: String): Pair<Map<String, Double>, String> {
+            val j = JSONObject(s)
+            val rr = j.optJSONObject("rates") ?: return Pair(emptyMap(), "")
+            val m = mutableMapOf<String, Double>()
+            for (k in listOf("HKD", "KRW", "CNY")) {
+                val v = rr.optDouble(k, 0.0)
+                if (v > 0) m[k] = v
+            }
+            val dt = date.ifEmpty { j.optString("date", "") }
+            return if (m.isNotEmpty()) Pair(m, dt) else Pair(emptyMap(), "")
+        }
+
+        private fun fetch(): Pair<Map<String, Double>, String> {
+            // 主源:frankfurter(ECB数据)
+            try {
+                val r = parse(
+                    get("https://api.frankfurter.app/latest?from=USD&to=HKD,KRW,CNY",
+                        "application/json", UA, 6000, ORIGIN), "")
+                if (r.first.isNotEmpty()) return r
+            } catch (_: Exception) {
+            }
+            // 备源:open.er-api
+            try {
+                val s = get("https://open.er-api.com/v6/latest/USD",
+                    "application/json", UA, 6000, ORIGIN)
+                val j = JSONObject(s)
+                val d = try {
+                    val raw = j.optString("time_last_update_utc", "")
+                    java.text.SimpleDateFormat("yyyy-MM-dd", Locale.US).format(
+                        java.text.SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss zzz", Locale.US)
+                            .parse(raw) ?: java.util.Date())
+                } catch (_: Exception) {
+                    ""
+                }
+                val r = parse(s, d)
+                if (r.first.isNotEmpty()) return r
+            } catch (_: Exception) {
+            }
+            return Pair(emptyMap(), "")
+        }
+
+        // K线入表时(aggregate之前)折算o/h/l/c。判重在每根K线上:首画/终画/缓存共享同批对象
+        // 只折一次;留底(内存缓存)存已折算美元价,读取不再折;汇率变→键变→重新抓新对象再折。
+        fun fxify(vs: List<VendorKs>, sym: String) {
+            val cur = curOf(sym)
+            if (cur == "USD") return
+            val r = rateOf(cur) ?: return
+            if (!(r > 0)) return
+            for (vk in vs) {
+                if (vk.k.all { it.usd }) continue
+                vk.k = vk.k.map { k ->
+                    if (k.usd) k
+                    else k.copy(
+                        o = k.o / r, h = k.h / r, l = k.l / r, c = k.c / r, usd = true)
+                }
             }
         }
     }

@@ -43,7 +43,7 @@
                 android:textColorHint="?attr/colorFaint"
                 android:textSize="17sp"
                 android:typeface="monospace" />
-            <!-- 列头(稿.favhead):右对齐,内距4/2/8/2,右缘与胶囊列对齐 -->
+            <!-- 列头(稿§2):距支撑104dp/收益率76dp/收益比62dp,右缘与行内三格逐字对齐 -->
             <LinearLayout
                 android:id="@+id/fav_head"
                 android:layout_width="match_parent"
@@ -55,19 +55,50 @@
                 android:paddingRight="2dp"
                 android:paddingBottom="8dp">
                 <Button
-                    android:id="@+id/fav_sort"
-                    android:layout_width="wrap_content"
+                    android:id="@+id/fav_sort_dist"
+                    android:layout_width="104dp"
                     android:layout_height="wrap_content"
                     android:background="@android:color/transparent"
+                    android:gravity="end|center_vertical"
                     android:minHeight="0dp"
                     android:minWidth="0dp"
                     android:paddingTop="2dp"
                     android:paddingBottom="2dp"
                     android:paddingLeft="2dp"
-                    android:paddingRight="2dp"
+                    android:paddingRight="4dp"
                     android:text="距支撑 ▲▼"
                     android:textColor="?attr/colorSub"
-                    android:textSize="13sp" />
+                    android:textSize="12sp" />
+                <Button
+                    android:id="@+id/fav_sort_gain"
+                    android:layout_width="76dp"
+                    android:layout_height="wrap_content"
+                    android:background="@android:color/transparent"
+                    android:gravity="end|center_vertical"
+                    android:minHeight="0dp"
+                    android:minWidth="0dp"
+                    android:paddingTop="2dp"
+                    android:paddingBottom="2dp"
+                    android:paddingLeft="2dp"
+                    android:paddingRight="4dp"
+                    android:text="收益率 ▲▼"
+                    android:textColor="?attr/colorSub"
+                    android:textSize="12sp" />
+                <Button
+                    android:id="@+id/fav_sort_ratio"
+                    android:layout_width="62dp"
+                    android:layout_height="wrap_content"
+                    android:background="@android:color/transparent"
+                    android:gravity="end|center_vertical"
+                    android:minHeight="0dp"
+                    android:minWidth="0dp"
+                    android:paddingTop="2dp"
+                    android:paddingBottom="2dp"
+                    android:paddingLeft="2dp"
+                    android:paddingRight="4dp"
+                    android:text="收益比 ▲▼"
+                    android:textColor="?attr/colorSub"
+                    android:textSize="11sp" />
             </LinearLayout>
             <LinearLayout
                 android:id="@+id/fav_list"

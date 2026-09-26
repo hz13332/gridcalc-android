@@ -66,6 +66,63 @@ class MainActivity : Activity() {
     private lateinit var capX: Button
     private lateinit var calcErr: TextView // 稿#err 报错行
 
+    // ---------- 稿§1.1 「保存数据」按钮(阻塞项):计算不再即落库 ----------
+    // 默认disabled;计算成功→enabled(暂存待存闭包);点击→落库一条+文案
+    // 「已保存，继续计算后可再存」1.6s后复原「保存数据」;再次计算→重新enabled;
+    // 回填/失败/超标场景一律disabled(没有新结果可存)
+    private lateinit var saveBtn: Button
+    private var pendingRec: (() -> Unit)? = null
+    private val uiHandler = android.os.Handler(android.os.Looper.getMainLooper())
+
+    private fun saveIdle() {
+        pendingRec = null
+        if (::saveBtn.isInitialized) {
+            saveBtn.isEnabled = false
+            saveBtn.text = "保存数据"
+        }
+    }
+
+    // v4 D2/D4/D9 **共用一个闸**:程序正在往输入框写值(restoreCalc 回填 / pxBlur 失焦量化)时,
+    // 忽略连带的副作用——afterTextChanged→idle() 会把刚回填的结果区自己清掉,
+    // linkCalc 也会用支撑位覆盖刚回填的最低价/目标上限。
+    // 置位只包住自己那次 setText,写完立刻清零,用户下一次真实输入照常触发 idle()。
+    private var suppressReset = false
+
+    /** 程序写值:包住一组 setText,期间忽略 watcher 副作用 */
+    private inline fun <T> programWrite(block: () -> T): T {
+        suppressReset = true
+        try {
+            return block()
+        } finally {
+            suppressReset = false
+        }
+    }
+
+    // v4 D4(t89) **回填态标志**:与 suppressReset 分工不同,不是「程序正在写值」的瞬时闸,
+    // 而是「本品种的输入框现在是记录里保存的值,在用户下一次真实动作之前不许被联动覆盖」。
+    //
+    // 为什么 suppressReset 顶不上(这是 t86 的假绿根因):
+    //   MktView.setData→redraw→invalidate() 是**排队到下一帧**的,renderAgg 末尾的
+    //   finishLoad→restoreCalc 跑完时 chart.onInfo→linkCalc **根本还没发生**;
+    //   下一帧再进来 programWrite 的 finally 早已把 suppressReset 清零,
+    //   于是 linkCalc 用支撑位把刚回填的最低价/目标上限又覆盖一遍。
+    //   linkPhigh 更远——它来自 paintTgt 的另一个异步回调,时机完全不可控。
+    // 所以需要一个**活到用户下一次真实输入**为止的标志,而不是瞬时闸。
+    // suppressReset 保留不动(对 D2/D9 的程序写值自激仍然必要且正确),只是不再承担 D4。
+    private var restoreGuardSym: String? = null
+
+    // 稿pxBlur(L443-450):失焦时把已为正数的 plow/phigh/popen 按 1% 精度量化回写。
+    // 严格保留稿L445「已经正好就不动你输入的样子」:量化结果与原串相同则**不 setText**,
+    // 避免无谓改动打断用户输入,也避免程序写值触发 watcher 自激。
+    private fun pxBlur(e: EditText) {
+        val raw = e.text.toString().trim()
+        val v = raw.toDoubleOrNull() ?: return
+        if (!(v > 0)) return
+        val q = MktData.quantPx(v)
+        if (q == raw) return
+        programWrite { e.setText(q) }
+    }
+
     companion object {
         const val ANIM_TAB = 0
         const val ANIM_FROM_R = 1
@@ -85,8 +142,13 @@ class MainActivity : Activity() {
 
     private fun prefs() = getSharedPreferences("gridcalc", Context.MODE_PRIVATE)
 
+    // v4 D10:主题读写的 SharedPreferences 全程 try/catch,失败降级为默认主题,不崩
     private fun loadMode(): String {
-        val m = prefs().getString("theme", "follow") ?: "follow"
+        val m = try {
+            prefs().getString("theme", "follow")
+        } catch (_: Exception) {
+            null
+        } ?: "follow"
         return if (m in setOf("follow", "light", "dark")) m else "follow"
     }
 
@@ -199,9 +261,13 @@ class MainActivity : Activity() {
         showErr(null)
         if (::statLiqCard.isInitialized) statLiqCard.background = null
         statVals["liq"]?.setTextColor(attrColor("colorInk"))
+        // §1.1 失败/清场场景:待存结果作废,按钮回disabled
+        saveIdle()
     }
 
     private fun onCalc() {
+        suppressReset = false // v4 D2/D9:真实计算清闸,之后的程序写值照常生效
+        restoreGuardSym = null // ② 清零点:点「计算」= 用户明确要基于当前输入重算 → 退出回填态
         showErr(null) // 稿calc()首行clear:清上一轮目标上限报错
         try {
             val c = getNum(inp["C"]!!, "总投入")
@@ -243,9 +309,9 @@ class MainActivity : Activity() {
             statLiqCard.background = null
             statVals["liq"]!!.setTextColor(ink)
             hero.setTextColor(if (r.net >= 0) teal else red)
-            hero.text = "%+.2f USDT".format(r.net)
+            hero.text = "%+.2f USD".format(r.net)
             heroSub.setTextColor(sub)
-            heroSub.text = "收益率 %+.2f%% · %d卖%d买 · 见底权益约%.2fU".format(
+            heroSub.text = "收益率 %+.2f%% · %d卖%d买 · 见底权益约%.2f USD".format(
                 r.roe, r.m, r.b, r.eqBottom)
             // ④稿582:强平价≤0显示0.00(不再显示负数);null=永不爆仓
             statVals["liq"]!!.text = r.liq?.let { if (it <= 0) "0.00" else fmt(it) } ?: "永不爆仓"
@@ -261,37 +327,45 @@ class MainActivity : Activity() {
             rows.removeAllViews()
             rows.addView(makeRow("#", "网格价", null, "累计净收益", sub, false, true))
             var zebra = false
-            val sorted = gridLines(pl, ph, n).filter {
-                it < po - 1e-9 || it > po + 1e-9
-            }.sorted()
-            sorted.forEachIndexed { i, p ->
-                if (p < po) {
-                    rows.addView(makeRow(
-                        "${i + 1}", fmt(p), "买入|buy", fmt(q * p),
-                        sub, zebra, false))
-                } else {
-                    val amt = q * p
-                    cumSell += amt
-                    val cum = cumSell - r.cost0 - buyFee - cumSell * fee
-                    rows.addView(makeRow(
-                        "${i + 1}", fmt(p), "卖出|sell",
-                        "%+.2f".format(cum),
-                        if (cum >= 0) teal else red, zebra, false))
+            // D8:稿L668 只量化**首末行**(quantPx),中间行用普通 f2 两位小数;
+            // 序号用 lines 的原始下标(不按过滤后的重排序号),顺带修排序后 # 跳号
+            val allLines = gridLines(pl, ph, n)
+            val lastIdx = allLines.size - 1
+            allLines.sorted().forEachIndexed { i, p ->
+                if (p < po - 1e-9 || p > po + 1e-9) {
+                    val txt = if (i == 0 || i == lastIdx) MktData.fmtQ(p) else fmt(p)
+                    if (p < po) {
+                        rows.addView(makeRow(
+                            "${i + 1}", txt, "买入|buy", fmt(q * p),
+                            sub, zebra, false))
+                    } else {
+                        val amt = q * p
+                        cumSell += amt
+                        val cum = cumSell - r.cost0 - buyFee - cumSell * fee
+                        rows.addView(makeRow(
+                            "${i + 1}", txt, "卖出|sell",
+                            "%+.2f".format(cum),
+                            if (cum >= 0) teal else red, zebra, false))
+                    }
                 }
                 zebra = !zebra
             }
             if (dbl) {
                 rows.addView(makeRow(
-                    "顶", fmt(ph), "全平|sell",
+                    "顶", MktData.fmtCeilQ(ph), "全平|sell",
                     "%+.2f".format(r.net),
                     if (r.net >= 0) teal else red, zebra, false))
             }
-            // ⑥每次成功计算追加一条记录(稿609 logRec位置:目标上限超标路径已提前return,不记录)
-            logRec(r, pl, ph, n, c, l, po, q, fee, mmr)
+            // 稿§1.1:计算成功只暂存待存结果(不落库);点「保存数据」才追加一条
+            pendingRec = { logRec(r, pl, ph, n, c, l, po, q, fee, mmr) }
+            saveBtn.text = "保存数据"
+            saveBtn.isEnabled = true
         } catch (e: Exception) {
             val msg = e.message ?: "出错"
             if ("还没有填" in msg) {
+                // v4§0/§9.2 修3.7.2静默缺陷:清空结果区 + 必填提示必须显示
                 idle()
+                showErr(msg)
                 return
             }
             val red = attrColor("colorRed")
@@ -358,7 +432,7 @@ class MainActivity : Activity() {
             o.put("sym", mktPanel.curSym())
             o.put("typ", mktPanel.curTyp())
             o.put("mark", mktPanel.curPx() ?: org.json.JSONObject.NULL)
-            o.put("Pl", pl); o.put("Ph", ph); o.put("N", n); o.put("g", "geo")
+            o.put("Pl", pl); o.put("Ph", ph); o.put("N", n); o.put("g", gridMode)
             o.put("C", c); o.put("L", l); o.put("Po", po); o.put("q", q)
             o.put("man", "手填")
             o.put("auto", "")
@@ -369,6 +443,11 @@ class MainActivity : Activity() {
             o.put("net", r.net); o.put("roe", r.roe)
             o.put("B", r.b); o.put("M", r.m)
             o.put("fee", fee); o.put("mmr", mmr)
+            // v4§7 记录两列:计价币种 + 美元汇率(1USD=?);USD品种汇率=1,取不到汇率留空
+            val cur = MktData.FX.curOf(o.optString("sym"))
+            o.put("cur", cur)
+            o.put("fx", if (cur == "USD") "1"
+                else MktData.FX.rateOf(cur)?.let { numStr(it) } ?: "")
             o.put("lines", gridLines(pl, ph, n).joinToString("|") { prec10(it) })
             recs.add(o)
             while (recs.size > RECCAP) recs.removeAt(0)
@@ -380,7 +459,7 @@ class MainActivity : Activity() {
     private val RHEAD = listOf(
         "时间", "交易对", "品种类型", "现价", "最低价", "最高价", "网格数", "网格模式", "保证金", "杠杆", "触发价",
         "每格数量", "数量来源", "自动算数量", "预估强平价", "目标上限", "加倍建仓", "持仓数量", "建仓成本", "卖出总额", "净收益", "收益率",
-        "买格", "卖格", "手续费率", "维持保证金率", "档位线"
+        "买格", "卖格", "手续费率", "维持保证金率", "档位线", "计价币种", "美元汇率(1USD=?)"
     )
 
     private fun csvCell(v: String): String =
@@ -405,7 +484,8 @@ class MainActivity : Activity() {
                 numStr(r.optDouble("pos")), numStr(r.optDouble("cost")), numStr(r.optDouble("sell")),
                 numStr(r.optDouble("net")), numStr(r.optDouble("roe")),
                 r.optInt("B").toString(), r.optInt("M").toString(),
-                numStr(r.optDouble("fee")), numStr(r.optDouble("mmr")), r.optString("lines")
+                numStr(r.optDouble("fee")), numStr(r.optDouble("mmr")), r.optString("lines"),
+                r.optString("cur"), r.optString("fx")
             )
             sb.append(row.joinToString(",") { csvCell(it) })
         }
@@ -416,7 +496,7 @@ class MainActivity : Activity() {
     private fun exportCsv() {
         if (recs.isEmpty()) {
             android.app.AlertDialog.Builder(this)
-                .setMessage("还没有记录：先在计算页点一次「计算」")
+                .setMessage("还没有记录：单点「计算」不保存，计算后点「保存数据」才会记录")
                 .setPositiveButton("确定", null).show()
             return
         }
@@ -536,7 +616,10 @@ class MainActivity : Activity() {
         val prev = lkPrev
         if (prev != null && prev.first == s1 && prev.second == s2) return
         lkPrev = Pair(s1, s2)
-        inp["Pl"]!!.setText(MktData.jsPrec(s1))
+        // D4/t89:回填态只更新 lkPrev(稿L552 语义),不写 inp["Pl"]/lkCap——保存值必须赢。
+        // 判据是**活标志** restoreGuardSym,不是瞬时的 suppressReset:onInfo 是下一帧才触发的。
+        if (restoreGuardSym != null) return
+        inp["Pl"]!!.setText(MktData.quantPx(s1)) // D9(a):最低价走 1% 精度(quantPx),不是 jsPrec
         lkCap = s2
         paintCap()
     }
@@ -550,7 +633,106 @@ class MainActivity : Activity() {
         if (pv != null && !(avg > pv)) return
         if (lkPh == avg) return
         lkPh = avg
-        inp["Ph"]!!.setText(MktData.jsPrec(avg))
+        // D4/t89:回填态不覆盖刚恢复出来的最高价。linkPhigh 来自 paintTgt 的**另一个异步回调**,
+        // 时机比 onInfo 更不可控,所以同样只认 restoreGuardSym 这个活标志。
+        if (restoreGuardSym != null) return
+        programWrite { inp["Ph"]!!.setText(MktData.quantPx(avg)) }
+    }
+
+    // ---------- v4§1 按品种记住计算参数并回填(数据=记录表,同品种只取最新一条) ----------
+    // 网格模式:3.7.2无独立控件,记录值回填到状态(重算时继续写回该品种的模式)
+    private var gridMode = "geo"
+
+    // 品种归一化:大写 + 4位港股补零到5位(1211→01211)
+    private fun normSym(s: String): String {
+        val u = s.trim().uppercase(java.util.Locale.US)
+        return if (Regex("^\\d{4}$").matches(u)) "0$u" else u
+    }
+
+    // 费率/维持保证金率:记录存小数(0.0005),输入框是百分数(0.05)→回填×100,8位小数去尾
+    private fun rateBox(v: Double): String =
+        java.math.BigDecimal(v * 100).setScale(8, java.math.RoundingMode.HALF_UP)
+            .stripTrailingZeros().toPlainString()
+
+    // 打开某品种行情时调用(MktPanel.mkLoad,仅换品种一次):
+    // 有记录→输入框全部回填+结果区显示保存时的值(不重算)+副标题「已保存于」;
+    // 无记录→只清结果区(idle),绝不动用户正在填写的输入框。两路都不触发计算。
+    fun restoreCalc(sym: String) {
+        try {
+            val key = normSym(sym)
+            val rec = recs.lastOrNull { normSym(it.optString("sym")) == key }
+            if (rec == null) {
+                // ③ 清零点:无记录品种**不得置位**,否则该品种的联动会被永久误挡
+                restoreGuardSym = null
+                idle()
+                return
+            }
+            // D4/t89:有记录→进入回填态,联动(linkCalc/linkPhigh)只更新 lkPrev/lkPh 不写输入框,
+            // 直到用户下一次真实输入或点「计算」
+            restoreGuardSym = key
+            // D2/D4/D9 共用闸:整段 setText 都在闸内,watcher 的 afterTextChanged→idle()
+            // 不会把刚回填完的结果区自己清掉,linkCalc 也不会覆盖这些值
+            programWrite {
+            inp["C"]!!.setText(numStr(rec.optDouble("C")))
+            inp["L"]!!.setText(numStr(rec.optDouble("L")))
+            inp["Pl"]!!.setText(numStr(rec.optDouble("Pl")))
+            inp["Ph"]!!.setText(numStr(rec.optDouble("Ph")))
+            inp["N"]!!.setText(rec.optInt("N").toString())
+            inp["Po"]!!.setText(numStr(rec.optDouble("Po")))
+            inp["q"]!!.setText(numStr(rec.optDouble("q")))
+            if (!rec.isNull("fee")) feeInp.setText(rateBox(rec.optDouble("fee")))
+            if (!rec.isNull("mmr")) mmrInp.setText(rateBox(rec.optDouble("mmr")))
+            }
+            gridMode = rec.optString("g").ifEmpty { "geo" }
+            dbl = rec.optString("dbl") == "是"
+            paintDbl()
+            lkCap = if (rec.isNull("cap")) null
+            else rec.optDouble("cap").takeIf { it > 0 }
+            paintCap()
+            // 结果区=保存时的值,不重新计算;明细行/明细行清掉(明细不落盘)
+            rows.removeAllViews()
+            detSum.setTextColor(attrColor("colorSub"))
+            detSum.text = "明细在该品种重新计算后显示"
+            val net = rec.optDouble("net")
+            val roe = rec.optDouble("roe")
+            hero.setTextColor(if (net >= 0) attrColor("colorTeal") else attrColor("colorRed"))
+            hero.text = "%+.2f USD".format(net)
+            heroSub.setTextColor(attrColor("colorSub"))
+            val cur = MktData.FX.curOf(rec.optString("sym"))
+            // D5:读**记录里存的那次汇率**(logRec 已写 fx),不要用当前汇率——否则汇率一变,
+            // 回填出来的旧记录会显示成今天的价格口径,自相矛盾。
+            // 老记录没有 fx 字段才回落当前汇率(按现状显示)。
+            val fxRec = rec.optString("fx").toDoubleOrNull()
+            val fxPart = if (cur != "USD") {
+                val r = fxRec ?: MktData.FX.rateOf(cur)
+                if (r != null && r > 0)
+                    "（原币 $cur · 汇率 ${String.format(java.util.Locale.US, "%,.4f", r).trimEnd('0').trimEnd('.')}）"
+                else "（原币 $cur）"
+            } else ""
+            heroSub.text =
+                "收益率 %+.2f%% · %d卖%d买 · %s 已保存于 %s%s（点「计算」可重算）".format(
+                    roe, rec.optInt("M"), rec.optInt("B"),
+                    rec.optString("sym"), rec.optString("t"), fxPart)
+            statVals["liq"]!!.text = if (rec.isNull("liq")) "永不爆仓"
+            else {
+                val x = rec.optDouble("liq")
+                if (x <= 0) "0.00" else fmt(x)
+            }
+            statVals["roe"]!!.text = "%+.2f%%".format(roe)
+            statVals["pos"]!!.text = "%.4f".format(rec.optDouble("pos"))
+            statVals["sell"]!!.text = fmt(rec.optDouble("sell"))
+            showErr(null)
+            statLiqCard.background = null
+            statVals["liq"]?.setTextColor(attrColor("colorInk"))
+            saveIdle() // 稿§1.1 回填场景按钮保持disabled(没有新结果可存)
+        } catch (_: Exception) {
+        }
+    }
+
+    // 自选三列用(稿§2/§3):该品种最新一条记录——读取时取最新,记录本身仍是追加语义
+    fun latestRecOf(sym: String): org.json.JSONObject? {
+        val key = normSym(sym)
+        return recs.lastOrNull { normSym(it.optString("sym")) == key }
     }
 
     private fun makeRow(
@@ -648,6 +830,11 @@ class MainActivity : Activity() {
     // 260ms/cubic-bezier(.32,.72,.35,1);插值器见res/interpolator。
     fun showTab(name: String, anim: Int, activeTab: String? = null) {
         tab = activeTab ?: name
+        // 稿§4 离开行情页(返回键/‹返回/切Tab全走这里):丢弃未确认根数/周期,
+        // 还原成该品种已确认默认(纯状态,不发请求)
+        if (name != "mkt" && ::mktPanel.isInitialized && body.indexOfChild(mktPage) >= 0) {
+            mktPanel.onLeave()
+        }
         body.removeAllViews()
         val v = when (name) {
             "mkt" -> mktPage
@@ -720,7 +907,10 @@ class MainActivity : Activity() {
 
     private fun setMode(m: String) {
         mode = m
-        prefs().edit().putString("theme", m).apply()
+        try { // D10:写失败只降级为「本次会话内生效」,不崩
+            prefs().edit().putString("theme", m).apply()
+        } catch (_: Exception) {
+        }
         recreate()
     }
 
@@ -767,6 +957,12 @@ class MainActivity : Activity() {
         out.putString("fee", feeInp.text.toString())
         out.putString("mmr", mmrInp.text.toString())
         out.putBoolean("dbl", dbl)
+    }
+
+    // v4§7 回前台取一次汇率(缓存6h内不动网;无轮询、无定时器、无后台常驻)
+    override fun onResume() {
+        super.onResume()
+        MktData.FX.ensure(this)
     }
 
     // ---------- ⑦返回键分发(稿 OnBackPressedDispatcher 语义,内置同构微型版) ----------
@@ -876,6 +1072,25 @@ class MainActivity : Activity() {
                     true
                 } else false
             }
+            // v4 D2:改任一参数 → 结果区立即清空 + 「保存数据」按钮回 disabled。
+            // 改参数后若还留着上一次的结果,保存下去就是「参数与结果不自洽」的记录。
+            // suppressReset 闸避开 restoreCalc 回填 / pxBlur 量化的 setText 自激。
+            e.addTextChangedListener(object : android.text.TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+                override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+                override fun afterTextChanged(s: android.text.Editable?) {
+                    if (suppressReset) return // 程序写值,不触发
+                    // ① 清零点:用户真实输入 → 退出回填态,联动恢复
+                    restoreGuardSym = null
+                    idle() // idle() 末尾已有 saveIdle(),按钮自动回 disabled
+                }
+            })
+            // v4 D9(b):稿pxBlur——最低价/最高价/触发价失焦时按 1% 精度量化(已正好则不动)
+            if (k == "Pl" || k == "Ph" || k == "Po") {
+                e.setOnFocusChangeListener { _, hasFocus ->
+                    if (!hasFocus) pxBlur(e)
+                }
+            }
         }
         hero = calcPage.findViewById(R.id.hero)
         heroSub = calcPage.findViewById(R.id.hero_sub)
@@ -911,6 +1126,16 @@ class MainActivity : Activity() {
                     true
                 } else false
             }
+            // v4 D2:设置页费率同样会让记录失真,一并接入(input→idle,按钮复位)
+            e.addTextChangedListener(object : android.text.TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+                override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+                override fun afterTextChanged(s: android.text.Editable?) {
+                    if (suppressReset) return
+                    restoreGuardSym = null // ① 费率也是真实输入,同样退出回填态
+                    idle()
+                }
+            })
         }
         dblBtn = calcPage.findViewById(R.id.dbl_btn)
         dblBtn.setOnClickListener {
@@ -919,6 +1144,17 @@ class MainActivity : Activity() {
             onCalc()
         }
         paintDbl()
+        // 稿§1.1 保存数据按钮:默认disabled,点击落库暂存结果,1.6s后文案复原
+        saveBtn = calcPage.findViewById(R.id.save_btn)
+        saveBtn.isEnabled = false
+        saveBtn.setOnClickListener {
+            val save = pendingRec ?: return@setOnClickListener
+            save()
+            pendingRec = null
+            saveBtn.isEnabled = false
+            saveBtn.text = "已保存，继续计算后可再存"
+            uiHandler.postDelayed({ saveBtn.text = "保存数据" }, 1600)
+        }
         // ⑥设置页「数据」卡片:计数+导出CSV+清空记录(稿recLoad/recPaint/recExport/recClear)
         recCount = settingsPage.findViewById(R.id.rec_count)
         settingsPage.findViewById<Button>(R.id.rec_export).setOnClickListener { exportCsv() }
@@ -940,6 +1176,13 @@ class MainActivity : Activity() {
             paintDbl()
         }
         watchKeyboard()
+        // v4§7 汇率:App打开取一次;异步到达→行情页说明行+图表重画
+        MktData.FX.onReady = {
+            runOnUiThread {
+                if (::mktPanel.isInitialized) mktPanel.fxArrived()
+            }
+        }
+        MktData.FX.ensure(this)
         // v3.4起行情Tab已删:旧存档的mkt归一到fav
         val startTab = savedInstanceState?.getString("tab")?.takeIf {
             it == "fav" || it == "calc" || it == "setup"

@@ -51,7 +51,7 @@
                         android:layout_width="match_parent"
                         android:layout_height="48dp"
                         android:background="@drawable/input_bg"
-                        android:hint="USDT"
+                        android:hint="USD"
                         android:importantForAutofill="no"
                         android:inputType="numberDecimal"
                         android:imeOptions="actionDone"
@@ -115,7 +115,7 @@
                         android:layout_width="match_parent"
                         android:layout_height="48dp"
                         android:background="@drawable/input_bg"
-                        android:hint="USDT"
+                        android:hint="USD"
                         android:importantForAutofill="no"
                         android:inputType="numberDecimal"
                         android:imeOptions="actionDone"
@@ -147,7 +147,7 @@
                         android:layout_width="match_parent"
                         android:layout_height="48dp"
                         android:background="@drawable/input_bg"
-                        android:hint="USDT"
+                        android:hint="USD"
                         android:importantForAutofill="no"
                         android:inputType="numberDecimal"
                         android:imeOptions="actionDone"
@@ -179,7 +179,7 @@
                         android:layout_width="match_parent"
                         android:layout_height="48dp"
                         android:background="@drawable/input_bg"
-                        android:hint="USDT"
+                        android:hint="USD"
                         android:importantForAutofill="no"
                         android:inputType="numberDecimal"
                         android:imeOptions="actionDone"
@@ -444,6 +444,17 @@
                         android:typeface="monospace" />
                 </LinearLayout>
             </GridLayout>
+            <!-- 稿§1.1 保存数据:默认disabled,计算成功才可点,点击才落库 -->
+            <Button
+                android:id="@+id/save_btn"
+                android:layout_width="match_parent"
+                android:layout_height="44dp"
+                android:layout_marginTop="10dp"
+                android:background="@drawable/btn_ghost"
+                android:enabled="false"
+                android:text="保存数据"
+                android:textColor="?attr/colorInk"
+                android:textSize="15sp" />
         </LinearLayout>
 
         <!-- 网格明细 -->
