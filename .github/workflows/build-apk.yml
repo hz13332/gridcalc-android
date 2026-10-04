@@ -1,0 +1,58 @@
+name: Build APK
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    env:
+      # ⚠ 2026-10-03 签名改为从 Secrets 注入，仓库内不再持有密钥与口令。
+      #   起因：keystore/gridcalc.jks 曾随仓库公开（口令明文写在 build.gradle.kts），
+      #   任何人 clone 即可签出与本应用同签名的 APK 冒充官方更新。
+      #   必须在仓库 Settings → Secrets and variables → Actions 里配置这四项：
+      #     GC_STORE_PASSWORD / GC_KEY_PASSWORD / GC_KEY_ALIAS / GC_KEYSTORE_B64
+      GC_STORE_PASSWORD: ${{ secrets.GC_STORE_PASSWORD }}
+      GC_KEY_PASSWORD: ${{ secrets.GC_KEY_PASSWORD }}
+      GC_KEY_ALIAS: ${{ secrets.GC_KEY_ALIAS }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: 还原签名密钥
+        # base64 → 二进制 → keystore/gridcalc.jks
+        # GC_KEYSTORE_B64 的生成方式（在本机执行一次）：
+        #   [Convert]::ToBase64String([IO.File]::ReadAllBytes('keystore\gridcalc.jks'))
+        run: |
+          echo "${{ secrets.GC_KEYSTORE_B64 }}" | base64 -d > keystore/gridcalc.jks
+          echo "keystore bytes: $(stat -c %s keystore/gridcalc.jks)"
+      - uses: gradle/actions/setup-gradle@v3
+      - name: 构建 Release APK
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease
+      - name: 读取版本号
+        id: ver
+        run: |
+          V=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
+          echo "name=$V" >> $GITHUB_OUTPUT
+      - name: 重命名 APK
+        run: |
+          cd app/build/outputs/apk/release
+          mv app-release.apk "GridCalc-v${{ steps.ver.outputs.name }}.apk"
+      - name: 上传 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: GridCalc-apk
+          path: app/build/outputs/apk/release/GridCalc-*.apk
+      - name: 发布 Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.ver.outputs.name }}
+          name: v${{ steps.ver.outputs.name }}
+          files: app/build/outputs/apk/release/GridCalc-*.apk
