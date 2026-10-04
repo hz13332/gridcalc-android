@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- B-44 稿 L269: 滑块 background: on ? ACC : ink3 ⟹ 打开=白钮, 关掉=ink3 灰钮。
+     ⚠ 注释正文里不能出现连续两个连字符, 稿的 CSS 变量写法正好有两个, 上面一律用中文名。 -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_checked="true" android:color="?attr/colorOnPrimary" />
+    <item android:color="?attr/colorFaint" />
+</selector>

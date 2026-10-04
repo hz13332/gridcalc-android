@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  t8 照稿 A1①：自选屏搜索框的框。
+
+  稿 v2.html:1466-1467 的样式串（逐字，变量名以两个减号开头，此处为避 XML 注释限制省略）：
+      div style={{display:flex, alignItems:center, gap:10, padding:'11px 13px',
+                  border:'1px solid '+(shown&&cands.length ? 'ac' : 'line'), borderRadius:8}}
+  稿 v2.html:1468 的 input 字号：fontSize:T.title（=16px），class="num"。
+  ⟹ 本文件：1dp 描边 + radius 8，底色透明（稿只写 border，没写 background）。
+  稿的线色变量「两个减号 + line」在 App 是 colorBorder（见 attrs.xml 对照表）。
+
+  ⚠ 为什么不复用 drawable/seg_frame.xml（规格逐字相同：1dp 描边 + radius 8）：
+    seg_frame 是 Seg 容器专用的「圆角+裁切」载体（页面设置页靠它的 outline 做 clipToOutline），
+    搜索框只需要一个背景框，两者生命周期与改动机都不相干 —— 借用会让「改 Seg 顺手改到搜索框」。
+    这里单开一个，是为了让稿 v2.html:1467 那条「候选出现时描边转强调色（两个减号 + ac）」的动态态
+    有地方落（App 目前没有候选下拉，见 t8 交付报告；届时改本文件即可，不牵动 Seg）。
+
+  ⚠ 稿那条描边随候选列表显隐切换颜色；App 尚无候选下拉，先固定线色 colorBorder。
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="@android:color/transparent" />
+    <stroke android:width="1dp" android:color="?attr/colorBorder" />
+    <corners android:radius="8dp" />
+</shape>

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 导出结果弹窗(t101:导出必须真的成功,且要告诉用户文件在哪、叫什么) -->
+    <string name="export_ok">已导出 %1$d 条记录</string>
+    <!-- 文件名与写入用的 name 变量同源,不允许在文案里再拼一遍 -->
+    <string name="export_ok_where">位置：下载 / %1$s</string>
+    <!-- 失败时把原因如实带出来,不要吞成通用「导出失败」 -->
+    <string name="export_fail">导出失败\n原因：%1$s</string>
+    <string name="export_empty">还没有记录：单点「计算」不保存，计算后点「保存数据」才会记录</string>
+    <string name="dialog_ok">确定</string>
+</resources>

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- #5 稿 L322-324: 源状态点异常态 = 8px **空心环**, 2px 描边, 透明底。
+     稿是「透明背景 + 2px ink2 描边」。t393。 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="oval">
+    <solid android:color="@android:color/transparent" />
+    <stroke android:width="2dp" android:color="?attr/colorSub" />
+</shape>

@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--      【#103 根因更正】下面只讲**还差什么**; 颜色本身已经逐字符合稿, 不用再动。
+         旧记载说「框架 track drawable 自带 30% alpha, tint 改不了」—— **这条是错的**,
+         已按 AOSP 真源码推翻(android-33, 逐条核过):
+           data/res/color/switch_track_material.xml
+             state_enabled=false → colorForeground + alpha=disabledAlpha  ← 全表唯一的 alpha
+             state_checked=true  → colorControlActivated                  ← 无 alpha, 即全不透明
+             其余                 → colorForeground
+           data/res/drawable/switch_track_material.xml
+             layer-list, 左右各 start/end 4dp; 里面 shape 圆角 7dp、高 14dp
+         ⟹ checked 态没有 alpha, 所以本文件这个 selector 染出来的**就是最终颜色**。
+         ⟹ 残留**不是透明度, 是轨道几何**:
+             框架轨道 = 高 14dp 的圆角矩形, 左右各内缩 4dp
+             稿 L268  = 整块 44x26 的药丸(圆角写成 999, 即全圆), 无内缩
+         换句话说: 颜色这层已经做完, 差的是那 4dp 内缩和 14dp 高度。
+         ────────────────────────────────────────────────────────────
+         【想把几何也换掉? 备查路径, 本轮不做但别当它做不到】
+         android.widget.Switch 有两个公开属性 **android:track / android:thumb**,
+         两者在 SDK 里都是 format=reference, 指向自建的 shape drawable 就能直接画成
+         整块药丸, **不用换控件类型**。所以「硬约束(控件类型不许换)挡住了 #103」
+         这个说法是错的 —— 换控件本来就不是唯一的路。
+         ⚠ **别去写 android:trackDrawable / android:thumbDrawable**:
+           那两个是 android.widget.FastScroll 的属性, Switch 的 declare-styleable 里没有,
+           写到 Switch 上 AAPT 会直接报错。Switch 的完整属性表见 SDK:
+           values/attrs.xml 里的 declare-styleable name=Switch。
+         本轮不动它的理由是要自建 drawable + 真机读色, 不是因为做不到。 -->
+<!-- B-44 稿 L268: 轨道 background: on ? var(ac) : var(line) ⟹ 开=实心决策紫, 关=中性灰线色。
+     ⚠ 改前 thumb 和 track **都**硬钉 colorPrimary, 关态轨道也是主色 —— 那个色是「选中」的信号,
+     不该用在「未选中」的轨道上(它会让人以为已经开了)。 -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_checked="true" android:color="?attr/colorPrimary" />
+    <item android:color="?attr/colorBorder" />
+</selector>

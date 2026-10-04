@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  t269 稿 L523 「独立块, 自带底线」。
+  原来这里用 ?attr/colorBorder 直接当背景, 那一整块(约 20dp 高)被填成实心灰带,
+  把里面的 1px 描边盒盖住了 —— 这是 t252 搜索块那轮引入的回归。
+  改法: layer-list 里只放【底部 1dp】这一条, 上面保持透明。
+  用 shape+stroke 圈四边不行(稿要的是底边一条, 不是四边框)。
+  2026-09-30 归一: 1dp 从 shape 的 size 挪到 item 的 android:height 上, 与
+  fav_row_line / fav_leg_line / tabbar_top_line / row_detail_rule 同一形态。
+  ⚠ 原来那条注释只讲了一半 —— 它说的是 aapt2 不接受 item 上的
+    android:width="match_parent"(它要 dimension), 那是**width** 的限制;
+    height 本来就能写在 item 上(那三个文件一直这么写, 且真画出线了)。
+    ⟹ 「所以 1dp 只能放 size 里」是从 width 的限制推出来的**过度推广**。
+    width 的限制仍然成立, 所以这里仍然不写 width。
+  ⚠ 注释内容里不能出现两个连字符(稿的 CSS 变量名正好有两个)。
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:gravity="bottom" android:height="1dp">
+        <shape android:shape="rectangle">
+            <solid android:color="?attr/colorBorder" />
+        </shape>
+    </item>
+</layer-list>

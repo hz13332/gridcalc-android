@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  t8 照稿 A1②：自选行第二行的品类徽章（币 / 美股 / 港股 / 韩股 / 贵金）的框。
+
+  稿 v2.html:1209-1210 的 span 样式（逐字，变量名以两个减号开头，此处为避 XML 注释限制省略）：
+      span style={{fontSize:T.note, color:'ink2', border:'1px solid line',
+                   borderRadius:4, padding:'1px 4px', whiteSpace:'nowrap', flexShrink:0}}
+                  文本 = {r.badge || r.ty}
+  ⟹ 本文件：1dp 描边 + radius 4，底色透明（稿只写 border，没写 background）。
+  稿的线色变量「两个减号 + line」在 App 是 colorBorder；稿的 ink2 在 App 是 colorSub
+  （字色在 FavPanel.kt 里设，不在本文件）。
+
+  ⚠ 墓碑 · t111 当初把这个「药丸」连同它的彩底一起去掉了（理由见 FavPanel.kt 该处旧注释），
+    但 t111 去掉的是 t126 自己加的**彩底**（橙/金/紫），不是稿的这圈 1px 中性描边。
+    本条按用户 2026-10-02 裁定「完全照稿子改」把稿的描边加回来 —— **只加中性描边，不加任何彩度**，
+    稿 v2.html:2551「三色之外一切不许有彩度」仍然成立。
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="@android:color/transparent" />
+    <stroke android:width="1dp" android:color="?attr/colorBorder" />
+    <corners android:radius="4dp" />
+</shape>

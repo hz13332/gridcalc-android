@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
@@ -12,75 +12,137 @@
         android:layout_height="0dp"
         android:layout_weight="1" />
 
-    <!-- 底部 Tab -->
+        <!-- 底部 Tab：t130 按稿 L240-249 重做 —— 4 个 tab、**纯文字无图标**、
+         顶条 left/right 28% + height 2 + 主色。
+         原 tab_fav/tab_calc/tab_setup 三个图标 ImageView 已**解绑**(从本布局移除),
+         对应 drawable 文件**保留未删**(t108 禁令:只解绑不删资源)。 -->
+    <!-- t350 稿 L243: tabbar 顶条 1px。底色换成了 @drawable/tabbar_top_line ——
+         那个 drawable 是 layer-list, **自带 colorCanvas 底层**, 所以这一处是
+         **替换**原来的 android:background="?attr/colorCanvas", 不是叠加。
+         t349 之前这条线是 MktPanel 在运行时 findViewById 挂上去的(tabbar 是四页
+         共用的全局 View, 样式不该挂在行情页的类里), 本条把它归位到布局。 -->
     <LinearLayout
         android:id="@+id/tabbar"
         android:layout_width="match_parent"
-        android:layout_height="64dp"
-        android:background="?attr/colorCanvas"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:paddingLeft="12dp"
-        android:paddingRight="12dp">
-        <LinearLayout
+        android:layout_height="wrap_content"
+        android:minHeight="61dp"
+        android:background="@drawable/tabbar_top_line"
+        android:orientation="horizontal">
+        <FrameLayout
             android:id="@+id/tab_fav"
             android:layout_width="0dp"
-            android:layout_height="match_parent"
+            android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:gravity="center"
-            android:orientation="vertical">
-            <ImageView
-                android:id="@+id/tab_fav_icon"
-                android:layout_width="22dp"
-                android:layout_height="22dp"
-                android:src="@drawable/tab_fav" />
+            android:paddingTop="0dp"
+            android:paddingBottom="14.3dp">
             <TextView
                 android:id="@+id/tab_fav_label"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="3dp"
+                    android:paddingTop="12.4dp"
+                android:layout_gravity="center"
                 android:text="自选"
-                android:textSize="11sp" />
-        </LinearLayout>
-        <LinearLayout
+                android:textSize="@dimen/fs_title" />
+            <!-- 稿 L247 顶条逐字：left:'28%', right:'28%', height:2, 主色。
+                 ⟹ 宽 = tab 宽 × 44%（不是写死 44dp）。
+                 Android 的 marginStart/End 不支持百分比 ⟹ 由 Kotlin 的
+                 syncTabBars() 按**实测 tab 容器宽 × 0.44** 动态设。
+                 ⚠ t130 当初写的「用 44% 宽居中等价实现」是**假的**：
+                 本机 tab = 392.727/4 = 98.18dp，44% = 43.20dp，写死 44dp 差了 +0.80dp。
+                 下面的 44dp 只是**首次布局前的初值**，measure 完会被覆盖掉。 -->
+            <View
+                android:id="@+id/tab_fav_bar"
+                android:layout_width="match_parent"
+                android:layout_height="1.9dp"
+                android:layout_gravity="top"
+                android:background="@android:color/transparent" />
+        </FrameLayout>
+        <FrameLayout
+            android:id="@+id/tab_mkt"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:paddingTop="0dp"
+            android:paddingBottom="14.3dp">
+            <TextView
+                android:id="@+id/tab_mkt_label"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                    android:paddingTop="12.4dp"
+                android:layout_gravity="center"
+                android:text="行情"
+                android:textSize="@dimen/fs_title" />
+            <!-- 稿 L247 顶条逐字：left:'28%', right:'28%', height:2, 主色。
+                 ⟹ 宽 = tab 宽 × 44%（不是写死 44dp）。
+                 Android 的 marginStart/End 不支持百分比 ⟹ 由 Kotlin 的
+                 syncTabBars() 按**实测 tab 容器宽 × 0.44** 动态设。
+                 ⚠ t130 当初写的「用 44% 宽居中等价实现」是**假的**：
+                 本机 tab = 392.727/4 = 98.18dp，44% = 43.20dp，写死 44dp 差了 +0.80dp。
+                 下面的 44dp 只是**首次布局前的初值**，measure 完会被覆盖掉。 -->
+            <View
+                android:id="@+id/tab_mkt_bar"
+                android:layout_width="match_parent"
+                android:layout_height="1.9dp"
+                android:layout_gravity="top"
+                android:background="@android:color/transparent" />
+        </FrameLayout>
+        <FrameLayout
             android:id="@+id/tab_calc"
             android:layout_width="0dp"
-            android:layout_height="match_parent"
+            android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:gravity="center"
-            android:orientation="vertical">
-            <ImageView
-                android:id="@+id/tab_calc_icon"
-                android:layout_width="22dp"
-                android:layout_height="22dp"
-                android:src="@drawable/tab_calc" />
+            android:paddingTop="0dp"
+            android:paddingBottom="14.3dp">
             <TextView
                 android:id="@+id/tab_calc_label"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="3dp"
+                    android:paddingTop="12.4dp"
+                android:layout_gravity="center"
                 android:text="计算"
-                android:textSize="11sp" />
-        </LinearLayout>
-        <LinearLayout
+                android:textSize="@dimen/fs_title" />
+            <!-- 稿 L247 顶条逐字：left:'28%', right:'28%', height:2, 主色。
+                 ⟹ 宽 = tab 宽 × 44%（不是写死 44dp）。
+                 Android 的 marginStart/End 不支持百分比 ⟹ 由 Kotlin 的
+                 syncTabBars() 按**实测 tab 容器宽 × 0.44** 动态设。
+                 ⚠ t130 当初写的「用 44% 宽居中等价实现」是**假的**：
+                 本机 tab = 392.727/4 = 98.18dp，44% = 43.20dp，写死 44dp 差了 +0.80dp。
+                 下面的 44dp 只是**首次布局前的初值**，measure 完会被覆盖掉。 -->
+            <View
+                android:id="@+id/tab_calc_bar"
+                android:layout_width="match_parent"
+                android:layout_height="1.9dp"
+                android:layout_gravity="top"
+                android:background="@android:color/transparent" />
+        </FrameLayout>
+        <FrameLayout
             android:id="@+id/tab_setup"
             android:layout_width="0dp"
-            android:layout_height="match_parent"
+            android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:gravity="center"
-            android:orientation="vertical">
-            <ImageView
-                android:id="@+id/tab_setup_icon"
-                android:layout_width="22dp"
-                android:layout_height="22dp"
-                android:src="@drawable/tab_gear" />
+            android:paddingTop="0dp"
+            android:paddingBottom="14.3dp">
             <TextView
                 android:id="@+id/tab_setup_label"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="3dp"
+                    android:paddingTop="12.4dp"
+                android:layout_gravity="center"
                 android:text="设置"
-                android:textSize="11sp" />
-        </LinearLayout>
+                android:textSize="@dimen/fs_title" />
+            <!-- 稿 L247 顶条逐字：left:'28%', right:'28%', height:2, 主色。
+                 ⟹ 宽 = tab 宽 × 44%（不是写死 44dp）。
+                 Android 的 marginStart/End 不支持百分比 ⟹ 由 Kotlin 的
+                 syncTabBars() 按**实测 tab 容器宽 × 0.44** 动态设。
+                 ⚠ t130 当初写的「用 44% 宽居中等价实现」是**假的**：
+                 本机 tab = 392.727/4 = 98.18dp，44% = 43.20dp，写死 44dp 差了 +0.80dp。
+                 下面的 44dp 只是**首次布局前的初值**，measure 完会被覆盖掉。 -->
+            <View
+                android:id="@+id/tab_setup_bar"
+                android:layout_width="match_parent"
+                android:layout_height="1.9dp"
+                android:layout_gravity="top"
+                android:background="@android:color/transparent" />
+        </FrameLayout>
     </LinearLayout>
 </LinearLayout>

@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  t254 稿 L802-813 底部动作面板(替代系统 AlertDialog)。
+
+  稿 L802  遮罩  inset 0, rgba(0,0,0,.55), zIndex 60, 点遮罩关闭
+  稿 L803  面板  背景 稿的 bg 色, 圆角 16 16 0 0(只圆上面两角), padding 24 20 28
+  稿 L804  标题  T.title + 600 + ink        「清空全部 N 条记录？」
+  稿 L805  正文  T.title + ink2 + 上边距 12 + 行高 1.6
+                「此操作不可撤销。已导出的 CSV 不受影响。」
+  稿 L806  按钮行  横排, 间距 12, 上边距 24
+  稿 L807  左  弹性 1, 居中, 上下 15, 1px 描边, 圆角 8    取消
+  稿 L808       取消字色 ink2（第二档灰）
+  稿 L809  右  弹性 1, 居中, 上下 14, 圆角 8, 背景色 跌红, 白字  清空
+  稿 L810       清空字重 600
+
+  t9/N4 两条修正（2026-09-30，均按稿逐字回改）：
+  1) 取消原来用 ?attr/colorInk（第一档），稿 L808 用的是 ink2，改为 colorSub。
+     色值对照见 attrs.xml 头注：ink2 浅色 L0.455 = colorSub #53575F，深色 L0.705 = #9CA0A8。
+  2) 清空原来没有字重，稿 L810 是 fontWeight:600，补 android:textStyle=bold。
+     Android 只有 normal/bold 两档，600 无原生对应，取 bold 为稿侧最接近的一档。
+  按钮文案由 MainActivity.showPanel 的 okText 运行期赋值，布局里的字只是兜底，未改。
+
+  变量对照(色表已核: 稿三级灰 = colorInk / colorSub / colorFaint):
+    bg   -> colorCanvas   ink  -> colorInk   ink2 -> colorSub
+    line -> colorBorder   dn   -> colorRed
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/panel_mask"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#8C000000"
+    android:clickable="true"
+    android:focusable="true">
+
+    <LinearLayout
+        android:id="@+id/panel_sheet"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:orientation="vertical"
+        android:paddingLeft="19.1dp"
+        android:paddingRight="19.1dp"
+        android:paddingTop="22.9dp"
+        android:paddingBottom="26.7dp"
+        android:background="@drawable/panel_sheet_bg">
+
+        <TextView
+            android:id="@+id/panel_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="?attr/colorInk"
+            android:textSize="@dimen/fs_title"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/panel_body"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/space_3"
+            android:lineSpacingExtra="5.7dp"
+            android:textColor="?attr/colorSub"
+            android:textSize="@dimen/fs_title" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="22.9dp"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/panel_cancel"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:background="@drawable/panel_btn_line"
+                android:gravity="center"
+                android:paddingTop="14.3dp"
+                android:paddingBottom="14.3dp"
+                android:text="取消"
+                android:textColor="?attr/colorSub"
+                android:textSize="@dimen/fs_title" />
+
+            <TextView
+                android:id="@+id/panel_ok"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="@dimen/space_3"
+                android:layout_weight="1"
+                android:background="@drawable/panel_btn_danger"
+                android:gravity="center"
+                android:paddingTop="13.4dp"
+                android:paddingBottom="13.4dp"
+                android:text="清空"
+                android:textColor="?attr/colorOnPrimary"
+                android:textSize="@dimen/fs_title"
+                android:textStyle="bold" />
+        </LinearLayout>
+    </LinearLayout>
+</FrameLayout>

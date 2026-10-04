@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 网格明细逐行下边线, 稿: 网格行 padding 9px 16px 加 borderBottom 1px solid var(line)
+     写法与 fav_row_line / fav_leg_line / tabbar_top_line **同形**: 1dp 写在 item 的
+     android:height 上, shape 里不放 size。
+     改前全仓有**两种**写法 —— 本文件与 mkt_search_block 放在 shape 的 size 里;
+     fav_row_line / fav_leg_line / tabbar_top_line 放在 item 的 android:height 上,
+     后者那三个是项目里已验证能画出线的形态。离线无法定论 LayerDrawable 对两种写法是否等价,
+     ⟹ 归一到已验证的那个, 把不确定变成确定。
+     (mkt_search_block 仍是 size 写法, 不在本轮范围, 未动。)
+     ⚠ 注释内容里不能出现两个连字符, 稿的 CSS 变量名正好有两个 ⟹ 上面写成 var(line)。 -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="@android:color/transparent" />
+        </shape>
+    </item>
+    <item android:gravity="bottom" android:height="1dp">
+        <shape android:shape="rectangle">
+            <solid android:color="?attr/colorBorder" />
+        </shape>
+    </item>
+</layer-list>

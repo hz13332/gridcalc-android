@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- #5 稿 L322-324: 源状态点正常态 = 8px 实心圆, colorSub(稿的 ink2)。
+     稿是 width 8 / height 8 / borderRadius 999, 背景取稿的 ink2 色。
+     改前 App 用 12sp 的字形 ●, 真机实测墨迹只有 16px, 而且环的**描边粗细拿不到**
+     （系统字体里 ● 与 ○ 是两套独立字形, 不是同一图形的两态）—— t393。 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="oval">
+    <solid android:color="?attr/colorSub" />
+</shape>

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- t254 稿 L809: 清空按钮 跌红实心 + 圆角 8 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="?attr/colorRed" />
+    <corners android:radius="8dp" />
+</shape>

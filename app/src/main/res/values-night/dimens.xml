@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  深色版与浅色版**数值完全相同**：字号不随主题变，这是刻意的——
+  同一份排版在明暗下必须等宽，否则切主题会重排。
+  颜色差异一律走 colors.xml 的 colorFaint/colorSub，不在字号上做手脚。
+-->
+<resources>
+    <dimen name="space_1">4dp</dimen>
+    <dimen name="space_2">8dp</dimen>
+    <dimen name="space_3">12dp</dimen>
+    <dimen name="space_4">16dp</dimen>
+    <dimen name="space_6">24dp</dimen>
+    <dimen name="space_8">32dp</dimen>
+
+    <dimen name="fs_hero">30sp</dimen>
+    <dimen name="fs_data">21sp</dimen>
+    <dimen name="fs_title">16sp</dimen>
+    <dimen name="fs_note">12sp</dimen>
+</resources>

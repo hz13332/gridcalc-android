@@ -2,47 +2,77 @@
 <resources>
     <!-- 浅色 · 白天 -->
     <style name="Theme.GridCalc.Light" parent="android:Theme.Material.NoActionBar">
-        <item name="colorCanvas">#F2F4F8</item>
+        <item name="colorCanvas">#F9FAFD</item>
         <item name="colorCard">#FFFFFF</item>
-        <item name="colorSurf2">#EEF1F6</item>
-        <item name="colorInput">#EEF1F6</item>
-        <item name="colorInk">#1A1D24</item>
-        <item name="colorSub">#5B6472</item>
-        <item name="colorFaint">#8A93A3</item>
-        <item name="colorPrimary">#165DFF</item>
-        <item name="colorPrimaryDark">#0F49CC</item>
-        <item name="colorTeal">#0AA182</item>
-        <item name="colorRed">#D92D20</item>
-        <item name="colorBorder">#D5DBE5</item>
+        <item name="colorInput">#F0F2F6</item>
+        <!-- 稿 colorInk（第一档墨色），B-40 对应表见 attrs.xml -->
+        <item name="colorInk">#1B1E25</item>
+        <!-- 稿 colorSub（第二档墨色），B-40 对应表见 attrs.xml -->
+        <item name="colorSub">#53575F</item>
+        <!-- 稿 colorFaint（第三档墨色），B-40 对应表见 attrs.xml -->
+        <item name="colorFaint">#686C74</item>
+        <item name="colorPrimary">#6749B6</item>
+        <!-- 稿 L14 .segsw:active{opacity:.6}: 主色 60% 不透明叠在画布上, 浅色 #A190D2 / 深色 #5F5097。口径与 attrs.xml 的说明一致。 -->
+        <item name="colorPrimaryPressed">#A190D2</item>
+        <!-- ⚠ 2026-10-02 t7：浅色涨绿由 0x008457 改为 **0x00794D**（跨屏 P0）。
+             稿 v2.html:87 的浅色 up 已于 t16 由 oklch(0.535 0.130 163) 降到 oklch(0.500 0.130 163)，
+             换算到 sRGB 就是 0x00794D。稿该处注释写死的实测「文字/背景 4.53→5.24」，本机按 WCAG
+             （sRGB 先线性化）复算逐位对上：
+               旧 0x008457 on 0xF9FAFD = 4.53:1  ← 贴着 AA 4.5 的线
+               新 0x00794D on 0xF9FAFD = 5.24:1
+             原值锁死的是稿 t16 **之前**的旧 token，而深色 colorFaint 那次**跟上了**
+             （本文件下半段 t41 注释）——同一份 token 表只跟了一半，这一条是漏的那半。
+             只动明度：色度 0.130 与色相 163 未动，与稿一致。深色 colorTeal 未动。 -->
+        <item name="colorTeal">#00794D</item>
+        <item name="colorRed">#C01E20</item>
+        <item name="colorBorder">#D6D9DF</item>
         <item name="colorTealBg">#1F0AA182</item>
-        <item name="colorBlueBg">#1F165DFF</item>
+        <item name="colorBlueBg">#1F9B7DFF</item>
         <item name="colorOnPrimary">#FFFFFF</item>
         <item name="android:windowBackground">?attr/colorCanvas</item>
         <item name="android:statusBarColor">?attr/colorCanvas</item>
         <item name="android:navigationBarColor">?attr/colorCanvas</item>
         <item name="android:windowLightStatusBar">true</item>
+        <!-- 2026-10-02 全局字体族换成 Inter（设计稿 v2.html:9 的第一顺位）。
+             改前本主题未声明 fontFamily → 全 App 走系统默认 Roboto。详见 res/font/inter.xml 注释。 -->
+        <item name="android:fontFamily">@font/inter</item>
     </style>
 
     <!-- 深色 · 夜晚 -->
     <style name="Theme.GridCalc.Dark" parent="android:Theme.Material.NoActionBar">
-        <item name="colorCanvas">#010102</item>
+        <item name="colorCanvas">#0A0D12</item>
         <item name="colorCard">#0F1011</item>
-        <item name="colorSurf2">#141516</item>
-        <item name="colorInput">#1D2026</item>
-        <item name="colorInk">#F7F8F8</item>
-        <item name="colorSub">#D0D6E0</item>
-        <item name="colorFaint">#8A8F98</item>
-        <item name="colorPrimary">#5E6AD2</item>
-        <item name="colorPrimaryDark">#4A55B5</item>
-        <item name="colorTeal">#27A644</item>
-        <item name="colorRed">#E5484D</item>
-        <item name="colorBorder">#23252A</item>
+        <item name="colorInput">#15181E</item>
+        <!-- 稿 colorInk（第一档墨色），B-40 对应表见 attrs.xml -->
+        <item name="colorInk">#E7E9EF</item>
+        <!-- 稿 colorSub（第二档墨色），B-40 对应表见 attrs.xml -->
+        <item name="colorSub">#9CA0A8</item>
+        <!-- 稿 colorFaint（第三档墨色），B-40 对应表见 attrs.xml -->
+        <!-- ⚠️ t41：#70747D → #82868f。App 原值钉死在稿子 t16 修正**之前**的旧 token
+             （attrs.xml 对照表自己记着「#70747D L=0.559 / 稿 0.560」），
+             稿 t16 已把深色 ink3 的 L 由 0.560 提到 0.620，定稿 #82868f。
+             实测（本 colorFaint 承 117 处 hint /「—」/ 陈旧标记引用）：
+               改前 on canvas = 4.15:1、on card = 4.07:1 —— 均低于 AA 4.5；
+               改后 on canvas = 5.33:1、on card = **5.22**:1 —— 双双过线
+               （WCAG 2.x；App 颜色全 hex，按定义即 sRGB，Android 渲染无色彩空间
+               转换，故可精确计算，不依赖观感。5.22 是本机实测值，不是抄稿子注释）。
+             **只动这一个值**：浅色 colorTeal 等其余取值实测已全达标，不动。 -->
+        <item name="colorFaint">#82868f</item>
+        <item name="colorPrimary">#987DEF</item>
+        <!-- 稿 L14 .segsw:active{opacity:.6}: 主色 60% 不透明叠在画布上, 浅色 #A190D2 / 深色 #5F5097。口径与 attrs.xml 的说明一致。 -->
+        <item name="colorPrimaryPressed">#5F5097</item>
+        <item name="colorTeal">#38C892</item>
+        <item name="colorRed">#E94C44</item>
+        <item name="colorBorder">#25282F</item>
         <item name="colorTealBg">#1F27A644</item>
-        <item name="colorBlueBg">#245E6AD2</item>
+        <item name="colorBlueBg">#269B7DFF</item>
         <item name="colorOnPrimary">#FFFFFF</item>
         <item name="android:windowBackground">?attr/colorCanvas</item>
         <item name="android:statusBarColor">?attr/colorCanvas</item>
         <item name="android:navigationBarColor">?attr/colorCanvas</item>
         <item name="android:windowLightStatusBar">false</item>
+        <!-- 同浅色主题：全局字体族 Inter。两套主题必须都写，
+             android:fontFamily 不会从 Light 继承到 Dark。 -->
+        <item name="android:fontFamily">@font/inter</item>
     </style>
 </resources>

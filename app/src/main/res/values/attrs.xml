@@ -1,18 +1,106 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!--     ════════════════════════════════════════════════════════════════════
+         【命名对照表】稿一共只有 9 个 CSS 变量, App 有 14 个 attr。
+         换算口径: 把稿的 oklch 字面量换算成 sRGB, 再与 App 主题里的 hex 逐位比。
+         (换算器自检: 白 #FFFFFF / 黑 #000000 / oklch(.5,0,0)=#636363, 三关都过才采信数字。)
+         稿 bg     → colorCanvas   逐位相同   #F9FAFD / #0A0D12
+         稿 panel  → colorInput    逐位相同   #F0F2F6 / #15181E
+         稿 line   → colorBorder   逐位相同   #D6D9DF / #25282F
+         稿 ink    → colorInk      (数值精度表见 colorInk 上方, 本表不重复)
+         稿 ink2   → colorSub      (同上)
+         稿 ink3   → colorFaint    (同上)
+         稿 up     → colorTeal     逐位相同   #008457 / #38C892
+         稿 dn     → colorRed      逐位相同   #C01E20 / #E94C44
+         稿 ac     → colorPrimary  逐位相同   #6749B6 / #987DEF
+         剩下 5 个 attr **在稿里没有对照物**, 是 App 自有的, 各自说明在下方:
+         colorCard / colorPrimaryPressed(G10 注释里)
+         (第 6 个 colorSurf2 已于 2026-09-30 下线, 墓碑见下方)
+         colorTealBg / colorBlueBg / colorOnPrimary
+         写这张表是因为**不写就不可查**: 下一个改主题的人 grep 不到稿的变量名,
+         就会以为「看着像」就是「就是」, 然后拿一个没有对照物的 token 去对齐稿。
+         ════════════════════════════════════════════════════════════════════ -->
     <attr name="colorCanvas" format="color" />
+    <!--     colorCard: App 自有 token, **稿里没有对照物**。
+         稿的 panel 变量对应的是 colorInput(见上表), 不是 colorCard:
+         浅 #FFFFFF vs 稿 panel #F0F2F6 → 8bit 欧氏距离平方 475
+         深 #0F1011 vs 稿 panel #15181E → 8bit 欧氏距离平方 269
+         都不是一个「档位」。(它离稿的 bg 只有 65 / 35, 但 bg 已经由 colorCanvas 占着,
+         所以它仍然没有自己的对照物, 只是背景上抬起一档的面。)
+         **别把它当成稿的 panel, 也别为了「对齐稿」去改它的值。**
+         活引用只有两处, 而这两个面在稿里都不存在:
+         drawable/card_bg.xml —— 只被两个 PopupWindow 当背景
+         (FavPanel 的搜索建议浮层 / MktPanel 的 win 浮层); 稿里没有 PopupWindow
+         MktView 的十字光标价签字色 —— 稿里没有十字光标控件
+         (全文只有 L70 配色说明提过一次「十字光标」, 是借色说明, 不是控件) -->
     <attr name="colorCard" format="color" />
-    <attr name="colorSurf2" format="color" />
+    <!--      colorSurf2 已下线 (2026-09-30), **别补回来**。
+         它是 App 自有的第二级表面色, 稿里没有对照物(稿的 panel 对应的是 colorInput)。
+         唯一活引用是 drawable/skl.xml 骨架屏渐变的中段停靠色。复核发现稿 L15 那个渐变的
+         第二个停靠色写的是「取某个变量、缺省回退到 line」的兜底写法, 而那个变量名在稿里
+         全文只出现 1 次、从未被赋值 ⟹ 三个停靠色全是 line, **稿实际就是一块纯色**。
+         skl.xml 因此改成纯色照稿, colorSurf2 就此零引用, 按「不留零引用死 token」清掉。
+         ⚠ 它离稿的 panel 极近(浅色 8bit 欧氏距离平方只有 5), 正是最容易被误认成 panel
+         的一个 —— 所以更要钉在这里: 它已经没了, 别看着眼熟就加回来。
+         删前核验: 用 ElementTree 扫过 app/src 全部 52 个源文件(45 个 xml + 7 个 kt),
+         引用处 0; 仅存的一处文字提及在 MainActivity.kt 的注释里, 属历史描述, 不是引用。 -->
     <attr name="colorInput" format="color" />
+    <!-- ════════════════════════════════════════════════════════════════════
+         B-40「三级墨色」。**这里没有 colorInk3 这个 attr，而且从来不该有**。
+         审计 B-40 说的是「全局没有 colorInk3」，子 agent 独立核实：它从未存在过。
+         实质（三级墨色）早就到位，App 用下面三个 attr 顶替稿的三档墨色。
+         把这张对应表写在这里，是因为**不写就不可查** —— 下一个改主题的人 grep 不到
+         稿的第三档墨色名，就不知道它对应谁。加一个零引用的 colorInk3 才是真引入死代码。
+
+           主题   稿的墨色      App 的 attr     hex        实算 L    稿的 L    差
+           浅色    ink (第一档)    colorInk      #1B1E25  0.235     0.235    +0.000
+           浅色    ink2(第二档)    colorSub      #53575F  0.456     0.455    +0.001
+           浅色    ink3(第三档)    colorFaint    #686C74  0.531     0.530    +0.001
+           深色    ink (第一档)    colorInk      #E7E9EF  0.934     0.935    -0.001
+           深色    ink2(第二档)    colorSub      #9CA0A8  0.705     0.705    +0.000
+           深色    ink3(第三档)    colorFaint    #70747D  0.559     0.560    -0.001
+           最大偏差 0.001 ⟹ 六档全部逐档吻合（hex 取整的固有误差 ≤0.002）
+
+         换算（Björn Ottosson 的 OKLCH → sRGB）：
+             lms = [v**3 for v in M_LAB2LMS · lab]   ← **立方，不是立方根**
+             → M_LMS2RGB · lms → gamma
+         自检：白(255,255,255) / 黑 / oklch(.5,0,0)≈#636363
+         结论：**数值逐档吻合，命名是 App 自家的** —— 这是命名债，不是视觉债。
+         ════════════════════════════════════════════════════════════════════ -->
     <attr name="colorInk" format="color" />
     <attr name="colorSub" format="color" />
     <attr name="colorFaint" format="color" />
     <attr name="colorPrimary" format="color" />
-    <attr name="colorPrimaryDark" format="color" />
+    <!-- 
+     G10 按压态: 稿 L14 `.segsw:active{opacity:.6}` 是**同一个紫降 60% 不透明度**,
+     不是换一个更饱和的紫。所以按压态单独出一个 attr, 值 = 0.60×主色 + 0.40×画布:
+       浅色 0.60×#6749B6 + 0.40×#F9FAFD = #A190D2
+       深色 0.60×#987DEF + 0.40×#0A0D12 = #5F5097
+     (合成底色取 colorCanvas; 稿是叠在轨道上, 轨道色与画布同族, 差 1~2/255。)
+     
+     已删两个 attr, **别补回来**:
+       colorPrimaryDark  #6F4EE0  改前只有 seg_sel / btn_primary 两处 pressed 在用,
+                            两处都改指 colorPrimaryPressed 之后全仓零引用; 它的 C=0.2104 比稿 ac
+                            的 0.165 高 28%, 留着就是一条没人读、色还偏错的死色。
+       colorPrimarySolid #7A5AF0  t109 引入的白字实心底, 引入后**从未被任何 XML 或
+                            Kotlin 引用过**(保存按钮最后走的是 drawable/save_btn_bg,
+                            实色是 ?attr/colorPrimary)。纯死资源, 删。
+     注: MainActivity.kt 里那行讲 colorPrimarySolid 的注释本来就是错的
+     (save_btn 背景是 @drawable/save_btn_bg, 与 colorPrimarySolid 无关), 本任务不改 .kt。
+     ═══════════════════════════════════════════════════════════════════ -->
+    <attr name="colorPrimaryPressed" format="color" />
+    <!--     涨跌: colorTeal = 稿的 up, colorRed = 稿的 dn, 两档都逐位相同。
+         **涨绿跌红是硬约束, 不许翻转** —— 引擎、文案、药丸都按这个方向写死了。 -->
     <attr name="colorTeal" format="color" />
     <attr name="colorRed" format="color" />
     <attr name="colorBorder" format="color" />
+    <!--     两个带 alpha 的药丸底色, 稿里没有对应物(稿那 9 个变量全是不透明 oklch)。
+         唯一活引用: colorTealBg 给 pill_buy(买), colorBlueBg 给 pill_sell(卖)。
+         ⚠ colorBlueBg 名字里的 blue 是**紫** #9B7DFF(稿 L70 称之为从十字光标借来的紫),
+         挂在**卖出**药丸上, 与涨跌色无关 —— 别按名字理解成「蓝 = 跌」。 -->
     <attr name="colorTealBg" format="color" />
     <attr name="colorBlueBg" format="color" />
+    <!--     colorOnPrimary: 主色实底之上的字色, 稿里没有独立 token(稿直接写白字)。
+         两套主题都是纯白 #FFFFFF。 -->
     <attr name="colorOnPrimary" format="color" />
 </resources>

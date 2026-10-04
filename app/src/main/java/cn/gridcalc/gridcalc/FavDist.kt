@@ -178,6 +178,7 @@ object FavDist {
     }
 
     // 真正的取数 + 派生:网络在这里(无 per-key monitor),写值只在 synchronized(this)/synchronized(store) 内
+
     private fun fetchAndDerive(s: String, tf: String, n: Int, k: String): DistR {
         cached(s, tf, n)?.let { return it }
         val t0 = System.currentTimeMillis()

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 稿 L384: 每一行 borderBottom 1px solid var(line)(稿的 line 变量 ⟷ App 的 colorBorder)。
+     写在 layer-list 的**底边**: 每一行都挂它, 所以最后一行下面也有一条线(#32)。
+     改前是 repaint() 往行与行之间插占位 View, 末行下面什么都没有。
+     与 fav_leg_line(顶边)同构, 只是边从 top 换到 bottom。
+     ⚠ 注释内容里不能出现两个连字符, 稿的 CSS 变量名正好有两个 ⟹ 上面写成 var(line)。 -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="@android:color/transparent" />
+        </shape>
+    </item>
+    <item android:gravity="bottom" android:height="1dp">
+        <shape android:shape="rectangle">
+            <solid android:color="?attr/colorBorder" />
+        </shape>
+    </item>
+</layer-list>

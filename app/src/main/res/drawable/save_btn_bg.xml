@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- t316 #143 稿 L741-742: 保存按钮未保存态也是 8dp 圆角 + 主色实底 + 白字。
+     改前 page_calc.xml 用 ?attr/colorPrimary 直挂背景 = 纯 ColorDrawable, 矩形;
+     已保存态 MainActivity 早就用 GradientDrawable + cornerRadius 8, 两态不对称。 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="?attr/colorPrimary" />
+    <corners android:radius="8dp" />
+</shape>

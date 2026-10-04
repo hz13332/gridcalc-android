@@ -1,491 +1,1151 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<!--
+  t104 计算页全面重做(追稿 B 标杆迁移 · 第 3 台设备):
+    无卡片、无分区标题,靠留白 + 1px 细线;8 参数扁平化(标签左/数值右/下方细线);
+    杠杆=滑杆+数值镜像;做多/做空=Segmented;加倍建仓=Switch;
+    净收益 30sp 独占一行;结果一行四格;「展开更多」+「网格明细」两个折叠区;
+    保存数据=实心主色通栏 + 「● 未保存」。
+
+  res/drawable/** 本轮 out of scope,所以不新建任何 drawable:
+    细线用 1px View + ?attr/colorBorder;实心按钮直接用 ?attr/colorPrimary 当背景色。
+-->
+<!-- 稿 L734/L740/L748 的三段式: 可滚内容(flex:1) / 固定按钮(flexShrink:0) / Tabs。
+     Tabs 在 activity_main.xml 里, 不在本文件。
+     改前本页的根**就是** ScrollView, save_btn 是它的子节点 ⟹ 内容一长按钮就滚走了。
+     改法: 根换成 vertical LinearLayout, 原来的 ScrollView 变成第一段(weight=1),
+     save_btn 移出来当第二段。这样只有 4 行布局变化, 内容容器一行未动。 -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:fillViewport="true"
-    android:scrollbars="none"
-    android:clipToPadding="false">
+    android:orientation="vertical">
 
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:fillViewport="true"
+        android:scrollbars="none"
+        android:clipToPadding="false">
+
+    <!-- t8 页面级横向 padding 只能有一份: 上面内容容器自己的左右 16dp 已删。
+         各行本来就各自带 16dp(稿 L638 / L649 / L657 / L664, 折叠口两项是稿 L690 / L694),
+         页面级再叠一份, 整页左右就内缩成 32dp, 而稿只有 16px。
+         反证: 改之前 stat_tiles / more_box / det_box / calc_err / calc_note 这几个
+         **没有自身 padding** 的块实测就已经在 16dp, 它们证明多出来的那一份就是这里;
+         这几个块已各自补回 paddingStart/End 16dp(稿 L676 / L701 / L712 给的也是 16px),
+         位置一个像素没动。反过来, 三条 1px 细线(View, 无 padding)现在通栏 0 到屏宽,
+         这才是稿的样子: 稿 L234 的 borderBottom 与稿 L657 的 borderTop/borderBottom
+         都画在**带 padding 的 div** 上, CSS 边框在 padding 外侧, 本来就通栏。
+         上下留白(space_4 / space_8)保留: 稿里没有页面级的上下留白可抄。 -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="12dp">
+        android:paddingTop="@dimen/space_4"
+        android:paddingBottom="@dimen/space_8">
+        <!-- t134 (1) AppBar「计算」:稿 L636 + 1px 下边线,padding 14/16/12 -->
+        <TextView
+            android:id="@+id/calc_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingStart="@dimen/space_4"
+            android:paddingEnd="@dimen/space_4"
+            android:paddingTop="13.4dp"
+            android:paddingBottom="11.4dp"
+            android:text="计算"
+            android:textColor="?attr/colorInk"
+            android:textSize="@dimen/fs_title"
+            android:textStyle="bold"
+            android:letterSpacing="-0.01" />
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="?attr/colorBorder" />
 
-        <!-- 输入参数 -->
+        <!-- ============ 参数(无标题、无卡片) ============ -->
+        <!-- 做多 / 做空:Segmented 两段,当前项高亮(高亮由 MainActivity 用色切换) -->
+        <!-- t334 #91 稿 L636-660: 这一整块（方向 Seg + 杠杆）在**参数网格之前**。
+             t148 把 L638-647 的**行内结构**记对了（方向左/杠杆右同行），
+             却把整块放在了参数网格之后 ⟹ 行序与稿相反。本条只搬位置, 不动内部结构。
+             稿 L638: padding 11px 16px + borderBottom 1px + gap 16。 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:background="@drawable/card_bg"
-            android:orientation="vertical"
-            android:padding="14dp">
-            <TextView
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingStart="@dimen/space_4"
+            android:paddingEnd="@dimen/space_4"
+            android:paddingTop="@dimen/space_3"
+            android:paddingBottom="@dimen/space_3">
+
+            <!-- 做多 / 做空 -->
+            <!-- t333 #92 稿 L256: Seg 是**单容器** 1px 描边 + 8dp 圆角,
+                 配 clipToOutline（就是 Android 的 overflow:hidden）。
+                 段内各自没有描边, 两段相接零缝。 -->
+            <LinearLayout
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginBottom="10dp"
-                android:text="输入参数"
-                android:textColor="?attr/colorInk"
-                android:textSize="16sp"
-                android:textStyle="bold" />
-            <GridLayout
-                android:layout_width="match_parent"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:background="@drawable/seg_box"
+                android:clipToOutline="true">
+                    <!-- 稿 L259 sm 档 padding: 7px 11px -->
+                <TextView
+                    android:id="@+id/side_long"
+                    android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:columnCount="2">
+                    android:minWidth="68.7dp"
+                    android:gravity="center"
+                android:paddingTop="6.7dp"
+                android:paddingBottom="6.7dp"
+                android:paddingStart="10.5dp"
+                android:paddingEnd="10.5dp"
+                    android:background="?android:attr/selectableItemBackground"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:text="做多"
+                    android:textColor="?attr/colorFaint"
+                    android:textSize="@dimen/fs_note" />
+                    <!-- 稿 L259 sm 档 padding: 7px 11px -->
+
+            </LinearLayout>
+
+            <!-- 杠杆倍率:标签左 / 值右(带乘号)一行,滑杆在下一行 -->
+            <!-- ⚠⚠ 2026-10-03 用户点出层级问题：「做多和杠杆倍率是两个控件，为什么距离又这么短了，
+                     该短的不短，该长的不长」。
+                     ⟹ 这里两个间距**性质不同**，必须有明显层级：
+                        ① 做多 ↔ 杠杆倍率 = **控件 ↔ 控件**（两个独立可点的东西）⟹ 要**大**
+                        ② 杠杆倍率 ↔ 输入框 = **标签 ↔ 它的值**（一组）⟹ 要**小**
+                     改前这两个是 15.3dp : 7.6dp = **2:1**，分不出层级。
+                     现在 22.9dp : 7.6dp = **3:1**。
+                     ⚠ 只动本容器的 marginStart（控件之间）；② 那处在 in_L 的 marginStart，
+                       别一起改，两个是一对、要成对调。 -->
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:layout_marginStart="@dimen/space_6">
+
                 <LinearLayout
-                    android:layout_width="0dp"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_columnWeight="1"
-                    android:layout_marginRight="6dp"
-                    android:layout_marginBottom="10dp"
-                    android:orientation="vertical">
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical">
+                    <!-- ⚠ 2026-10-03 两轮调整的净结果：
+                     ① 用户报「离这么远是干什么」：标签原 width=0dp + weight=1，把输入框顶到杠杆块最右端，
+                        中间空出上百 dp 且无任何内容 ⟹ 标签改 wrap_content。
+                     ② 用户又报「离的太近了，一点呼吸空间都没有」：改完标签右缘与输入框左缘**正好等于**
+                        （实测 397 == 397，0px 间隙）⟹ 补 marginStart。
+                     ⟹ 最终：标签按内容宽 + space_2(7.6dp) 呼吸空间，再接输入框。
+                     ⚠ 同块里的总投入/最高价等参数行仍是两端对齐的表格语汇，别一起改。 -->
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:layout_marginBottom="5dp"
-                        android:text="总投入"
-                        android:textColor="?attr/colorSub"
-                        android:textSize="14sp"
-                        android:fontFamily="sans-serif-medium" />
-                    <EditText
-                        android:id="@+id/in_C"
-                        android:layout_width="match_parent"
-                        android:layout_height="48dp"
-                        android:background="@drawable/input_bg"
-                        android:hint="USD"
-                        android:importantForAutofill="no"
-                        android:inputType="numberDecimal"
-                        android:imeOptions="actionDone"
-                        android:singleLine="true"
-                        android:paddingLeft="10dp"
-                        android:paddingRight="10dp"
-                        android:textColor="?attr/colorInk"
-                        android:textColorHint="?attr/colorFaint"
-                        android:textSize="17sp"
-                        android:typeface="monospace" />
-                </LinearLayout>
-                <LinearLayout
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_columnWeight="1"
-                    android:layout_marginLeft="6dp"
-                    android:layout_marginBottom="10dp"
-                    android:orientation="vertical">
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginBottom="5dp"
                         android:text="杠杆倍率"
-                        android:textColor="?attr/colorSub"
-                        android:textSize="14sp"
-                        android:fontFamily="sans-serif-medium" />
+                        android:textColor="?attr/colorFaint"
+                        android:textSize="@dimen/fs_note" />
+                    <!-- ⚠⚠ 2026-10-03 **用户裁定：杠杆倍率改为填空，不要滑杆**
+                     （原话：「把杠杠倍率改为填空，不要滑杆」）。
+                     ⟹ SeekBar(lev_bar) 节点已移除；in_L 由 **TextView 改回 EditText**。
+                     ⟹ 这**偏离稿**：稿 L645 用 Slider(min 1 / max 20)，文字只读回显。产品裁定。
+                     ⚠ 它曾被从 EditText 改成 TextView（注释写「稿 L643 是只读回显」）——
+                       那是照稿的结论，本次按用户裁定**改回可编辑**。
+                     ⚠ MainActivity 里 levBar 的 findViewById 与 setOnSeekBarChangeListener
+                       必须一起删（节点已不存在，findViewById 会返回 null）。
+                       值改由 in_L 的 TextWatcher → t341SetLev 写入，**仍是单一真相**。 -->
                     <EditText
                         android:id="@+id/in_L"
-                        android:layout_width="match_parent"
-                        android:layout_height="48dp"
-                        android:background="@drawable/input_bg"
-                        android:hint="倍·如150"
-                        android:importantForAutofill="no"
-                        android:inputType="numberDecimal"
-                        android:imeOptions="actionDone"
-                        android:singleLine="true"
-                        android:paddingLeft="10dp"
-                        android:paddingRight="10dp"
-                        android:textColor="?attr/colorInk"
-                        android:textColorHint="?attr/colorFaint"
-                        android:textSize="17sp"
-                        android:typeface="monospace" />
-                </LinearLayout>
-                <LinearLayout
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_columnWeight="1"
-                    android:layout_marginRight="6dp"
-                    android:layout_marginBottom="10dp"
-                    android:orientation="vertical">
-                    <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:layout_marginBottom="5dp"
-                        android:text="最低价"
-                        android:textColor="?attr/colorSub"
-                        android:textSize="14sp"
-                        android:fontFamily="sans-serif-medium" />
-                    <EditText
-                        android:id="@+id/in_Pl"
-                        android:layout_width="match_parent"
-                        android:layout_height="48dp"
-                        android:background="@drawable/input_bg"
-                        android:hint="USD"
-                        android:importantForAutofill="no"
-                        android:inputType="numberDecimal"
-                        android:imeOptions="actionDone"
-                        android:singleLine="true"
-                        android:paddingLeft="10dp"
-                        android:paddingRight="10dp"
-                        android:textColor="?attr/colorInk"
-                        android:textColorHint="?attr/colorFaint"
-                        android:textSize="17sp"
-                        android:typeface="monospace" />
-                </LinearLayout>
-                <LinearLayout
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_columnWeight="1"
-                    android:layout_marginLeft="6dp"
-                    android:layout_marginBottom="10dp"
-                    android:orientation="vertical">
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginBottom="5dp"
-                        android:text="最高价"
-                        android:textColor="?attr/colorSub"
-                        android:textSize="14sp"
-                        android:fontFamily="sans-serif-medium" />
-                    <EditText
-                        android:id="@+id/in_Ph"
-                        android:layout_width="match_parent"
-                        android:layout_height="48dp"
-                        android:background="@drawable/input_bg"
-                        android:hint="USD"
-                        android:importantForAutofill="no"
-                        android:inputType="numberDecimal"
-                        android:imeOptions="actionDone"
-                        android:singleLine="true"
-                        android:paddingLeft="10dp"
-                        android:paddingRight="10dp"
-                        android:textColor="?attr/colorInk"
-                        android:textColorHint="?attr/colorFaint"
-                        android:textSize="17sp"
-                        android:typeface="monospace" />
-                </LinearLayout>
-                <LinearLayout
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_columnWeight="1"
-                    android:layout_marginRight="6dp"
-                    android:layout_marginBottom="10dp"
-                    android:orientation="vertical">
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginBottom="5dp"
-                        android:text="触发价"
-                        android:textColor="?attr/colorSub"
-                        android:textSize="14sp"
-                        android:fontFamily="sans-serif-medium" />
-                    <EditText
-                        android:id="@+id/in_Po"
-                        android:layout_width="match_parent"
-                        android:layout_height="48dp"
-                        android:background="@drawable/input_bg"
-                        android:hint="USD"
-                        android:importantForAutofill="no"
-                        android:inputType="numberDecimal"
-                        android:imeOptions="actionDone"
-                        android:singleLine="true"
-                        android:paddingLeft="10dp"
-                        android:paddingRight="10dp"
-                        android:textColor="?attr/colorInk"
-                        android:textColorHint="?attr/colorFaint"
-                        android:textSize="17sp"
-                        android:typeface="monospace" />
-                </LinearLayout>
-                <LinearLayout
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_columnWeight="1"
-                    android:layout_marginLeft="6dp"
-                    android:layout_marginBottom="10dp"
-                    android:orientation="vertical">
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginBottom="5dp"
-                        android:text="网格数量"
-                        android:textColor="?attr/colorSub"
-                        android:textSize="14sp"
-                        android:fontFamily="sans-serif-medium" />
-                    <EditText
-                        android:id="@+id/in_N"
-                        android:layout_width="match_parent"
-                        android:layout_height="48dp"
-                        android:background="@drawable/input_bg"
-                        android:hint="整数"
+                        android:minWidth="48dp"
+                        android:layout_marginStart="@dimen/space_2"
+                        android:gravity="right|center_vertical"
+                        android:background="@drawable/mkt_count_box"
                         android:importantForAutofill="no"
                         android:inputType="number"
                         android:imeOptions="actionDone"
                         android:singleLine="true"
-                        android:paddingLeft="10dp"
-                        android:paddingRight="10dp"
+                        android:paddingLeft="6.7dp"
+                        android:paddingRight="6.7dp"
+                        android:text="5"
                         android:textColor="?attr/colorInk"
-                        android:textColorHint="?attr/colorFaint"
-                        android:textSize="17sp"
-                        android:typeface="monospace" />
-                </LinearLayout>
-                <LinearLayout
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_columnWeight="1"
-                    android:layout_marginRight="6dp"
-                    android:orientation="vertical">
+                        android:textSize="@dimen/fs_title"
+                        android:fontFeatureSettings="tnum" />
                     <TextView
+                        android:id="@+id/lev_unit"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:layout_marginBottom="5dp"
-                        android:text="每格数量"
-                        android:textColor="?attr/colorSub"
-                        android:textSize="14sp"
-                        android:fontFamily="sans-serif-medium" />
-                    <EditText
-                        android:id="@+id/in_q"
-                        android:layout_width="match_parent"
-                        android:layout_height="48dp"
-                        android:background="@drawable/input_bg"
-                        android:hint="BTC"
-                        android:importantForAutofill="no"
-                        android:inputType="numberDecimal"
-                        android:imeOptions="actionDone"
-                        android:singleLine="true"
-                        android:paddingLeft="10dp"
-                        android:paddingRight="10dp"
+                        android:layout_marginStart="1.9dp"
+                        android:text=" ×"
                         android:textColor="?attr/colorInk"
-                        android:textColorHint="?attr/colorFaint"
-                        android:textSize="17sp"
-                        android:typeface="monospace" />
+                        android:textSize="@dimen/fs_title" />
                 </LinearLayout>
-                <LinearLayout
-                    android:layout_width="0dp"
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- t136 (2) 参数网格改双列:稿 L649-655 grid 1fr 1fr / gap 0 16px /
+             padding 2px 16px 14px。Android 用 **LinearLayout(horizontal) 套两个
+             weight=1 的 vertical 列**(列间距 8dp+8dp=16dp,行间距 0)。
+             6 个参数项(杠杆已移出,见下),键/标签/单位/小数位一个未改。 -->
+        <!-- #98 稿 L10 逐字 `.num{font-variant-numeric:tabular-nums;
+             font-feature-settings:"tnum" 1;}`, 稿 L608 的 className="num" 也吃这条。
+             本页 11 个数值控件(8 个输入框 + 「展开更多」里的 stat_pos / stat_sell / stat_cost)
+             在原有 typeface=monospace 之外补挂 fontFeatureSettings="tnum"(API 21 起, minSdk 26)。
+             说清楚今天的效果: typeface=monospace 的字体里每个数字本来就等宽,
+             所以 tnum 在当前字体上不改变任何字形宽度 —— 数字对齐这件事早就成立,
+             它只是把稿的口径原样记在属性里, 将来摘掉 monospace 时不必再补。
+             与稿仍差一层的是**字体族**: 稿用 Inter/系统无衬线 + tabular-nums, 本页用等宽字体。
+             换族会让整行数值宽度重排(比这一条大得多的偏差), 按指令 typeface 不动, 记账维持。
+             稿 L696 的 ladder_note 与稿 L705 的 stat_ccy 在稿里同样吃 .num,
+             但这两个 view 本来就没挂 typeface(走默认字体), 不在 #98 这一条里, 没动。 -->
+        <!-- ⚠【不要在 XML 里写 92dp】稿 L603 的 92px 是**运行期编辑态**的宽度,
+             本就不该出现在 XML 里: 这 8 行的两态由 MainActivity.t429EditWidth92() 在**运行期**接管,
+             失焦时**无条件硬编码写回常态**(本框 0dp + weight=1、标签 wrap_content + weight=0),
+             **不读也不信 XML 的当前值**。这么写是刻意的加固, 不是把 XML 抄一遍:
+             拿 XML 当前值当还原基准 = 把防线的地基交给最可能被人改错的那一处;
+             而「非编辑态撑满」是**硬布局要求**不是偏好(8 行要塞进两列), 复述一次最稳。
+             
+             ⚠ 标签那一项是 wrap_content + weight=0, **不是 0dp + weight=1**(已按 8 行 XML 逐行核过):
+             两边都吃 weight 的话, 那一行会被 50/50 对分, 输入框只剩半行宽。
+             
+             若有人「按稿对齐」在这里给输入框补 92dp: 获焦态与常态都会歪,
+             且维持保证金率那行短 6.25dp, 数字被截 —— 而运行期不读 XML 也就不会替你兜住,
+             是**两处都坏**。两态几何(392.7dp 屏, t8 之后列宽 172.35dp):
+               获焦   : 单位 GONE + 框 92dp + weight0, 标签 0dp+weight1 ⟹ 标签盒 80.35dp, 最长标签 72dp, 余 8.35dp
+               非获焦 : 框 0dp+weight1 + 单位可见 ⟹ 框 85.75dp, 放得下
+             值也装得下: 16sp 等宽一个字符 9.6dp, 最长的 352.11 = 57.6dp; 8 个框都是 singleLine
+             且没有 ellipsize, 超长是横向滚动而不是被裁。 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:paddingStart="@dimen/space_4"
+            android:paddingEnd="@dimen/space_4"
+            android:paddingTop="1.9dp"
+            android:paddingBottom="13.4dp">
+        <LinearLayout
+
+            android:layout_width="0dp"
+
+            android:layout_height="wrap_content"
+
+            android:layout_weight="1"
+
+            android:orientation="vertical"
+
+            android:layout_marginEnd="15.3dp" >
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="保证金"
+                android:textColor="?attr/colorFaint"
+                android:textSize="@dimen/fs_note" />
+            <EditText
+                android:id="@+id/in_C"
+                android:layout_width="0dp"
+                android:layout_height="42dp"
+                android:layout_weight="1"
+                android:background="@drawable/calc_field"
+                android:gravity="right|center_vertical"
+                android:importantForAutofill="no"
+                android:inputType="numberDecimal"
+                android:imeOptions="actionDone"
+                android:singleLine="true"
+                android:textColor="?attr/colorInk"
+                android:textColorHint="?attr/colorFaint"
+                android:textSize="@dimen/fs_title"
+                android:typeface="monospace"
+                android:fontFeatureSettings="tnum" />
+                <!-- ⚠⚠ 2026-10-03 用户裁定：**保证金不预填**（原话：「保证金触发价和每格数量，
+                     我都说了自己填，那就不要乱填个东西进去，空着」）。
+                     ⟹ 原先这里写死 android:text="12500"（一份拍脑袋的演示值），已删。
+                     ⚠ 用 android:hint 放占位提示，不用 android:text —— text 是**真值**，
+                     hint 只是灰字，不进 getNum，不会被算进去。 -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="5.7dp"
+                android:text="USD"
+                android:textColor="?attr/colorFaint"
+                android:textSize="@dimen/fs_note" />
+        </LinearLayout>
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="?attr/colorBorder" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="最高价"
+                android:textColor="?attr/colorFaint"
+                android:textSize="@dimen/fs_note" />
+            <EditText
+                android:id="@+id/in_Ph"
+                android:layout_width="0dp"
+                android:layout_height="42dp"
+                android:layout_weight="1"
+                android:background="@drawable/calc_field"
+                android:gravity="right|center_vertical"
+                android:importantForAutofill="no"
+                android:inputType="numberDecimal"
+                android:imeOptions="actionDone"
+                android:singleLine="true"
+                android:textColor="?attr/colorInk"
+                android:textColorHint="?attr/colorFaint"
+                android:textSize="@dimen/fs_title"
+                    android:text="352.11"
+                android:typeface="monospace"
+                android:fontFeatureSettings="tnum" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="5.7dp"
+                android:text="USD"
+                android:textColor="?attr/colorFaint"
+                android:textSize="@dimen/fs_note" />
+        </LinearLayout>
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="?attr/colorBorder" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="网格数量"
+                android:textColor="?attr/colorFaint"
+                android:textSize="@dimen/fs_note" />
+            <EditText
+                android:id="@+id/in_N"
+                android:layout_width="0dp"
+                android:layout_height="42dp"
+                android:layout_weight="1"
+                android:background="@drawable/calc_field"
+                android:gravity="right|center_vertical"
+                android:hint=""
+                android:importantForAutofill="no"
+                android:inputType="number"
+                android:imeOptions="actionDone"
+                android:singleLine="true"
+                android:textColor="?attr/colorInk"
+                android:textColorHint="?attr/colorFaint"
+                android:textSize="@dimen/fs_title"
+                    android:text="20"
+                android:typeface="monospace"
+                android:fontFeatureSettings="tnum" />
+            <!-- ⚠⚠ 2026-10-03 **用户裁定：网格数量自动算**（原话见下），
+                 但**保留手改**能力（用户明确选「自动算但允许手改」）。
+                 ⟹ 这个 EditText **没有改成只读**：程序算完会往里写自动值，
+                     你可以继续改；改过之后 MainActivity 置 nManual=true，不再自动覆盖。
+                 ⚠ 标签下方的「自动 N」提示条由 nAutoNote 承载（默认 gone，
+                     只有你手改过、或自动值与手改值不同时才显示）。
+                 ⟹ 公式（用户裁定）：等比网格，最高价到最低价，格距 = 该品种**日线**步长阈值 s
+                       r = 1 − s
+                       第 k 格 = 最高价 × r^k
+                       n = floor( ln(最高价/最低价) ÷ −ln(1−s) )
+                     取下整就是用户说的「步长阈值不足的一格的向下约」。
+                 ⚠ 这**偏离稿**：稿 L653 的 n 是纯手填输入，网格按几何等比铺满两端。
+                   产品裁定，不是移植对齐。 -->
+        </LinearLayout>
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="?attr/colorBorder" />
+
+                    <!-- ⚠⚠ 2026-10-03 **用户裁定：手续费率移出计算屏**，改到设置屏去填。
+             原话：「手续费率和维持保证金额移到设置界面去，这俩基本上固定的，不需要频繁改」。
+             ⟹ **这一整行（标签 + in_fee + % 单位）连同它下面的发丝线已删除**。
+             ⟹ 计算屏现在改为从 gridcalc_rate_v1 读（见 MainActivity.onCalc 的 rateFee/rateMmr）。
+             ⚠ **偏离稿**：稿 L595-609 的参数网格里有这两行。产品裁定，不是移植对齐。
+             ⚠ MainActivity 里 `feeInp = findViewById(R.id.in_fee)` **必须同步删掉** ——
+               节点已不存在，那行会返回 null，后面读写它的地方会 NPE。
+               同理 in_mmr（在另一列）。两处已在 MainActivity 侧改掉并留了说明。
+             ⚠ 这也意味着**回填/记录导出路径**里凡是引用这两个 EditText 的都要改，
+               已在 MainActivity 侧逐处核对。 -->
+</LinearLayout>
+        <LinearLayout
+
+            android:layout_width="0dp"
+
+            android:layout_height="wrap_content"
+
+            android:layout_weight="1"
+
+            android:orientation="vertical" >
+
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="最低价"
+                android:textColor="?attr/colorFaint"
+                android:textSize="@dimen/fs_note" />
+            <EditText
+                android:id="@+id/in_Pl"
+                android:layout_width="0dp"
+                android:layout_height="42dp"
+                android:layout_weight="1"
+                android:background="@drawable/calc_field"
+                android:gravity="right|center_vertical"
+                android:importantForAutofill="no"
+                android:inputType="numberDecimal"
+                android:imeOptions="actionDone"
+                android:singleLine="true"
+                android:textColor="?attr/colorInk"
+                android:textColorHint="?attr/colorFaint"
+                android:textSize="@dimen/fs_title"
+                    android:text="272.85"
+                android:typeface="monospace"
+                android:fontFeatureSettings="tnum" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="5.7dp"
+                android:text="USD"
+                android:textColor="?attr/colorFaint"
+                android:textSize="@dimen/fs_note" />
+        </LinearLayout>
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="?attr/colorBorder" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="触发价"
+                android:textColor="?attr/colorFaint"
+                android:textSize="@dimen/fs_note" />
+            <EditText
+                android:id="@+id/in_Po"
+                android:layout_width="0dp"
+                android:layout_height="42dp"
+                android:layout_weight="1"
+                android:background="@drawable/calc_field"
+                android:gravity="right|center_vertical"
+                android:importantForAutofill="no"
+                android:inputType="numberDecimal"
+                android:imeOptions="actionDone"
+                android:singleLine="true"
+                android:textColor="?attr/colorInk"
+                android:textColorHint="?attr/colorFaint"
+                android:textSize="@dimen/fs_title"
+                android:typeface="monospace"
+                android:fontFeatureSettings="tnum" />
+                <!-- ⚠⚠ 2026-10-03 用户裁定：**触发价不预填**（同 in_C 那条裁定）。
+                     ⟹ 原先写死 android:text="312.48"，已删。 -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="5.7dp"
+                android:text="USD"
+                android:textColor="?attr/colorFaint"
+                android:textSize="@dimen/fs_note" />
+        </LinearLayout>
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="?attr/colorBorder" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="每格数量"
+                android:textColor="?attr/colorFaint"
+                android:textSize="@dimen/fs_note" />
+            <EditText
+                android:id="@+id/in_q"
+                android:layout_width="0dp"
+                android:layout_height="42dp"
+                android:layout_weight="1"
+                android:background="@drawable/calc_field"
+                android:gravity="right|center_vertical"
+                android:hint="0.001"
+                android:importantForAutofill="no"
+                android:inputType="numberDecimal"
+                android:imeOptions="actionDone"
+                android:singleLine="true"
+                android:textColor="?attr/colorInk"
+                android:textColorHint="?attr/colorFaint"
+                android:textSize="@dimen/fs_title"
+                android:typeface="monospace"
+                android:fontFeatureSettings="tnum" />
+                <!-- ⚠⚠ 2026-10-03 用户裁定：**每格数量不预填**（同 in_C 那条裁定）。
+                     ⟹ 原先写死 android:text="10"，已删。
+                     ⚠ android:hint="0.001" 保留：那是**稿里的最小单位示例**（加密场景），
+                        只是灰字提示，不是值。getNum 读的是 text，读不到 hint。 -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="5.7dp"
+                android:text="股"
+                android:textColor="?attr/colorFaint"
+                android:textSize="@dimen/fs_note" />
+        </LinearLayout>
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="?attr/colorBorder" />
+
+
+                    <!-- ⚠⚠ 2026-10-03 **用户裁定：维持保证金率也移出计算屏**，改到设置屏去填（同手续费率）。
+             原话：「手续费率和维持保证金额移到设置界面去，这俩基本上固定的，不需要频繁改」。
+             ⟹ **这一整行（标签 + in_mmr + % 单位）连同它下面的发丝线已删除**。
+             ⚠ MainActivity 里 `mmrInp = findViewById(R.id.in_mmr)` 已同步删掉 ——
+               节点不存在，那行返回 null，后续读写会 NPE。已在 Kotlin 侧改并注明。
+             ⚠ 这是**右列的最后一行**，删掉它之后右列由「维持保证金率」行收尾的那条
+               borderBottom 也一并没了 —— 保留会让这一列比左列多一条线、两边对不齐。
+               所以是**有意**跟着删的，不是漏删。 -->
+</LinearLayout>
+        </LinearLayout>
+
+
+        <!-- 加倍建仓:Switch(不再是文字按钮) -->
+        <!-- t134 (3) 加倍建仓:稿 L657-660 padding 10/16,**上下各一条 1px 线**,标签左开关右 -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="?attr/colorBorder" />
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="42dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingStart="@dimen/space_4"
+            android:paddingEnd="@dimen/space_4">
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="加倍建仓"
+                android:textColor="?attr/colorInk"
+                android:textSize="@dimen/fs_title" />
+                <!-- B-44 稿 L268: width:44, height:26, **不做任何缩放**。
+                     改前这里挂着 scaleX/Y=0.72, 把 44x26 缩成约 31.7x18.7 —— 缩放已删, 别再加回来。
+                     
+                     【根因更正】这一段原来写「真正做 44x26 的是框架 Switch 在 minWidth/minHeight=0 之后
+                     仍自有留白」—— **那句把成因说反了**: 留白确实有, 但它不是「帮你撑满 44x26」,
+                     而是**反过来把可见轨道卡得比 44x26 更小**。按 AOSP 真源码逐条核过(android-33 data/res):
+                       drawable/switch_track_material.xml = layer-list, 左右各 start/end 4dp,
+                         里面是圆角 7dp、高 14dp 的 shape
+                       color/switch_track_material.xml = 全表唯一的 alpha 在 state_enabled=false 那一支,
+                         state_checked 那一支无 alpha(checked 态是不透明的)
+                     ⟹ 残留**不是透明度, 是轨道几何**: 布局已经给到 44x26, 画出来的轨道只有 36x14
+                       (左右各内缩 4dp, 高度被 shape 的 14dp 卡住); 而稿 L268 要的是整块 44x26 的药丸
+                       (圆角写成 999, 即全圆), 没有内缩。所以这里只保留「给足 44x26 且不缩放」的做法,
+                       但别再把它当成「已经做出 44x26 的开关」—— 差的那 4dp 内缩与 14dp 高度是框架画的。
+                     
+                     颜色层已经逐字符合稿 L268/L269: thumbTint / trackTint 接的是 res/color 下的
+                     dbl_thumb / dbl_track 两个自建 selector, 不走框架那套, 这一层不用再动。
+                     
+                     【备查路径, 本轮不做, 但别当它做不到】android.widget.Switch 有两个公开属性
+                     android:track / android:thumb(SDK values/attrs.xml 的 declare-styleable name=Switch,
+                     两者都是 format=reference), 指向自建的 shape drawable 就能直接画成整块药丸,
+                     **id 与控件类型都不用动** ⟹ 硬约束不挡。
+                     ⚠ 别写 android:trackDrawable / android:thumbDrawable: 那两个是 android.widget.FastScroll
+                       的属性, Switch 的属性表里没有, 写到 Switch 上 AAPT 直接报错。 -->
+            <Switch
+                android:id="@+id/dbl_btn"
+                android:layout_width="42dp"
+                android:layout_height="24.8dp"
+                android:minWidth="0dp"
+                android:minHeight="0dp"
+                android:thumbTint="@color/dbl_thumb"
+                android:trackTint="@color/dbl_track" />
+        </LinearLayout>
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="?attr/colorBorder" />
+
+        <!-- 硬约束报错(未填完时照样弹,回车制不变) -->
+        <TextView
+            android:id="@+id/calc_err"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingTop="@dimen/space_2"
+            android:paddingBottom="@dimen/space_2"
+            android:text=""
+            android:textColor="?attr/colorRed"
+            android:textSize="@dimen/fs_note"
+            android:visibility="gone"
+            android:paddingStart="@dimen/space_4"
+            android:paddingEnd="@dimen/space_4"/>
+        <!-- t304 程序改写用户输入时的那行说明。
+            不是 calc_err: 那个是 colorRed 且语义是「错误」;
+            静默改写不是错误, 复用会让真错误和这条混成同一个颜色。
+            12sp 中性色, 挨着 calc_err; 用户一动输入框就收起(MainActivity.t304Note)。 -->
+        <TextView
+            android:id="@+id/calc_note"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingTop="@dimen/space_2"
+            android:paddingBottom="@dimen/space_2"
+            android:text=""
+            android:textColor="?attr/colorSub"
+            android:textSize="@dimen/fs_note"
+            android:visibility="gone"
+            android:paddingStart="@dimen/space_4"
+            android:paddingEnd="@dimen/space_4"/>
+
+        <!-- ============ 结果:净收益 30sp 独占一行 ============ -->
+        <!-- t169 part1:稿的 idle 空态。居中提示,未计算时显示,算出后消失。 -->
+        <!-- 默认 gone:XML 默认值先于代码渲染,这里必须写对,不能只靠 Kotlin。 -->
+        <!-- #140 稿 L734 到 L738: 稿 L735 逐字 flex:1 + alignItems:center +
+             justifyContent:center, 提示**真的**占满参数区之外的剩余高度再上下居中;
+             改前是 paddingTop / Bottom 各 72dp 硬凑的近似, 参数一多一少就跟着漂。
+             改法: 直接把 height=0dp + weight=1 挂在 calc_idle_hint 自己身上
+             (它就是稿里那个 flex:1 的格子), gravity=center 原样留着, 文字落在整格中点。
+             为什么不再套一层 0dp 容器: 容器即使里面是 gone 也照样吃掉剩余高度,
+             结果区展开时那段不可见空白会把净收益/四格/折叠口整体顶下去几十 dp
+             (稿 L734 只在 st==='idle' 时才渲染这一格)。提示自己占格: 可见时整格居中,
+             不可见时(MainActivity L519 / L543 算出结果后置 GONE)高度为 0, 页面高度与改前一致。
+         ⚠ 这行 weight=1 **只在** ScrollView 的 android:fillViewport="true"(本文件 L27)
+         之下才生效: ScrollView 首轮是用 UNSPECIFIED 高度量子节点的, LinearLayout 在无界高度下
+         不会按「剩余高度」分配 weight(它退回按内容高度量), 于是是 fillViewport 触发的第二轮
+         EXACTLY(视口高) 重测, 才让提示真的拿到剩余高度并居中。
+         谁在整理 ScrollView 属性时顺手删掉那行 fillViewport, 提示既不崩也不报错,
+         只会安静地退回「一行内容高」不再垂直居中 —— 本页最容易踩的「改了没生效」地雷。
+             ⚠ 文案 / 字号 / 颜色一个字节没动(稿 L736 逐字: 居中 / T.title=16 / ink2)。 -->
+        <TextView
+            android:id="@+id/calc_idle_hint"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:text="输入参数后回车计算"
+            android:textColor="?attr/colorSub"
+            android:textSize="@dimen/fs_title"
+            android:visibility="gone" />
+
+        <LinearLayout
+            android:id="@+id/calc_hero_box"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingStart="@dimen/space_4"
+            android:paddingEnd="@dimen/space_4"
+            android:paddingTop="24.8dp"
+            android:paddingBottom="21dp"
+            android:visibility="gone">
+            <TextView
+                android:id="@+id/hero_label"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="净收益"
+                android:textColor="?attr/colorFaint"
+                android:textSize="@dimen/fs_note" />
+        <TextView
+            android:id="@+id/hero"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="7.6dp"
+            android:gravity="left|center_vertical"
+            android:lineSpacingMultiplier="1.05"
+            android:text=""
+            android:textColor="?attr/colorInk"
+            android:textSize="@dimen/fs_hero"
+            android:textStyle="bold"
+            android:letterSpacing="-0.03" />
+        <!-- t104:常驻说明行删掉,回车制本身是契约;未填完时 calcErr 会自己说话 -->
+        <TextView
+            android:id="@+id/hero_sub"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="11.4dp"
+            android:text=""
+            android:textColor="?attr/colorPrimary"
+            android:textSize="@dimen/fs_note"
+            android:textStyle="bold" />        </LinearLayout>
+        <!-- B3 稿 L290: StateLine 的 borderTop:1px solid var(line)。
+             它与 calc_overline 同一生灭: 稿 L674 只在 over 时渲染这一条,
+             所以 Kotlin 里跟着 calcOverline 一起设可见性。 -->
+        <View
+            android:id="@+id/calc_overline_topline"
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="?attr/colorBorder" />
+        <LinearLayout
+            android:id="@+id/calc_overline"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:paddingStart="@dimen/space_4"
+            android:paddingEnd="@dimen/space_4"
+            android:paddingTop="12.4dp"
+            android:paddingBottom="12.4dp"
+            android:visibility="gone">
+            <TextView
+                android:id="@+id/calc_overline_icon"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="!"
+                android:textColor="?attr/colorInk"
+                android:textSize="@dimen/fs_note" />
+            <TextView
+                android:id="@+id/calc_overline_txt"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="7.6dp"
+                android:lineSpacingMultiplier="1.5"
+                android:text="爆仓价高于目标值"
+                android:textColor="?attr/colorInk"
+                android:textSize="@dimen/fs_note" />
+        </LinearLayout>
+
+
+        <!-- 一行四格:收益率 / 爆仓价(带目标上限副标) / 买格·卖格 / 见底权益
+             t154 队长加 id=stat_tiles:稿 L621 `const tiles = over ? [] : [...]`,
+             over 态**整组不出现**,所以要一个容器整体控制可见性。 -->
+        <!-- B4 稿 L676: 四格那一行的 borderTop:1px solid var(line)。
+             它与 stat_tiles 同一生灭: 稿 L675 只在 !over 时渲染四格,
+             所以 Kotlin 里跟着 statTiles 一起设可见性, 不做无条件兄弟节点。 -->
+        <View
+            android:id="@+id/stat_tiles_topline"
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="?attr/colorBorder" />
+        <LinearLayout
+            android:id="@+id/stat_tiles"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:paddingTop="@dimen/space_4"
+            android:paddingStart="@dimen/space_4"
+            android:paddingEnd="@dimen/space_4">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+                <TextView
+                    android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_columnWeight="1"
-                    android:layout_marginLeft="6dp"
-                    android:orientation="vertical">
+                    android:text="收益率"
+                    android:textColor="?attr/colorFaint"
+                    android:textSize="@dimen/fs_note" />
+                <TextView
+                    android:id="@+id/stat_roe"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="5.7dp"
+                    android:text="—"
+                    android:textColor="?attr/colorInk"
+                    android:textSize="@dimen/fs_title"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <!-- 爆仓价卡:目标上限收进来当副标(超标红框仍由代码画) -->
+            <LinearLayout
+                android:id="@+id/stat_liq_card"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1.3"
+                android:orientation="vertical">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="爆仓价"
+                    android:textColor="?attr/colorFaint"
+                    android:textSize="@dimen/fs_note" />
+                <TextView
+                    android:id="@+id/stat_liq"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="5.7dp"
+                    android:text="—"
+                    android:textColor="?attr/colorInk"
+                    android:textSize="@dimen/fs_title"
+                    android:textStyle="bold" />
+                <LinearLayout
+                    android:id="@+id/stat_cap"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="3.8dp"
+                    android:orientation="horizontal"
+                    android:visibility="gone">
                     <TextView
+                        android:id="@+id/stat_capv"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:layout_marginBottom="5dp"
-                        android:text="建仓模式"
-                        android:textColor="?attr/colorSub"
-                        android:textSize="14sp"
-                        android:fontFamily="sans-serif-medium" />
+                        android:text=""
+                        android:textColor="?attr/colorFaint"
+                        android:textSize="@dimen/fs_note" />
                     <Button
-                        android:id="@+id/dbl_btn"
-                        android:layout_width="match_parent"
-                        android:layout_height="48dp"
-                        android:background="@drawable/btn_ghost"
-                        android:text="加倍建仓"
-                        android:textColor="?attr/colorInk"
-                        android:textSize="15sp" />
+                        android:id="@+id/capX"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:background="@android:color/transparent"
+                        android:minHeight="0dp"
+                        android:minWidth="0dp"
+                        android:paddingLeft="3.8dp"
+                        android:paddingRight="3.8dp"
+                        android:paddingTop="0dp"
+                        android:paddingBottom="0dp"
+                        android:text="×"
+                        android:textColor="?attr/colorSub"
+                        android:textSize="@dimen/fs_note" />
                 </LinearLayout>
-            </GridLayout>
-            <!-- 稿.err:爆仓价超标等硬约束报错(默认收起) -->
-            <TextView
-                android:id="@+id/calc_err"
-                android:layout_width="match_parent"
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
-                android:text=""
-                android:textColor="?attr/colorRed"
-                android:textSize="13sp"
-                android:visibility="gone" />
+                android:layout_weight="1"
+                android:orientation="vertical">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="买格 / 卖格"
+                    android:textColor="?attr/colorFaint"
+                    android:textSize="@dimen/fs_note" />
+                <TextView
+                    android:id="@+id/stat_grids"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="5.7dp"
+                    android:text="—"
+                    android:textColor="?attr/colorInk"
+                    android:textSize="@dimen/fs_title"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="见底权益"
+                    android:textColor="?attr/colorFaint"
+                    android:textSize="@dimen/fs_note" />
+                <TextView
+                    android:id="@+id/stat_eqb"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="5.7dp"
+                    android:text="—"
+                    android:textColor="?attr/colorInk"
+                    android:textSize="@dimen/fs_title"
+                    android:textStyle="bold" />
+                <TextView
+                    android:id="@+id/stat_eqb_unit"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="3.8dp"
+                    android:text="USD"
+                    android:textColor="?attr/colorFaint"
+                    android:textSize="@dimen/fs_note" />
+            </LinearLayout>
         </LinearLayout>
 
-        <!-- 计算结果 -->
+        <!-- 「展开更多」:初始持仓/卖出总额/建仓成本/计价币种/美元汇率 -->
+        <!-- t167 ②:按稿 L687 至 L699 把两个折叠口并排成一行。
+             原来 save_btn 夹在 more_box 与 det_toggle 之间,把两者隔开了;
+             现在两段并排,save_btn 挪到本行之下(稿 L740 在最底下)。 -->
+        <!-- B2 稿 L688: 折叠口那一行是 borderTop:1px solid var(line)。
+             它和这一行**一起**被 t227SetResultArea 收放: 两段都 GONE 时整行塌成 0,
+             这条线也必须跟着 GONE, 否则 idle 态会留下一条没有内容陪着的孤线。
+             ⚠ 同理, 行内那条 1dp 竖线(page_calc.xml 里唯一的 layout_width=1dp)
+             没有 id 且 layout_height=match_parent, 曾把整段剩余高度吃满 348dp,
+             害得 weight=1 的 calc_idle_hint 高度为 0(真机层级实证)。整行收掉即解。 -->
+        <View
+            android:id="@+id/toggle_row_topline"
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="?attr/colorBorder" />
         <LinearLayout
+            android:id="@+id/toggle_row"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:background="@drawable/card_bg"
-            android:orientation="vertical"
-            android:padding="14dp">
+            android:orientation="horizontal"
+            android:paddingStart="@dimen/space_4"
+            android:paddingEnd="@dimen/space_4">
             <TextView
+            android:id="@+id/more_toggle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:paddingTop="@dimen/space_5"
+            android:paddingBottom="@dimen/space_5"
+            android:paddingLeft="@dimen/space_4"
+            android:background="?android:attr/selectableItemBackground"
+            android:clickable="true"
+            android:textStyle="bold"
+            android:layout_weight="1"
+            android:focusable="true"
+            android:text="展开更多"
+            android:textColor="?attr/colorPrimary"
+            android:textSize="@dimen/fs_title" />
+
+            <!-- 稿 L694 第二个口的 borderLeft:1px solid var(line)。
+                 TextView 没有 borderLeft 属性, 在它前面插一条 1dp 竖线。 -->
+            <View
+            android:layout_width="1dp"
+            android:layout_height="match_parent"
+            android:background="?attr/colorBorder" />
+            <!-- #119 稿 L693-697: 第二个折叠口是一个**行容器**, 标题与右侧行数都在它里面,
+                 行数被推到最右(marginLeft:auto)因而归这个点击区管, 不是挂在口外面。
+                 det_toggle 由 TextView 变 LinearLayout(行内标题不给 id), ladder_note 原样搬进来。 -->
+            <LinearLayout
+            android:id="@+id/det_toggle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingTop="@dimen/space_5"
+            android:paddingBottom="@dimen/space_5"
+            android:paddingLeft="@dimen/space_4"
+            android:background="?android:attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true">
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="网格明细"
+                android:textStyle="bold"
+                android:textColor="?attr/colorPrimary"
+                android:textSize="@dimen/fs_title" />
+            <TextView
+                android:id="@+id/ladder_note"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginBottom="10dp"
-                android:text="计算结果"
-                android:textColor="?attr/colorInk"
-                android:textSize="16sp"
-                android:textStyle="bold" />
-            <TextView
-                android:id="@+id/hero"
-                android:layout_width="match_parent"
-                android:layout_height="56dp"
-                android:gravity="center"
-                android:text="--"
-                android:textSize="34sp"
-                android:textStyle="bold"
-                android:letterSpacing="-0.02"
-                android:typeface="monospace" />
-            <TextView
-                android:id="@+id/hero_sub"
-                android:layout_width="match_parent"
-                android:layout_height="24dp"
-                android:gravity="center"
-                android:text="输入参数后回车计算"
-                android:textColor="?attr/colorSub"
-                android:textSize="13sp" />
-            <GridLayout
+                android:text="—"
+                android:textColor="?attr/colorFaint"
+                android:textSize="@dimen/fs_note" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/more_box"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone"
+            android:paddingStart="@dimen/space_4"
+            android:paddingEnd="@dimen/space_4">
+
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:columnCount="2"
-                android:rowCount="2">
-                <!-- 爆仓价卡:稿.stat+cap 目标上限行(超标红框由代码画) -->
-                <LinearLayout
-                    android:id="@+id/stat_liq_card"
+                android:orientation="horizontal">
+                <TextView
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    android:layout_columnWeight="1"
-                    android:orientation="vertical">
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="18dp"
-                        android:text="爆仓价"
-                        android:textColor="?attr/colorSub"
-                        android:textSize="11sp" />
-                    <TextView
-                        android:id="@+id/stat_liq"
-                        android:layout_width="wrap_content"
-                        android:layout_height="30dp"
-                        android:text="--"
-                        android:textColor="?attr/colorInk"
-                        android:textSize="15sp"
-                        android:typeface="monospace" />
-                    <LinearLayout
-                        android:id="@+id/stat_cap"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="4dp"
-                        android:gravity="center_vertical"
-                        android:orientation="horizontal"
-                        android:visibility="gone">
-                        <TextView
-                            android:id="@+id/stat_capv"
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:text=""
-                            android:textColor="?attr/colorSub"
-                            android:textSize="10.5sp" />
-                        <Button
-                            android:id="@+id/capX"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:background="@android:color/transparent"
-                            android:minHeight="0dp"
-                            android:minWidth="0dp"
-                            android:paddingLeft="4dp"
-                            android:paddingRight="4dp"
-                            android:paddingTop="0dp"
-                            android:paddingBottom="0dp"
-                            android:text="×"
-                            android:textColor="?attr/colorSub"
-                            android:textSize="13sp" />
-                    </LinearLayout>
-                </LinearLayout>
-                <LinearLayout
-                    android:layout_width="0dp"
-                    android:layout_height="48dp"
-                    android:layout_columnWeight="1"
-                    android:orientation="vertical">
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="18dp"
-                        android:text="收益率"
-                        android:textColor="?attr/colorSub"
-                        android:textSize="11sp" />
-                    <TextView
-                        android:id="@+id/stat_roe"
-                        android:layout_width="wrap_content"
-                        android:layout_height="30dp"
-                        android:text="--"
-                        android:textColor="?attr/colorInk"
-                        android:textSize="15sp"
-                        android:typeface="monospace" />
-                </LinearLayout>
-                <LinearLayout
-                    android:layout_width="0dp"
-                    android:layout_height="48dp"
-                    android:layout_columnWeight="1"
-                    android:orientation="vertical">
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="18dp"
-                        android:text="初始持仓"
-                        android:textColor="?attr/colorSub"
-                        android:textSize="11sp" />
-                    <TextView
-                        android:id="@+id/stat_pos"
-                        android:layout_width="wrap_content"
-                        android:layout_height="30dp"
-                        android:text="--"
-                        android:textColor="?attr/colorInk"
-                        android:textSize="15sp"
-                        android:typeface="monospace" />
-                </LinearLayout>
-                <LinearLayout
-                    android:layout_width="0dp"
-                    android:layout_height="48dp"
-                    android:layout_columnWeight="1"
-                    android:orientation="vertical">
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="18dp"
-                        android:text="卖出总额"
-                        android:textColor="?attr/colorSub"
-                        android:textSize="11sp" />
-                    <TextView
-                        android:id="@+id/stat_sell"
-                        android:layout_width="wrap_content"
-                        android:layout_height="30dp"
-                        android:text="--"
-                        android:textColor="?attr/colorInk"
-                        android:textSize="15sp"
-                        android:typeface="monospace" />
-                </LinearLayout>
-            </GridLayout>
-            <!-- 稿§1.1 保存数据:默认disabled,计算成功才可点,点击才落库 -->
-            <Button
-                android:id="@+id/save_btn"
+                    android:layout_weight="1"
+                    android:text="初始持仓"
+                    android:textColor="?attr/colorFaint"
+                    android:textSize="@dimen/fs_note" />
+                <TextView
+                    android:id="@+id/stat_pos"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="—"
+                    android:textColor="?attr/colorInk"
+                    android:textSize="@dimen/fs_title"
+                    android:typeface="monospace"
+                    android:fontFeatureSettings="tnum" />
+            </LinearLayout>
+            <View
                 android:layout_width="match_parent"
-                android:layout_height="44dp"
-                android:layout_marginTop="10dp"
-                android:background="@drawable/btn_ghost"
-                android:enabled="false"
-                android:text="保存数据"
-                android:textColor="?attr/colorInk"
-                android:textSize="15sp" />
+                android:layout_height="1dp"
+                android:background="?attr/colorBorder" />
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="卖出总额"
+                    android:textColor="?attr/colorFaint"
+                    android:textSize="@dimen/fs_note" />
+                <TextView
+                    android:id="@+id/stat_sell"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="—"
+                    android:textColor="?attr/colorInk"
+                    android:textSize="@dimen/fs_title"
+                    android:typeface="monospace"
+                    android:fontFeatureSettings="tnum" />
+            </LinearLayout>
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="?attr/colorBorder" />
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="建仓成本"
+                    android:textColor="?attr/colorFaint"
+                    android:textSize="@dimen/fs_note" />
+                <TextView
+                    android:id="@+id/stat_cost"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="—"
+                    android:textColor="?attr/colorInk"
+                    android:textSize="@dimen/fs_title"
+                    android:typeface="monospace"
+                    android:fontFeatureSettings="tnum" />
+            </LinearLayout>
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="?attr/colorBorder" />
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="计价币种 / 美元汇率"
+                    android:textColor="?attr/colorFaint"
+                    android:textSize="@dimen/fs_note" />
+                <TextView
+                    android:id="@+id/stat_ccy"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="—"
+                    android:textColor="?attr/colorInk"
+                    android:textSize="@dimen/fs_title"
+                    />
+            </LinearLayout>
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="?attr/colorBorder" />
         </LinearLayout>
 
-        <!-- 网格明细 -->
+        <!-- 保存:实心主色通栏 + 「● 未保存」(只这两个字,不加解释) -->
+        <!-- t154:这里原来还有一个 dirty_t「● 未保存」(t102 时代),**已删** ——
+             它与净收益下面的 heroSub 是同一件事,一个灰一个紫各画各的。
+             稿 L670-671 只有一处 heroSub。保存后的状态也由 heroSub 承接。 -->
+
+        <!-- 「网格明细」:另一个折叠区 -->
+
         <LinearLayout
+            android:id="@+id/det_box"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:background="@drawable/card_bg"
             android:orientation="vertical"
-            android:padding="14dp">
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="10dp"
-                android:text="网格明细"
-                android:textColor="?attr/colorInk"
-                android:textSize="16sp"
-                android:textStyle="bold" />
+            android:visibility="gone"
+            android:paddingStart="@dimen/space_4"
+            android:paddingEnd="@dimen/space_4">
+            <!-- t298 稿 L710-729 的网格明细区【没有】汇总行, 整块收起。
+                改前这里渲染「买N/卖N/线N · 持仓X · 成本Y」; 稿 L696 的行数已由
+                ladder_note 独自承担(t118 裁定: 它是唯一主人)。
+                做法是 visibility=gone 而不是删 view —— MainActivity.kt 有 6 处 detSum 赋值
+                (L352/353/477/478/1046/1047) + L1660 的 findViewById, 删 view 会断绑定;
+                稿里没有这一条 != 它坏了, 藏起来效果等价且风险最低。 -->
             <TextView
                 android:id="@+id/det_sum"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="明细会在计算后显示"
+                android:text=""
                 android:textColor="?attr/colorSub"
-                android:textSize="13sp" />
+                android:textSize="@dimen/fs_note"
+                android:visibility="gone" />
+            <!-- B1 稿 L712: 明细表头有 borderTop + borderBottom。
+                 borderBottom 已经由 row_detail.xml 根的 @drawable/row_detail_rule 画出
+                 (layer-list: 透明底 + item[gravity=bottom] + shape(size.height=1dp + colorBorder)),
+                 表头与每个数据行都带着底线; 缺的只有这条**顶部**的, 放在 rows 之前,
+                 随 det_box 的可见性一起走(零 Kotlin)。
+                 ⚠【已知取舍 · 记账】表头顶线与行底线在 App 里都**内缩 16dp**
+                 (det_box 自带 paddingStart/End 16dp), 而稿 L712/L720 的 border 画在
+                 **带 padding 的 div** 上, CSS 边框在 padding 外侧 ⟹ 稿是**通栏**。
+                 两条线必须**一起**动: 只把表头这条移到 det_box 外面, 会变成
+                 「表头上有线通栏、行底下没线到边」, 表内不一致比整体内缩 16dp 更显眼。
+                 两条都通栏则要重构 det_box 的 padding 归属, 而 det_box 的几何已被 t8
+                 那轮 61 个叶子的祖先链审计 + 真机复核锁定, 为两条发丝线动它收益小于风险。
+                 ⟹ 裁定: 两条都不动, 维持「一致地内缩 16dp」。
+                 **这不是「已与稿一致」**, 别把它当成对齐过了。 -->
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="?attr/colorBorder" />
             <LinearLayout
                 android:id="@+id/rows"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
+                android:layout_marginTop="@dimen/space_2"
                 android:orientation="vertical" />
         </LinearLayout>
+
+        <!-- t220:保存按钮移到内容区最后(稿 L740 在 Tabs 之前, 是内容区的最后一件)。
+             改前它排在 more_box/det_box 【之前】, 一开页面就压在折叠区上面。 -->
+        <!-- t316 #143 稿 L741-742: 未保存态也是 8dp 圆角。
+            改前是纯 ?attr/colorPrimary(ColorDrawable) = 矩形;
+            已保存态 MainActivity 早就有 cornerRadius 8, 两态不对称。 -->
     </LinearLayout>
-</ScrollView>
+    </ScrollView>
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingStart="@dimen/space_4"
+        android:paddingTop="17.2dp"
+        android:paddingEnd="@dimen/space_4"
+        android:paddingBottom="13.4dp">
+    <Button
+        android:id="@+id/save_btn"
+        android:layout_width="match_parent"
+        android:layout_height="45.8dp"
+        android:background="@drawable/save_btn_bg"
+        android:text="保存数据"
+        android:textColor="?attr/colorOnPrimary"
+android:textSize="@dimen/fs_title"
+        android:textStyle="bold" />
+    </FrameLayout>
+</LinearLayout>

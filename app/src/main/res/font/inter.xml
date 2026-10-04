@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Inter 字体族（SIL Open Font License 1.1，见 gridcalc-native/licenses/Inter-OFL.txt）。
+
+  为什么换字体：设计稿 v2.html:9 声明的是
+      font-family:"Inter","Helvetica Neue",-apple-system,"PingFang SC","Microsoft YaHei",sans-serif
+  但这几个字体在渲染稿子的 Windows 机器上**一个都没装**，浏览器一路退到
+  Microsoft YaHei（微软雅黑）—— 稿子从来没真正拿到过 Inter。
+  App 侧则从未声明过字体族（values/*.xml 里 fontFamily 零出现），全部走系统默认 Roboto。
+  ⟹ 两边实际渲染的是 **微软雅黑 vs Roboto**，不是设计稿设想的 Inter vs Roboto。
+
+  为什么不能反过来把 App 改成微软雅黑：微软雅黑是微软授权字体，不可打包进 APK 分发，
+  且 Android 设备/镜像上根本没有（/system/fonts 只有 Roboto / DroidSans / Noto CJK）。
+  Inter 是开源字体，两边都能用 —— 这是唯一自洽的解。
+
+  权重说明：App 里 FavPanel.kt 多处用 Typeface.BOLD，另有多处 medium，
+  故给足 Regular/Medium/SemiBold/Bold 四档，只给 Regular 会让中粗字重回 Roboto 合成加粗。
+
+  ⚠️ includeFontPadding 刻意保持默认 true：改它会连带改变每一处的行高/上下留白，
+     那是 V3 间距维度的范围。此处只换字形，不动纵向节奏，便于对比时定位变量。
+-->
+<font-family xmlns:android="http://schemas.android.com/apk/res/android">
+    <font
+        android:font="@font/inter_regular"
+        android:fontStyle="normal"
+        android:fontWeight="400" />
+    <font
+        android:font="@font/inter_medium"
+        android:fontStyle="normal"
+        android:fontWeight="500" />
+    <font
+        android:font="@font/inter_semibold"
+        android:fontStyle="normal"
+        android:fontWeight="600" />
+    <font
+        android:font="@font/inter_bold"
+        android:fontStyle="normal"
+        android:fontWeight="700" />
+</font-family>

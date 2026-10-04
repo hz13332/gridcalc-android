@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 稿 L869-875 Switch, 逐字照 L871:
+       width:44, height:26, borderRadius:999,
+       background = 开态取稿的决策紫 ac / 关态取稿的线色 line
+     （稿里写作 CSS 自定义属性的 var(...) 形式，稿 L81 的 THEMES 里 ac 与 line 两个
+       token 名就是这两个值；此处不照抄 var() 写法，因为 XML 注释里不能出现连续的
+       两个减号，会让整份文件 not well-formed。）
+     App 侧映射: 稿 ac → ?attr/colorPrimary, 稿 line → ?attr/colorBorder。
+
+     ⚠ t10 (2026-10-02) 为什么必须自绘轨道, 而不能只靠 trackTintList:
+       平台 Switch 的默认轨道, 即使把 trackTintList 设成**不带 alpha 的实色**
+       colorPrimary, 真机仍渲染成 ~30% 不透明的淡紫(实测 #CDC5E8 浅 / #352F55 深,
+       等价于 colorPrimary 压 30% 不透明叠在画布上)。
+       而同一个 ColorStateList.valueOf API 的 **thumbTintList 是生效的**
+       (实测 thumb 确实是我们给的纯白) —— 同一个 API 两种结果, 说明那 30%
+       来自轨道 drawable 自身, 不是我们代码里的 alpha。**只能换掉轨道本身。**
+
+     radius 999dp 就是稿 L871 的 borderRadius:999: Android 会把超过半高的圆角
+     自动夹到半高, 所以 26dp 高的轨道自动得到 radius 13 的胶囊, 与稿一致。
+
+     ⚠ 本文件**只管轨道**。thumb 的两态仍在 MainActivity.t211PaintSwitch 里用
+       thumbTintList —— 那条实测生效, 不要把 thumb 也搬进来(同一件事只留一个主人)。
+-->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 稿 L871 开态: 稿的 ac（决策紫） -->
+    <item android:state_checked="true">
+        <shape android:shape="rectangle">
+            <solid android:color="?attr/colorPrimary" />
+            <corners android:radius="999dp" />
+        </shape>
+    </item>
+    <!-- 稿 L871 关态: 稿的 line（中性线色） -->
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="?attr/colorBorder" />
+            <corners android:radius="999dp" />
+        </shape>
+    </item>
+</selector>

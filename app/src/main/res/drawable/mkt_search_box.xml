@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  t252 稿 L525: 描边盒 —— 1px 描边 + borderRadius 8。
+  稿里那一条 div 就是这个形状(display:flex / alignItems:center / gap:10 /
+  border 1px / borderRadius 8 / padding)。
+
+  ⟹ 1px 描边、圆角 8、内容透明(不遮底下的独立块底色)。
+  描边色用 ?attr/colorBorder —— 色表已核: 稿的三级灰 ink/ink2/ink3
+  = 本项目 colorInk/colorSub/colorFaint, 而稿的 line 色对应 colorBorder。
+
+  ⚠ 注释里不能出现两个连字符: XML 规范禁止。本文件第一版写了
+  「var(line)」这种形式, 编译直接报 ParseError。
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="@android:color/transparent" />
+    <stroke
+        android:width="1dp"
+        android:color="?attr/colorBorder" />
+    <corners android:radius="8dp" />
+</shape>

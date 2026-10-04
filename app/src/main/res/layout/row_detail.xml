@@ -1,38 +1,45 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- G9: 迁移前的 12/15/12/13 四个字号魔数, 全部收成 dimens 的 4 档常量。
+     依据是稿 L714/L721-725: 明细阶梯的表头五列与数据行五列**全是 T.note(12sp)**,
+     没有一列是 16sp(稿 L722 的网格价也是 T.note)。
+     另: MainActivity.kt 的 makeRow 会按 id 把这四个 TextView 统一覆盖成 fs_note,
+     所以 XML 改成 fs_note 是**渲染逐像素不变**, 不是拿它换字号。
+     ⚠ 注释里不能出现两个连字符, 稿的 CSS 变量正好有两个 ⟹ 上面一律不写变量名。 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="38dp"
+    android:layout_height="36.2dp"
     android:gravity="center_vertical"
     android:orientation="horizontal"
-    android:paddingLeft="4dp"
-    android:paddingRight="4dp">
+    android:paddingLeft="3.8dp"
+    android:paddingRight="3.8dp"
+    android:background="@drawable/row_detail_rule">
     <TextView
         android:id="@+id/row_idx"
-        android:layout_width="30dp"
+        android:layout_width="28.6dp"
         android:layout_height="wrap_content"
         android:gravity="center"
         android:textColor="?attr/colorSub"
-        android:textSize="12sp"
-        android:typeface="monospace" />
+        android:textSize="@dimen/fs_note"
+        />
     <TextView
         android:id="@+id/row_price"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:layout_weight="1"
         android:textColor="?attr/colorInk"
-        android:textSize="15sp"
-        android:typeface="monospace" />
+        android:textSize="@dimen/fs_note"
+        />
     <TextView
         android:id="@+id/row_dir"
-        android:layout_width="52dp"
-        android:layout_height="26dp"
+        android:layout_width="49.6dp"
+        android:layout_height="24.8dp"
         android:gravity="center"
-        android:textSize="12sp" />
+        android:textSize="@dimen/fs_note" />
     <TextView
         android:id="@+id/row_cum"
-        android:layout_width="110dp"
+        android:layout_width="104.9dp"
         android:layout_height="wrap_content"
         android:gravity="right"
-        android:textSize="13sp"
-        android:typeface="monospace" />
+        android:textSize="@dimen/fs_note"
+        />
 </LinearLayout>

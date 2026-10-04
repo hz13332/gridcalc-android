@@ -1,24 +1,29 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- t423:原 L15 是 textSize="14.3sp"、L23 是 "11sp"。
+     稿 L96-97 逐字:「字号:全 App 只有这 4 档,相邻差 ≥3sp,最小 12sp。
+     不允许在组件里写字面字号,只能引用 T。」—— 15 不在四档里, 11 低于下限。
+     ⚠ 本布局全仓零引用(从不 inflate), 所以这条改的是「它违反硬规矩」,
+       不是观感。刻意不删文件: 万一有人要复活它, 删掉等于替他做了决定。 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="48dp"
+    android:layout_height="45.8dp"
     android:gravity="center_vertical"
     android:orientation="horizontal"
-    android:paddingLeft="12dp"
-    android:paddingRight="12dp">
+    android:paddingLeft="11.4dp"
+    android:paddingRight="11.4dp">
     <TextView
         android:id="@+id/sug_sym"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:layout_weight="1"
         android:textColor="?attr/colorInk"
-        android:textSize="15sp"
+        android:textSize="@dimen/fs_title"
         android:typeface="monospace" />
     <TextView
         android:id="@+id/sug_tag"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginLeft="8dp"
+        android:layout_marginLeft="7.6dp"
         android:textColor="?attr/colorSub"
-        android:textSize="11sp" />
+        android:textSize="@dimen/fs_note" />
 </LinearLayout>

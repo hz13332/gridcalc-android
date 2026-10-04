@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- t132:按稿 B-标杆迁移.html L15-16 还原 .skl 的底色。
+
+     稿 L15 逐字是一条 linear-gradient(90deg, line 25%, 第二个停靠色 50%, line 75%),
+     外加 background-size:400% 100% 与 animation: sh 1.4s infinite;
+     L16 的 @keyframes 只移动 background-position(位移轴)。
+
+     ⚠ 关键事实(2026-09-30 复核): 第二个停靠色写的是「取那个变量、缺省回退到 line」的
+     写法, 而那个变量名在**全文只出现这一次**(就是上面这个用法)、**从未被赋值** ——
+     THEMES 的键只有 bg/panel/line/ink/ink2/ink3/up/dn/ac, 唯一那次 scope() 调用
+     (稿 L862)的 extra 里也没有它。 ⟹ 兜底生效, 三个停靠色**全是 line**。
+
+     ⟹ 那条 linear-gradient 画出来就是一块纯色; 再叠 400% 尺寸、移动 background-position,
+     也看不出任何变化。**稿的 .skl 视觉上是一块纯 line, 那个 1.4s 动画是空转。**
+
+     ⟹ 所以这里用 solid 而不是 animated-gradient: 后者会画出「line ↔ colorSurf2」
+     来回渐变的一道高光, 那是**稿里不存在的东西**; colorSurf2 也不是稿的任何一个色,
+     它离稿的 panel 极近, 不是 line。
+     ⚠ colorSurf2 这个 token 已于同日(2026-09-30)下线; 上面这段是**反事实叙述**
+       (当初为什么不用渐变), 留着是为了给 #39 判 (b) 留依据, 别整段删掉。
+
+     早先记账的理由是「Android 的 animated-gradient 只有颜色插值、没有位移轴, 做不到
+     逐字还原」(#39)。那条与「稿里根本没有渐变」不可能同时成立 —— 它建立在一个
+     不成立的前提上。本条以变量解析的事实为准, 不再按「位移轴 vs 颜色轴」记账。
+     判据用的是本项目既有先例: 稿 L144 的 cap 恒为 0 ⟹ over 态在稿里就不出现,
+     「与稿一致」而不是缺陷; 同构地, 稿里因自身笔误失效的构造, App 复现**它的缺席**,
+     不替作者补上他想要的东西。**修稿不在本团队范围内。**
+     ⚠ 已知代价(产品决策, 非保真度问题): 加载态由此变成**完全静止**, 观感上像卡住。
+       队长 2026-09-30 拍板执行, 依据是用户授权的「完全按稿」。 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="?attr/colorBorder" />
+    <!-- 稿 L435/L438/L439: 三个骨架块都写了 borderRadius:4。
+         改前这个 shape 是 rectangle 没有 corners, 于是方角与稿不符(A.2 复核 #38)。
+         24 处引用一并受益(全工程实测 @drawable/skl)。 -->
+    <corners android:radius="4dp" />
+</shape>

@@ -1,15 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- 稿 L258-261 Seg 选中段: background var(ac) 决策紫, 无描边无圆角
+     (圆角由容器 overflow:hidden 切, 段自己不能圆)。
+     pressed 对应稿 L14 .segsw:active{opacity:.6}。 -->
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:state_pressed="true">
         <shape android:shape="rectangle">
             <solid android:color="?attr/colorPrimaryPressed" />
-            <corners android:radius="8dp" />
         </shape>
     </item>
     <item>
         <shape android:shape="rectangle">
             <solid android:color="?attr/colorPrimary" />
-            <corners android:radius="8dp" />
         </shape>
     </item>
 </selector>

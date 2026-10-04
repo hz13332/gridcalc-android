@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- t324 稿 L333: 逐腿明细每行 borderTop 1px solid var(line)（稿的 line 变量 ⟷ App 的 colorBorder）。
+     写在 layer-list 的顶边, 不用每行再插一个占位 View。
+     ⚠ 注释里不能出现两个连字符, 稿的 CSS 变量名正好有两个 ⟹ 上面写成 var(line)。 -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="@android:color/transparent" />
+        </shape>
+    </item>
+    <item android:gravity="top" android:height="1dp">
+        <shape android:shape="rectangle">
+            <solid android:color="?attr/colorBorder" />
+        </shape>
+    </item>
+</layer-list>

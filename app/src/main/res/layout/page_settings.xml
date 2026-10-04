@@ -1,4 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- t115 设置页追稿(基准 _shots/4-set.png + 8-set-dark.png)。
+     ①去全部四张圆角卡片,改 1px 发丝线分区 ②分组标题 12sp 灰 ③补「主题」标签
+     ④补「打开 App 时自动刷新一次」静态状态行(无开关——本 App 无轮询,可拨的开关是假开关)
+     ⑤费率去输入框外观,标签+右对齐值 ⑥补记录占用大小 ⑦导出/清空改整行+›,清空标红
+     ⑧关于补「等比网格」与投资建议免责声明
+     约束:所有原有 id 与控件类型保持不变,MainActivity 的 findViewById 绑定不许断。
+     本轮**没有删除任何 view**,是整体重写,未使用按字符数截断(t108 事故)。
+     B-29 本轮(屏4 设置页对稿 L756-826),仍未删除任何 view:
+     ①内容容器去掉上下内边距(稿 L771 padding 只有 0 16px 左右),首组标题回到离线 22px
+     ②每个数据行改成稿 L759/L773 的 padding 15px 0 + 行后紧跟 1px 线,线不再带 8/12dp 偏移
+     ③主题 Seg 换成真正的单容器(1px 描边 + 圆角 8 + clipToOutline),段间零缝,按稿 L256
+     ④Switch 删掉 scaleX/Y 0.72 —— 稿 L268 的字面尺寸就是 44x26
+     ⑤免责: marginTop 16dp + paddingBottom 24dp + 行高 1.7(稿 L797)
+     ⑥关于段应用名去掉多余的 8dp 上边距(稿 L795 没有 margin)
+     -->
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
@@ -9,220 +24,247 @@
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:padding="12dp">
+        android:orientation="vertical">
 
-        <!-- 外观 -->
+        <!-- t201 ⑤ AppBar —— 稿 L232-239。此前设置屏整块缺失(无标题、也无比边那条通栏底线)。
+             稿: padding 14/16/12 + borderBottom 1px + 标题 T.title(16)/fontWeight 600/colorInk -->
+        <TextView
+            android:id="@+id/set_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingLeft="@dimen/space_4"
+            android:paddingRight="@dimen/space_4"
+            android:paddingTop="13.4dp"
+            android:paddingBottom="11.4dp"
+            android:text="设置"
+            android:textColor="?attr/colorInk"
+            android:textSize="@dimen/fs_title"
+            android:textStyle="bold"
+            android:letterSpacing="-0.01" />
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="?attr/colorBorder" />
+
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:background="@drawable/card_bg"
             android:orientation="vertical"
-            android:padding="14dp">
+            android:paddingLeft="@dimen/space_4"
+            android:paddingRight="@dimen/space_4">
+
+        <!-- ② 分组标题 12sp 灰小字(不再是粗体大字) -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/sec_top"
+            android:layout_marginBottom="@dimen/sec_bot"
+            android:text="外观"
+            android:textColor="?attr/colorFaint"
+            android:textSize="@dimen/fs_note" />
+
+        <!-- B-28 主题行:标签与 Seg 同一行、控件靠右(稿 L773-776)。
+             稿 = display:flex + alignItems:center + padding:'15px 0' + borderBottom:'1px solid colorBorder'。
+             稿里 Seg 在 <div style={{marginLeft:'auto'}}> 里,靠这个 auto 顶到右边;
+             Android 没有 auto margin ⟹ 标签后面放一个 layout_weight=1 的 Space 当它用。
+             ⚠ 三个 id 与 <Button> 类型一个都不能改:paintThemeSeg()(MainActivity.kt:1319/1322)
+               对它们做 (btn as android.widget.Button) 强转,换了类型运行时就 ClassCastException。
+             ⚠ Seg 的宽度由 weight=1 铺满改成 wrap_content:稿的 Seg 是 inline-flex + flexShrink:0,
+               整组按内容宽贴右;原来铺满整行那就不是「靠右」,是另一个形状。 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingTop="14.3dp"
+            android:paddingBottom="14.3dp">
+
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginBottom="10dp"
-                android:text="外观"
+                android:text="主题"
                 android:textColor="?attr/colorInk"
-                android:textSize="16sp"
-                android:textStyle="bold" />
+                android:textSize="@dimen/fs_title" />
+
+            <!-- 稿 L775 marginLeft:'auto' -->
+            <Space
+                android:layout_width="0dp"
+                android:layout_height="1dp"
+                android:layout_weight="1" />
+
+            <!-- 稿 L256:display:inline-flex;border:1px solid colorBorder;borderRadius:8;overflow:hidden -->
             <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="48dp"
-                android:orientation="horizontal">
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:background="@drawable/seg_frame"
+                android:clipToOutline="true">
                 <Button
                     android:id="@+id/theme_follow"
-                    android:layout_width="0dp"
-                    android:layout_height="match_parent"
-                    android:layout_marginRight="4dp"
-                    android:layout_weight="1"
-                    android:background="@drawable/btn_primary"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:minWidth="0dp"
+                    android:minHeight="0dp"
+                    android:paddingLeft="10.5dp"
+                    android:paddingRight="10.5dp"
+                    android:paddingTop="6.7dp"
+                    android:paddingBottom="6.7dp"
+                    android:background="@drawable/seg_sel"
                     android:text="跟随系统"
                     android:textColor="?attr/colorOnPrimary"
-                    android:textSize="15sp" />
+                    android:textStyle="bold"
+                    android:textSize="@dimen/fs_note" />
                 <Button
                     android:id="@+id/theme_light"
-                    android:layout_width="0dp"
-                    android:layout_height="match_parent"
-                    android:layout_marginLeft="4dp"
-                    android:layout_marginRight="4dp"
-                    android:layout_weight="1"
-                    android:background="@drawable/btn_ghost"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:minWidth="0dp"
+                    android:minHeight="0dp"
+                    android:paddingLeft="10.5dp"
+                    android:paddingRight="10.5dp"
+                    android:paddingTop="6.7dp"
+                    android:paddingBottom="6.7dp"
+                    android:background="@drawable/seg_unsel"
                     android:text="浅色"
-                    android:textColor="?attr/colorInk"
-                    android:textSize="15sp" />
+                    android:textColor="?attr/colorSub"
+                    android:textSize="@dimen/fs_note" />
                 <Button
                     android:id="@+id/theme_dark"
-                    android:layout_width="0dp"
-                    android:layout_height="match_parent"
-                    android:layout_marginLeft="4dp"
-                    android:layout_weight="1"
-                    android:background="@drawable/btn_ghost"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:minWidth="0dp"
+                    android:minHeight="0dp"
+                    android:paddingLeft="10.5dp"
+                    android:paddingRight="10.5dp"
+                    android:paddingTop="6.7dp"
+                    android:paddingBottom="6.7dp"
+                    android:background="@drawable/seg_unsel"
                     android:text="深色"
-                    android:textColor="?attr/colorInk"
-                    android:textSize="15sp" />
+                    android:textColor="?attr/colorSub"
+                    android:textSize="@dimen/fs_note" />
             </LinearLayout>
         </LinearLayout>
+        <!-- 稿 L773 的 borderBottom —— Android 没这个属性,行后补一条 1px 线 -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="?attr/colorBorder" />
 
-        <!-- 费率 -->
+        <!-- B-28 「启动时刷新一次」行:标签与 Switch 同一行、Switch 靠右(稿 L777-780)。
+             结构与上面「主题」行逐字同形(稿 L777 同样是 padding:'15px 0' + borderBottom)。
+             原来 L131-L136 那段「稿 L779 要 Switch 而本 App 不做」的注释是**过期的**:
+             稿早就按 L779 画了 Switch,而且用户裁定「功能要真的实现」,MainActivity.kt:1779-1793
+             现在真的用这个开关控制启动时那次取数 —— 注释说的「界面在撒谎」已经不成立了,一并删掉。
+             ⚠ id = **set_auto_sw**:MainActivity.kt:1784 findViewById<android.widget.Switch>(R.id.set_auto_sw),
+               :1789 / :1792 走 t211PaintSwitch() 把它染成决策紫。改名 = 白开关。 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:background="@drawable/card_bg"
-            android:orientation="vertical"
-            android:padding="14dp">
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="10dp"
-                android:text="费率"
-                android:textColor="?attr/colorInk"
-                android:textSize="16sp"
-                android:textStyle="bold" />
-            <GridLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:columnCount="2">
-                <LinearLayout
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_columnWeight="1"
-                    android:layout_marginRight="6dp"
-                    android:orientation="vertical">
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginBottom="5dp"
-                        android:text="手续费率 %"
-                        android:textColor="?attr/colorSub"
-                        android:textSize="14sp"
-                        android:fontFamily="sans-serif-medium" />
-                    <EditText
-                        android:id="@+id/in_fee"
-                        android:layout_width="match_parent"
-                        android:layout_height="48dp"
-                        android:background="@drawable/input_bg"
-                        android:importantForAutofill="no"
-                        android:inputType="numberDecimal"
-                        android:imeOptions="actionDone"
-                        android:singleLine="true"
-                        android:paddingLeft="10dp"
-                        android:paddingRight="10dp"
-                        android:text="0.05"
-                        android:textColor="?attr/colorInk"
-                        android:textColorHint="?attr/colorFaint"
-                        android:textSize="17sp"
-                        android:typeface="monospace" />
-                </LinearLayout>
-                <LinearLayout
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_columnWeight="1"
-                    android:layout_marginLeft="6dp"
-                    android:orientation="vertical">
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginBottom="5dp"
-                        android:text="维持保证金率 %"
-                        android:textColor="?attr/colorSub"
-                        android:textSize="14sp"
-                        android:fontFamily="sans-serif-medium" />
-                    <EditText
-                        android:id="@+id/in_mmr"
-                        android:layout_width="match_parent"
-                        android:layout_height="48dp"
-                        android:background="@drawable/input_bg"
-                        android:importantForAutofill="no"
-                        android:inputType="numberDecimal"
-                        android:imeOptions="actionDone"
-                        android:singleLine="true"
-                        android:paddingLeft="10dp"
-                        android:paddingRight="10dp"
-                        android:text="1"
-                        android:textColor="?attr/colorInk"
-                        android:textColorHint="?attr/colorFaint"
-                        android:textSize="17sp"
-                        android:typeface="monospace" />
-                </LinearLayout>
-            </GridLayout>
-        </LinearLayout>
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingTop="14.3dp"
+            android:paddingBottom="14.3dp">
 
-        <!-- 数据(⑥计算记录:计数+导出CSV+清空,稿615-656 localStorage→本机持久化) -->
-        <LinearLayout
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="启动时刷新一次"
+                android:textColor="?attr/colorInk"
+                android:textSize="@dimen/fs_title" />
+
+            <!-- 稿 L779 marginLeft:'auto'。控件就一个,weight=1 落在标签上与 Space 等价。 -->
+            <!-- 稿 L268  width:44, height:26, borderRadius:999。
+                B-29: 原来这里还挂着 scaleX/scaleY=0.72, 把 44x26 缩成约 32x19,
+                与稿 L268 的字面值直接矛盾(缩放是画布缩放, 不是布局尺寸) —— 已删。
+                thumb 直径/位置平台不暴露, 形状仍由平台画, 只能到此为止。
+                配色两态由 t211PaintSwitch 按稿 L268-269 染。 -->
+            <Switch
+                android:id="@+id/set_auto_sw"
+                android:layout_width="42dp"
+                android:layout_height="24.8dp"
+                android:contentDescription="启动时刷新一次"
+                android:minWidth="0dp"
+                android:minHeight="0dp" />
+        </LinearLayout>
+        <!-- 稿 L777 的 borderBottom;同时它就是「外观」组与「费率」组之间的那条线 -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="?attr/colorBorder" />
+
+        <!-- B-28:「外观」组原来那条画在分组前的通栏线删掉了 ——
+             现在「主题」「启动时刷新一次」两行各自带 1px 底线,最后一条已经是组间的线,
+             再留会变成紧挨着的双线。
+             B-29: 上一条把「费率」标题写成 marginTop 24dp 是拿两段间距硬凑的;
+             真正的修法是让每一行按稿 L759/L773 带 padding 15dp + 行后紧跟 1px 线,
+             标题自己回到稿 L767 的 sec_top/sec_bot(22/2dp), 那 24dp 一并作废。 -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/sec_top"
+            android:layout_marginBottom="@dimen/sec_bot"
+            android:text="费率"
+            android:textColor="?attr/colorFaint"
+            android:textSize="@dimen/fs_note" />
+
+        <!-- ⑤ 费率:标签 + 右对齐值,无输入框外观。
+             控件仍是 EditText(MainActivity 对它 getText/setText),但去掉了 input_bg 边框、
+             改为右对齐,点进去仍可改 —— 只改外观,不断绑定。 -->
+        <!-- ⚠⚠ 2026-10-03 用户**第二次推翻**：手续费率 / 维持保证金率 这两行**彻底删除**。
+               原话：「维持保证金率和手续费率可以不要，感觉没啥作用」。
+               ⟹ 上一轮刚把它们从计算屏搬来这里可编辑，这一轮连这里也删了。
+               ⟹ 净结果：t138「设置页→计算页」、t237「计算页→设置页」、本轮「全删」——
+                  搬了两个来回，等于回到起点之外：连起点也没了。
+               ⚠ MainActivity 侧的 setFeeRo / setMmrRo 字段与绑定已同步删除
+                  （节点不存在时 findViewById 返回 null，留着必 NPE）。
+               ⚠ 值改由 MainActivity 的 FEE_FIXED(0.0005) 与 mmrFromLev(lev) 提供，
+                  维持率由杠杆反推，令 `杠杆 × 维持率 ≡ 0.9 < 1` 恒成立，
+                  杠杆因此能填到 150 而不被爆仓门拒掉。 -->
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="?attr/colorBorder" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/sec_top"
+            android:layout_marginBottom="@dimen/sec_bot"
+            android:text="关于"
+            android:textColor="?attr/colorFaint"
+            android:textSize="@dimen/fs_note" />
+
+        <!-- t117 ③:层级按稿纠正 —— **应用名在主位**,「等比网格」是小字副标 -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="网格交易收益计算器 v4.1.1"
+            android:textColor="?attr/colorInk"
+            android:textSize="@dimen/fs_title" />
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/space_2"
+            android:lineSpacingMultiplier="1.6"
+            android:text="等比网格"
+            android:textColor="?attr/colorFaint"
+            android:textSize="@dimen/fs_note" />
+
+        <!-- ⑧ 免责声明 —— 稿 L798 逐字,不多不少。
+             t201:此前这里多写了三句(第三方接口/延迟缺失/风险自负)且用半角逗号,
+             用户裁定「全部按稿改」后逐字回退。若将来要再加,先改稿再改这里。 -->
+        <TextView
+            android:id="@+id/about_disclaimer"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:background="@drawable/card_bg"
-            android:orientation="vertical"
-            android:padding="14dp">
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="10dp"
-                android:text="数据"
-                android:textColor="?attr/colorInk"
-                android:textSize="16sp"
-                android:textStyle="bold" />
-            <TextView
-                android:id="@+id/rec_count"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="10dp"
-                android:text="已记录 0 条"
-                android:textColor="?attr/colorSub"
-                android:textSize="14sp" />
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="48dp"
-                android:orientation="horizontal">
-                <Button
-                    android:id="@+id/rec_export"
-                    android:layout_width="0dp"
-                    android:layout_height="match_parent"
-                    android:layout_marginRight="4dp"
-                    android:layout_weight="1"
-                    android:background="@drawable/btn_primary"
-                    android:text="导出 CSV"
-                    android:textColor="?attr/colorOnPrimary"
-                    android:textSize="15sp" />
-                <Button
-                    android:id="@+id/rec_clear"
-                    android:layout_width="0dp"
-                    android:layout_height="match_parent"
-                    android:layout_marginLeft="4dp"
-                    android:layout_weight="1"
-                    android:background="@drawable/btn_ghost"
-                    android:text="清空记录"
-                    android:textColor="?attr/colorInk"
-                    android:textSize="15sp" />
-            </LinearLayout>
-        </LinearLayout>
-
-        <!-- 关于 -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:background="@drawable/card_bg"
-            android:orientation="vertical"
-            android:padding="14dp">
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="10dp"
-                android:text="关于"
-                android:textColor="?attr/colorInk"
-                android:textSize="16sp"
-                android:textStyle="bold" />
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="网格交易收益计算器 v4.1\n等比网格 · 路径法爆仓价 · VPVR行情 · 离线运行"
-                android:textColor="?attr/colorSub"
-                android:textSize="12sp" />
-        </LinearLayout>
+            android:layout_marginTop="15.3dp"
+            android:lineSpacingMultiplier="1.7"
+            android:paddingBottom="22.9dp"
+            android:text="结果由输入参数推导，不构成投资建议。"
+            android:textColor="?attr/colorFaint"
+            android:textSize="@dimen/fs_note" />
+    </LinearLayout>
     </LinearLayout>
 </ScrollView>

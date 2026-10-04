@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- G6 稿 L243: 底部导航 tab 容器 borderTop 1px solid var(line)
+     (稿的 line 色 ⟷ App 的 colorBorder, 与 fav_row_line 同一套映射)。
+     ⚠ 注释里不能出现两个连字符, 稿的 CSS 变量正好有两个 ⟹ 上面写成 var(line)。
+     ⚠ tabbar 在 activity_main.xml, 本轮不可改 ⟹ 盒子做成 drawable 由 MktPanel 的 init 挂上去。
+     layer-list: 底层仍是 colorCanvas(与布局里原来的 background 同色, 底色不丢),
+     顶层是压在【上】边的那 1px 线; 与 fav_row_line(下边线)同构, 边从 bottom 换到 top。 -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="?attr/colorCanvas" />
+        </shape>
+    </item>
+    <item android:gravity="top" android:height="1dp">
+        <shape android:shape="rectangle">
+            <solid android:color="?attr/colorBorder" />
+        </shape>
+    </item>
+</layer-list>

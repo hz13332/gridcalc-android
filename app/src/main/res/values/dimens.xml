@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  t102 第1步：全 App 字号收敛到 **4 档**。相邻差 ≥3sp，最小 12sp。
+  病因不是字小，是「每个字都不一样大」——迁移前散着 10/10.5/11/12/13/14/15/16/17/18/19/26/30/34 十四档，
+  相邻常只差 1sp，眼睛建立不起主次（用户原话：全是小子铺满了像蚂蚁一样）。
+
+  移植契约：design/…/redesign/handoff-to-code.md §2 字号行高表。
+    hero  30  唯一主角数字 —— **全 App 只允许 2 处**：行情页现价、计算页净收益
+    data  21  列表主角数字 —— 自选「距支撑」列，一屏只能有一个
+    title 16  品种名 / 页面标题 / 次级数字
+    note  12  代码 / 市场 / 单位 / 时效 / 注释（下限，不可再低）
+-->
+<resources>
+    <!-- 排版节奏：handoff §3，只用这 6 档 -->
+    <dimen name="space_1">3.8dp</dimen>
+    <dimen name="space_2">7.6dp</dimen>
+    <dimen name="space_3">11.4dp</dimen>
+    <dimen name="space_4">15.3dp</dimen>
+    <!-- t297: 补齐六档的空档(4/8/12/16/_/24/32), 20dp 供折叠口用(稿 L690/L694)。 -->
+    <dimen name="space_5">19.1dp</dimen>
+    <dimen name="space_6">22.9dp</dimen>
+    <!-- t297: 稿 L767 分组标题 margin:'22px 0 2px' —— 22/2 不在六档里, 单列。 -->
+    <dimen name="sec_top">21dp</dimen>
+    <dimen name="sec_bot">1.9dp</dimen>
+    <dimen name="space_8">30.5dp</dimen>
+
+    <!-- 4 档字号 -->
+    <dimen name="fs_hero">28.6sp</dimen>
+    <dimen name="fs_data">20sp</dimen>
+    <dimen name="fs_title">15.3sp</dimen>
+    <dimen name="fs_note">11.4sp</dimen>
+    <!-- 自选三列宽:距支撑是唯一主角,明显拉开(handoff §3.1「用宽度差把主角隔出来」) -->
+    <!-- t336 稿 L348 GRIDC=92px 1.2fr 0.88fr 0.88fr：首列固定 92px, 后三列按分数分剩余。上面那三行固定宽已删。 -->
+    <dimen name="col_symbol">87.8dp</dimen>
+    <dimen name="col_gap">9.5dp</dimen>
+</resources>

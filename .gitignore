@@ -1,6 +1,41 @@
-.gradle/
+# Gradle / Android æ„å»ºäº§ç‰©
 build/
-app/build/
+.gradle/
 local.properties
-*.log
+*.apk
+*.aab
+*.ap_
+*.dex
+*.class
+bin/
+gen/
+out/
+release/
+
+# IDE
+.idea/
+*.iml
 .DS_Store
+captures/
+.externalNativeBuild/
+.cxx/
+
+# æœ¬æœºä»£ç†ä¸æ—¥å¿—ï¼ˆæ¯æ™šè½®æ¢ï¼Œä¸å…¥åº“ï¼‰
+proxy*.log
+proxy_block.txt
+
+# æœ¬åœ°è‰ç¨¿å½’æ¡£ï¼ˆä¸´æ—¶è„šæœ¬ä¸æˆªå›¾ï¼Œä¸å…¥åº“ï¼‰
+draft_nv_*.py
+draft_swipe*.png
+
+# æ„å»ºæ—¥å¿—ï¼ˆæœ¬æœºå™ªå£°ï¼Œä¸å…¥åº“ï¼‰
+*.log
+
+# ? Ç©ÃûÃÜÔ¿Óë¿ÚÁî£¨2026-10-03 ÓÃ»§²Ã¶¨ÒÆ³ö²Ö¿â£©
+# ¾ø²»ÄÜ½ø°æ±¾¿ØÖÆ£ºÄÃµ½Ëü¾ÍÄÜÇ© APK Ã°³ä±¾Ó¦ÓÃ¸üĞÂÓÃ»§Éè±¸
+keystore/
+*.jks
+*.keystore
+gc.storePassword=
+gc.keyPassword=
+
