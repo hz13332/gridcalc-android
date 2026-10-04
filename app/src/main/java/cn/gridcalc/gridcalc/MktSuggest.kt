@@ -16,7 +16,13 @@ object MktSuggest {
     private val TOPC = listOf("BTCUSDT")
     private val TOPM = listOf("XAUUSD" to "黄金", "XAGUSD" to "白银")
     private val TOPS = listOf("AAPL", "TSLA", "NVDA", "MSFT", "AMZN", "META",
-        "GOOGL", "AMD", "COIN", "MSTR", "NFLX", "BABA", "TSM", "PLTR")
+        "GOOGL", "AMD", "COIN", "MSTR", "NFLX", "BABA", "TSM", "PLTR",
+        // ⚠ 2026-10-03 **用户点名补的 4 个美股**（原话：「股票不全，没有迈威尔、spac、
+        //   埃克森美孚、通用电气」）：MVIS=迈威尔 MicroVision · SPAC=SpaceX 上市载体
+        //   · XOM=埃克森美孚 · GE=通用电气。
+        "MVIS", "SPAC", "XOM", "GE",
+        // A 股：sh688825 长鑫存储（用户 2026-10-03 给出，科创板）
+        "sh688825")
 
     // 稿子CNNAME原样照搬(中文名→代码),v3.7 增补 17 种大宗商品 *00Y
     private val CNNAME = listOf(

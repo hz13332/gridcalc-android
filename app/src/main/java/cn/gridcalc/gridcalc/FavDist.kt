@@ -185,16 +185,65 @@ object FavDist {
         var r = DistR(false)
         try {
             val type = MktData.symType(s)
-            val vs = when (type) {
-                "crypto" -> MktData.cryptoLegs(s).mapNotNull {
-                    try {
-                        MktData.fetchCryptoLeg(it, s, tf, n)
-                    } catch (_: Exception) {
-                        null
+
+            // ⚠⚠⚠ 2026-10-03 **优先复用行情屏抓到的数据，不重复取数**。
+            //
+            // 【用户原话】「直接就用行情屏抓到的，他数据不是可以存嘛？怎么可能抓不到」
+            //   —— 对，它**存了**，而这里**从来没去读**。
+            //
+            // 【原来的行为】行情屏取完 → MktCache.put + MktSave.store（都做了），
+            //   而本函数开头只有 `cached(s,tf,n)`（**本文件自己的另一个 map**），
+            //   查不到就直接再抓一遍。于是**同一个品种被抓两次**。
+            //
+            // 【为什么必须改 —— 不是省流量，是数据要一致】
+            //   两屏各自取数，各自算 `vp.sup`。源不同/根数不同/时点不同/其中一个源返回坏柱，
+            //   就会算出**不同的支撑位**。用户实报「并没有跌破支撑线，却显示负数」，
+            //   根因就在这里：屏上显示的支撑和这个函数算的不是同一个数。
+            //   ⟹ 统一数据源，两屏的支撑位**必然一致**。
+            //
+            // 【查找顺序】内存 MktCache → 落盘 MktSave → 才自己抓
+            //   ⟹ 前两级覆盖「用户打开过该品种」的全部情形（含冷启动，第二次进 App 就有）。
+            //   ⟹ 第三级必须保留：**从没在行情屏打开过的品种**自选屏仍要能出数。
+            //
+            // 【顺带的限流收益】自选屏原本为**每个品种独立打一轮**（股类含东财腿）。
+            //   这正是把 IP 打进封禁的放大器之一 —— 复用后自选屏的网络请求基本归零。
+            val ckShared = MktData.MktCache.key(s, tf, n)
+            var vsShared: List<VendorKs>? = MktData.MktCache.get(ckShared)
+            if (vsShared == null || vsShared.isEmpty()) {
+                vsShared = runCatching { MktData.MktSave.saved(ckShared) }.getOrNull()
+            }
+            if (vsShared != null && vsShared.isNotEmpty()) {
+                val ag = MktData.aggregate(vsShared)
+                if (ag.ks.size >= 2) {
+                    val vp = MktData.profileOf(ag.ks)
+                    val cur = ag.ks.last().c
+                    val prv = if (ag.ks.size > 1) ag.ks[ag.ks.size - 2].c else cur
+                    val below = vp.sup.filter { it < cur }
+                    val sup = if (below.isNotEmpty()) below[0]
+                    else vp.sup.filter { it >= cur }.minOrNull()
+                    r = if (sup != null) {
+                        DistR(true, Math.abs((cur - sup) / cur * 100.0), cur,
+                            (cur - prv) / prv * 100.0, ts = System.currentTimeMillis())
+                    } else {
+                        DistR(false, soft = true, why = "—无支撑")
                     }
                 }
-                // 股(美/港/韩)统一走稿§6串行腿:东财→Nasdaq→腾讯→Yahoo命中即停;
-                // hk/kr 路由进这里(fullSup/lightPx两条取数路径共用本when分发),
+            }
+
+            // ⟹ 只有复用未命中才真去网络取
+            val vs = if (r.ok || r.soft) {
+                emptyList()
+            } else {
+                when (type) {
+                    "crypto" -> MktData.cryptoLegs(s).mapNotNull {
+                        try {
+                            MktData.fetchCryptoLeg(it, s, tf, n)
+                        } catch (_: Exception) {
+                            null
+                        }
+                    }
+                    // 股(美/港/韩)统一走稿§6串行腿:东财→Nasdaq→腾讯→Yahoo命中即停;
+                    // hk/kr 路由进这里(fullSup/lightPx两条取数路径共用本when分发),
                 // 绝不落 gold/silver/cmdty 的商品兜底分支(漏接=自选恒「—无源」)
                 "stock", "hk", "kr" -> try {
                     MktData.fetchStocks(s, tf, n)
@@ -205,8 +254,15 @@ object FavDist {
                 "gold" -> try { MktData.fetchMetals("GC=F", tf, n) } catch (_: Exception) { null }
                 "silver" -> try { MktData.fetchMetals("SI=F", tf, n) } catch (_: Exception) { null }
                 "cmdty" -> try { MktData.fetchMetals(s, tf, n) } catch (_: Exception) { null }
+                // ⚠ 2026-10-03 **新增 A 股路由**：用户给的 sh688825（长鑫存储/长鑫科技，科创板）
+                //   走 fetchStocks —— 东财 secid 规则 `sh688825` 它认，腾讯 `sh688825` 也认。
+                //   ⚠ 之前 A 股**根本没有任何分支**，`else -> null` 直接吞掉，
+                //     所以 A 股在自选屏恒为「—无源」。这一条是补漏，不是新增能力。
+                "ashare" -> try { MktData.fetchStocks(s, tf, n) } catch (_: Exception) { null }
                 else -> null
+                }
             }
+            // ⟹ 复用命中时 vs 是空的，走这里不会覆盖已算好的 r
             if (vs != null && vs.isNotEmpty()) {
                 val ag = MktData.aggregate(vs)
                 val vp = MktData.profileOf(ag.ks)
@@ -217,7 +273,23 @@ object FavDist {
                 val sup = if (below.isNotEmpty()) below[0]
                 else vp.sup.filter { it >= cur }.minOrNull()
                 if (sup != null) {
-                    r = DistR(true, (cur - sup) / cur * 100.0, cur, chg,
+                    // ⚠⚠⚠ 2026-10-03 **距支撑改为恒正**（用户裁定：「他并没有跌破支撑线，却显示负数」）。
+                    //
+                    // 【原逻辑的问题】上面那个 `else` 支会在**现价跌破全部支撑**时
+                    // 选中一个**高于现价**的 sup，于是 `(cur - sup)` 为负 —— 但那个数
+                    // 的语义是「**已跌破 N%**」，和这一列要的「**距支撑还有 N%**」
+                    // 是两回事，一个带符号一个不带。
+                    //
+                    // 【为什么这不是显示偏好问题】用户报「并没有跌破支撑线，却显示负数」——
+                    //   除语义错配外还有一处实质不一致：**本函数自己重新取一遍数据**算 sup，
+                    //   与行情屏显示的现价/支撑**未必是同一批**（tf / 根数 / 时点都可能不同）。
+                    //   两处 sup 对不上，就出现「屏上看着没破、背地里算成破了」。
+                    //
+                    // 【现在的语义】距支撑 = |现价 − 支撑| / 现价，**恒 ≥ 0**。
+                    //   「有没有跌破」在图上一眼可见（价格线在支撑线下方），不由这个数表达。
+                    //   ⚠ 收益比本来就取 Math.abs(distPct)（见 FavPanel.ratioOf），本改动不影响它。
+                    val rawPct = (cur - sup) / cur * 100.0
+                    r = DistR(true, Math.abs(rawPct), cur, chg,
                         ts = System.currentTimeMillis())
                 } else {
                     // 稿NOSUP软分支:数据拉到了,只是该窗口算不出支撑位(≠「—无源」)

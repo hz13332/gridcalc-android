@@ -1059,6 +1059,43 @@ fun clearCalcInputs() {
         }
     }
 
+    /**
+     * ⚠⚠⚠ 2026-10-03 **步长阈值改为按当前品种取**（用户报「大量交易品种的网格数量没有自动计算」）。
+     *
+     * 【根因】[autoGridN] 第一行就是 `val s = stepThr ?: return null`，
+     *   而 [stepThr] **只由 [loadStepThr] 写一次**，那个函数取的是
+     *   `mkt_last_sym`（行情屏最后看的那**一个**品种）。
+     * ⟹ 于是：**只要当前算的不是「最后看过的那个品种」，stepThr 就属于别人或为 null**，
+     *   `autoGridN` 恒返回 null，网格数量就停在 XML 默认值 20。
+     *   品种一多，绝大多数都命中不了 —— 与用户看到的「大量品种没自动算」完全吻合。
+     *
+     * 【修法】进入某个品种时按**它自己**取阈值。
+     *   ⟹ 复用行情屏/自选屏已抓的数据（同 FavDist 的思路），不额外打网络请求。
+     *   ⟹ 取不到时保持 null（用户敲的值照用），**不猜**。
+     *
+     * @param sym 目标品种；与当前算的品种一致时才写 [stepThr]，避免异步回调串台。
+     */
+    internal fun stepThrFor(sym: String) {
+        if (sym.isBlank()) return
+        val key = normSym(sym)
+        if (stepThrSym == key && stepThr != null) return     // 这个品种已经有了
+        MktData.stepThresholdAsync(sym) { t ->
+            runOnUiThread {
+                // ⚠ 异步回来时可能已经切到别的品种了 ⟹ 只在仍是同品种时写
+                if (normSym(curCalcSym()) != key) return@runOnUiThread
+                stepThr = t?.takeIf { it > 0 && it < 1.0 }
+                stepThrSym = key
+                if (stepThr != null && !nManual) onCalc()
+            }
+        }
+    }
+
+    /** 当前计算页对应的品种（用于异步回调判定，避免串台）。 */
+    internal fun curCalcSym(): String =
+        (if (::mktPanel.isInitialized) mktPanel.curSym() else "") ?: ""
+
+    private var stepThrSym: String = ""
+
     private fun onCalc() {
         suppressReset = false // v4 D2/D9:真实计算清闸,之后的程序写值照常生效
         restoreGuardSym = null // ② 清零点:点「计算」= 用户明确要基于当前输入重算 → 退出回填态
@@ -1162,53 +1199,48 @@ fun clearCalcInputs() {
             val sub = attrColor("colorSub")
             // 稿451-454:目标上限硬约束——爆仓价超上限:其余结果全部归零(稿resetIdle),
             // 只亮爆仓价、爆仓卡变红、报错「爆仓价高于目标值」,不画网格明细
+            // ⚠⚠⚠ 2026-10-03 **超过爆仓价改为「可计算 + 红色提醒」，不再归零**
+            //   （用户裁定：「计算界面超过爆仓值无法计算。应该改为可以计算，但是要提醒用户超过爆仓价而已」）
+            //
+            // 【原行为】爆仓价高于目标上限 ⟹ idle() 清空全部结果 + 净收益「--」+
+            //   「其余结果全部归零」+ 藏掉四格与两个折叠口 + return。
+            //   ⟹ 用户拿不到任何数字，**连想比较一下都做不到**。
+            //
+            // 【为什么这样改是合理的】爆仓价高于目标价是一个**结论**，不是**输入非法**：
+            //   参数本身合法，引擎算得出来，结果也有参考价值（它精确地告诉你
+            //   「按这套网格，爆仓会发生在目标价之上」—— 这正是用户想看到的信息）。
+            //   归零等于把这个结论藏起来。
+            //
+            // 【现在】照常算、照常画，只把三处染红提醒：
+            //   爆仓价数字、爆仓卡边框、顶部 StateLine。
+            //   ⚠ 净收益/收益率等**不再伪造为「--」** —— 它们是真算出来的，不是缺数据。
             val cap = lkCap
-            if (cap != null && r.liq != null && r.liq > cap) {
-                idle()
-                statVals["liq"]!!.text = fmt(r.liq!!)
-                statVals["liq"]!!.setTextColor(red)
-                markLiqBad()
-                // t141:over 态 = 净收益 两个连字符(ink3) + 副行归零 + StateLine
-                if (::calcHeroBox.isInitialized) calcHeroBox.visibility = View.VISIBLE
-                t227SetResultArea(true)
-if (::calcIdleHint.isInitialized) calcIdleHint.visibility = View.GONE
-                val t141Ink3 = attrColor("colorFaint")
-                hero.setTextColor(t141Ink3)
-                hero.text = "--"
-                heroSub.setTextColor(t141Ink3)
-                heroSub.text = "其余结果全部归零"
+            val liqOverCap = cap != null && r.liq != null && r.liq > cap
+            if (liqOverCap) {
+                // 提醒行：沿用稿里那条 StateLine，只把文案换成「超过」而非「高于」——
+                // 「高于目标值」在语义上也对，但用户说的是「超过爆仓价」，用用户的词。
                 if (::calcOverline.isInitialized) calcOverline.visibility = View.VISIBLE
                 if (::calcOverlineTopline.isInitialized) calcOverlineTopline.visibility = View.VISIBLE
-                // t153 ⑩:稿 L621 `const tiles = over ? [] : [...]` —— over 时数组是**空的**,
-                // 所以整组不出现,而不是「显示但四个都是 —」:后者等于什么都没说。
-                if (::statTiles.isInitialized) statTiles.visibility = View.GONE
-                // t28 ④ 稿 L675 `{!over&&…}`: over 态把四格与两个折叠口**一起**藏掉。
-                // 上面 t227SetResultArea(true) 把它们全放回来了, 这里按稿再收一遍。
-                if (::statTilesTopline.isInitialized) statTilesTopline.visibility = View.GONE
-                if (::moreToggle.isInitialized) moreToggle.visibility = View.GONE
-                if (::detToggle.isInitialized) detToggle.visibility = View.GONE
-                if (::ladderNote.isInitialized) ladderNote.visibility = View.GONE
-                if (::toggleRow.isInitialized) toggleRow.visibility = View.GONE
-                if (::toggleRowTopline.isInitialized) toggleRowTopline.visibility = View.GONE
-                // t258 #35 稿 L674: over 时只留一条 StateLine「爆仓价高于目标上限」…
-                // 等等, 稿 L674 的 txt 是「爆仓价高于目标值」, 而 calc_overline 显示的正是
-                // 「！爆仓价高于目标值」——所以【留的是 calc_overline】, 删的是这里这一条。
-                // 稿 L666-674 的 over 态一共三样: 净收益「--」(ink3) / 「其余结果全部归零」(ink3) /
-                // 一条 StateLine。t28 ④ 之前这句是**假的**: t227SetResultArea(true) 会把
-                // 两个折叠口放回来, over 态因此比稿多两个入口。现在按稿 L675 一起收掉,
-                // 这句才成立 —— 写它是为了下次有人再改 over 态时能看见它曾经错过。
-                // t120 当初写「与副标同名」, 但副标是 heroSub 的「其余结果全部归零」, 不是这句 ——
-                // 那条注释的依据不成立, 删掉。
-                return
+                markLiqBad()
             }
+            // ⚠ 旧行为（idle + 净收益「--」+ 其余结果全部归零 + 藏掉四格与折叠口 + return）
+            //   已按用户裁定删除：爆仓价高于目标值是**结论**不是输入非法，归零等于把结论藏起来。
+            //   完整理由见上方 liqOverCap 处的注释。
             statLiqCard.background = null
             statVals["liq"]!!.setTextColor(ink)
             // t141:值不带 USD(稿里 USD 在行内单位/见底权益副标);减号用 U+2212 真减号
             if (::calcHeroBox.isInitialized) calcHeroBox.visibility = View.VISIBLE
                 t227SetResultArea(true)
 if (::calcIdleHint.isInitialized) calcIdleHint.visibility = View.GONE
-            if (::calcOverline.isInitialized) calcOverline.visibility = View.GONE
-            if (::calcOverlineTopline.isInitialized) calcOverlineTopline.visibility = View.GONE
+            // ⚠⚠⚠ 这里**必须条件隐藏** —— 原来是无条件 GONE，而上面 liqOverCap 刚把它
+            //   设为 VISIBLE，于是提醒行亮一瞬就被抹掉，用户根本看不到。
+            //   （我第一版改动漏了这个，结果自己造了个新 bug：提醒等于没有。）
+            if (!liqOverCap) {
+                if (::calcOverline.isInitialized) calcOverline.visibility = View.GONE
+                if (::calcOverlineTopline.isInitialized) calcOverlineTopline.visibility = View.GONE
+            }
+            // ⚠ liqOverCap 时爆仓价数字染红（提醒）；否则回墨色
+            statVals["liq"]?.setTextColor(if (liqOverCap) red else ink)
             hero.setTextColor(if (r.net >= 0) teal else red)
             hero.text = (if (r.net >= 0) "+" else "\u2212") + fmt(Math.abs(r.net))
             // t102 第4步:hero 副行原来写「收益率 X% · N卖M买 · 见底权益约 Y USD」,

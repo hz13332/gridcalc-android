@@ -1059,6 +1059,11 @@ private fun clearForNewSymbol() {
         // ⚠⚠ 2026-10-03 换品种同时清空行情区，避免「标题是新的、数据是上一个品种的」。
         //   原因与范围见 [clearForNewSymbol] 的注释。
         if (symChanged) clearForNewSymbol()
+        // ⚠⚠ 2026-10-03 步长阈值改为**按当前品种**取（用户报「大量品种的网格数量没有自动计算」）。
+        //   原先 stepThr 只由 loadStepThr 写一次、取的是 mkt_last_sym 那**一个**品种，
+        //   于是算别的品种时它属于别人或为 null ⟹ autoGridN 恒返回 null ⟹ 永远不自动算。
+        //   详见 MainActivity.stepThrFor 的注释。
+        if (symChanged) act.stepThrFor(su)
         val seq = ++reqSeq
         if (type == "stock" || type == "hk" || type == "kr") {
             // 港/韩与美同走股票串行腿(稿§6);绝不落到下方商品(gold/silver/cmdty)兜底
