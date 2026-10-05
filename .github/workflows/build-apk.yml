@@ -15,9 +15,23 @@ jobs:
       #   任何人 clone 即可签出与本应用同签名的 APK 冒充官方更新。
       #   必须在仓库 Settings → Secrets and variables → Actions 里配置这四项：
       #     GC_STORE_PASSWORD / GC_KEY_PASSWORD / GC_KEY_ALIAS / GC_KEYSTORE_B64
-      GC_STORE_PASSWORD: ${{ secrets.GC_STORE_PASSWORD }}
-      GC_KEY_PASSWORD: ${{ secrets.GC_KEY_PASSWORD }}
-      GC_KEY_ALIAS: ${{ secrets.GC_KEY_ALIAS }}
+      # ⚠ 2026-10-05 **这四个变量名原来全写错了**（实测 CI 在这一步之后的
+      #   `error("缺少签名口令")` 上必挂）。
+      #   build.gradle.kts 的 secret() 是这么拼名字的：
+      #     System.getenv("GC_" + key.replace(".", "_").uppercase())
+      #   ⟹ secret("gc.storePassword") 实际读 **GC_STOREPASSWORD**（STORE 与 PASSWORD 之间没有下划线）
+      #      secret("gc.keyPassword")    实际读 **GC_KEYPASSWORD**
+      #      secret("gc.keyAlias")       实际读 **GC_KEYALIAS**
+      #   旧写法 GC_STORE_PASSWORD / GC_KEY_PASSWORD / GC_KEY_ALIAS **一个都对不上**，
+      #   而 GitHub 的 env: 只是把 secret 注入成同名的环境变量，对不上名就等于没注入。
+      #   ⟹ 名字必须与 secret() 拼出来的一致，**不要"顺手加下划线"**。
+      GC_STOREPASSWORD: ${{ secrets.GC_STORE_PASSWORD }}
+      GC_KEYPASSWORD: ${{ secrets.GC_KEY_PASSWORD }}
+      GC_KEYALIAS: ${{ secrets.GC_KEY_ALIAS }}
+      # ⚠ 显式给出密钥文件路径。build.gradle.kts 读 GC_KEYSTORE_PATH，取不到就退回
+      #   相对路径 `../keystore/gridcalc.jks`（相对 app/ 解析到仓库根，同样能取到）。
+      #   这里写绝对路径只是把它从"隐式约定"变成"看得见"，两条路指向同一个文件。
+      GC_KEYSTORE_PATH: ${{ github.workspace }}/keystore/gridcalc.jks
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -26,11 +40,26 @@ jobs:
           java-version: '17'
       - name: 还原签名密钥
         # base64 → 二进制 → keystore/gridcalc.jks
-        # GC_KEYSTORE_B64 的生成方式（在本机执行一次）：
+        # GC_KEYSTORE_B64 的生成方式（在有密钥的机器上执行一次）：
         #   [Convert]::ToBase64String([IO.File]::ReadAllBytes('keystore\gridcalc.jks'))
+        #
+        # ⚠ **空 secret 不会让这一步失败**（`echo "" | base64 -d` 退出 0，产出 0 字节文件），
+        #   于是它一路混到构建才炸，报错信息跟真正原因隔了十万八千里。
+        #   ⟹ 这里显式断言非空 + 是合法 base64，让失败停在**真正的原因**上。
         run: |
-          echo "${{ secrets.GC_KEYSTORE_B64 }}" | base64 -d > keystore/gridcalc.jks
-          echo "keystore bytes: $(stat -c %s keystore/gridcalc.jks)"
+          set -euo pipefail
+          B64="${{ secrets.GC_KEYSTORE_B64 }}"
+          if [ -z "$B64" ]; then
+            echo "::error::GC_KEYSTORE_B64 是空的。请在 Settings → Secrets and variables → Actions 里配置它。"
+            exit 1
+          fi
+          printf '%s' "$B64" | tr -d '\r\n' | base64 -d > keystore/gridcalc.jks
+          SZ=$(stat -c %s keystore/gridcalc.jks)
+          if [ "$SZ" -lt 512 ]; then
+            echo "::error::解出来的 keystore 只有 $SZ 字节，说明 GC_KEYSTORE_B64 的内容不是合法 base64（常见原因：粘成了占位文字、带了引号或中文）。"
+            exit 1
+          fi
+          echo "keystore bytes: $SZ"
       - uses: gradle/actions/setup-gradle@v3
       - name: 构建 Release APK
         run: |
