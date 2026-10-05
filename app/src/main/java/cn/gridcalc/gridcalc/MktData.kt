@@ -2303,27 +2303,128 @@ private fun raceOk(
         private fun dayKey(t: Long): String =
             java.text.SimpleDateFormat("yyyy-MM-dd", Locale.US).format(java.util.Date(t))
 
+        /** 本品种上一次 [apply] 的说明（哪根柱子没修好、为什么）。屏上要如实讲，不能默默留坑。 */
+        @Volatile private var noteSym = ""
+        @Volatile private var lastNotes: List<String> = emptyList()
+
+        /** [apply] 单次运行期间的说明累加器（[splitCrossBar] 在里面直接写）。 */
+        private var curNotes: MutableList<String> = mutableListOf()
+
+        fun notesFor(sym: String): List<String> =
+            if (noteSym == norm(sym)) lastNotes else emptyList()
+
         /**
-         * 前复权：**除权日之前**的柱子整体乘 (1/比例)；量反向放大。
+         * 一根 K 线自身是否成立：**高 ≥ max(开,收)** 且 **低 ≤ min(开,收)**。
+         * 跨拆股的那根若调整后违反它，说明我们对这根的判定与源数据对不上 ⟹ 宁可不调。
+         */
+        private fun selfConsistent(k: KLine): Boolean =
+            k.o > 0.0 && k.h >= maxOf(k.o, k.c) && k.l <= minOf(k.o, k.c) && k.l > 0.0
+
+        /** 与后一根是否「接得上」：收盘落在同一尺度带内（[0.5, 2.2]，与 [splitCrossBar] 同一带）。 */
+        private fun smoothTo(a: KLine, n: KLine?): Boolean {
+            if (n == null || !(a.c > 0.0) || !(n.c > 0.0)) return true
+            val k = a.c / n.c
+            return k >= 0.5 && k <= 2.2
+        }
+
+        /**
+         * 跨拆股那一根的处理 —— 用户裁定：**「拆股在月中，就直接用月末的股价」**。
+         *
+         * 【为什么只用一根柱子自己的收盘就够了】那根柱子的**收盘是那期的最后一个价**，
+         *   而除权日就落在这一期之内 ⟹ 收盘必然**已经在拆股之后**。它就是这根柱子的尺子。
+         *   实测 TSLA 2022-08-30（3:1 在 8/25）：
+         * ```
+         *   c = 275.61                                   ← 锚，拆股后
+         *   o/c = 903.83/275.61 = 3.28  超带 → 开在拆股前 → ÷3 = 301.28
+         *   h/c = 944.00/275.61 = 3.42  超带 → 高在拆股前 → ÷3 = 314.67
+         *   l/c = 271.81/275.61 = 0.99  在带 → 低已是新价 → 不动
+         *   → [301.28, 314.67, 271.81, 275.61]
+         * ```
+         *
+         * 【带 [0.5, 2.2]】一根柱子内部 o/h/l 与 c 的比值天然有界（高/收、低/收通常 <1.2），
+         *   超出这个带只可能是**尺度不对**。要排除 1/3=0.33、1/5=0.20 与 3、5 这些拆股尺度，
+         *   同时容纳真实的月涨幅（实测最大 +98% = 1.98）。
+         *
+         * ⚠ 早先版本拿**前后邻居**逐字段比（写了很长一段），是绕远路：
+         *   邻居比值里混着真实的涨跌，判据反而更容易失效。锚在**自己这根的收盘**上更干净。
+         *
+         * @return null = 调整后这根**自身不成立**，调用方退回原值并出说明。
+         */
+        private fun splitCrossBar(b: KLine, r: Double): KLine? {
+            if (!(b.c > 0.0)) return b
+            fun isPre(f: Double): Boolean {
+                if (!(f > 0.0)) return false
+                val k = f / b.c
+                return k < 0.5 || k > 2.2
+            }
+            val cand = KLine(b.t,
+                if (isPre(b.o)) b.o / r else b.o,
+                if (isPre(b.h)) b.h / r else b.h,
+                if (isPre(b.l)) b.l / r else b.l,
+                b.c,                              // 收盘是锚，拆股后，不动
+                b.v, b.qv)
+            if (cand == b) return b
+            if (selfConsistent(cand)) return cand
+            // ⚠ 自洽性没过 ⟹ 原值保留并出说明，**不退而求其次去整根除**。
+            //   TSLA 2020-08-30 实测：整根除看着自洽，可 close 498.32 本身就是真实的
+            //   拆股后价，被除成 99.66 —— 错 5 倍，而且错得很像真的。
+            //   看得见的错图好过看不见的错价。
+            curNotes.add(dayKey(b.t) +
+                " 这根调整后自身不成立（高<收 或 低>开），**已原样保留**，请核对源数据")
+            return null
+        }
+
+        /**
+         * 前复权：**除权日之前**的柱子整体乘 (1/比例)；量反向放大；
+         * **跨除权日的那一根走 [splitCrossBar] 逐字段定标**。
+         *
          * ⚠ 边界用「日期字符串比大小」（ISO 格式字典序 == 时间序），不碰时区 ——
          *   数据源的 t 是"日期"不是"时刻"，任何本地时区换算都会把跨日判断挪错一天。
-         * ⚠ **跨线那一根柱内含两种尺度，单一线性系数修不了**：
-         *   月/季线的柱子是按月末标注的，拆股落在月中时，那一根的 high 仍是拆股前。
-         *   这时把日期**往后挪一天**（2022-08-25 → 2022-09-01）就能把整根也纳进来。
-         *   UI 里就写着这句提示 —— 不替用户猜哪个对。
+         * ⚠ 日线没有跨线柱：除权日当天那根就是新价，`<` 是严格的，天然不误伤。
          */
         fun apply(ks: List<KLine>, sym: String): List<KLine> {
             val sp = list(sym)
-            if (!enabled(sym) || sp.isEmpty()) return ks
-            val out = ArrayList(ks)
-            for (i in out.indices) {
-                var f = 1.0
-                for (s in sp) if (dayKey(out[i].t) < s.date) f *= 1.0 / s.ratio
-                if (f == 1.0) continue
-                val k = out[i]
-                out[i] = k.copy(o = k.o * f, h = k.h * f, l = k.l * f, c = k.c * f,
-                    v = k.v / f, qv = k.qv / f)   // 拆股后股数变多 ⟹ 量放大
+            if (!enabled(sym) || sp.isEmpty()) {
+                noteSym = ""; lastNotes = emptyList(); return ks
             }
+            val src = ArrayList(ks)          // 原值：判据必须拿**没调过的**邻居比
+            val out = ArrayList(ks)
+            curNotes = mutableListOf()
+            // 由旧到新：先调更早的，后面那次的「后一根参照」仍在它右边、尺度未被扰动
+            for (s in sp.sortedBy { it.date }) {
+                var ci = -1
+                for (i in out.indices) if (dayKey(out[i].t) >= s.date) { ci = i; break }
+                if (ci < 0) continue                       // 除权日在这段历史之前
+                // ① 默认：除权日之前的**全部**柱子整体除（ci-1 也在内）
+                for (i in 0 until ci) {
+                    val k = out[i]
+                    out[i] = k.copy(o = k.o / s.ratio, h = k.h / s.ratio,
+                        l = k.l / s.ratio, c = k.c / s.ratio,
+                        v = k.v * s.ratio, qv = k.qv * s.ratio)
+                }
+                // ② ci-1 只在「整体除之后**接不上** ci」时才当成跨界柱重做。
+                //   ⚠ 早先版本把 ci-1 无条件豁免出整体除，结果 AAPL 2014-05 这种
+                //     **根本不含除权日**的柱子被判不出、就此不调，原样留下一处断层。
+                //   ⟹ 判据改成**看数据**：整体除完还跟后一根对不上，才说明它内部混了尺度。
+                if (ci > 0 && !smoothTo(out[ci - 1], src[ci])) {
+                    val fx = splitCrossBar(src[ci - 1], s.ratio)
+                    // ⚠⚠⚠ 判不出/不自洽 ⟹ 退回 **src 原值**，不是「已经整体除过的 out 值」。
+                    //   这一步我写错过一次：`return null` 等于保留了整体除的结果，
+                    //   注释却写着「原样保留」—— **注释和代码说的不是一回事**。
+                    //   实测后果（TSLA 月线 2020-08，5:1 在 8/31、3:1 在 2022-08-25）：
+                    //     close 原值 498.32 是**真实的拆股后价**
+                    //     保留整体除的结果 → ÷15 = 33.22   ← 错 5 倍
+                    //     退回原值后由 2022 那次拆股正常处理 → ÷3 = 166.11  ← 对
+                    //   更晚的拆股按循环顺序继续作用于这个原值，不需要额外补。
+                    out[ci - 1] = fx ?: src[ci - 1]
+                }
+                // ③ ci 本身：标签 ≥ 除权日 ⟹ 一定跨界，逐字段
+                if (ci < out.size) {
+                    val fx = splitCrossBar(src[ci], s.ratio)
+                    if (fx != null) out[ci] = fx
+                }
+            }
+            noteSym = norm(sym); lastNotes = ArrayList(curNotes)
             return out
         }
     }

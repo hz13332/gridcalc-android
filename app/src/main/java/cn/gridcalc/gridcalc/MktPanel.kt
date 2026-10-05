@@ -791,10 +791,18 @@ fun setSym(s: String) {
         }
         splitNote.text = when {
             list.isEmpty() -> "还没有条目。开关开着但一条都没录 ⟹ 不做任何调整（也不走自动猜测）。"
-            else -> "已录 ${list.size} 条，" +
-                "累计 ${fmtRatio(list.fold(1.0) { a, b -> a * b.ratio })} → 除权日之前的价格全部乘以 " +
-                (1.0 / list.fold(1.0) { a, b -> a * b.ratio }).toString().take(6)
+            else -> {
+                val cum = list.fold(1.0) { a, b -> a * b.ratio }
+                "已录 ${list.size} 条，累计 ${fmtRatio(cum)} → 除权日之前的价格全部乘以 " +
+                    (1.0 / cum).toString().take(6) + notes()
+            }
         }
+    }
+
+    /** [MktData.SplitBook] 上一次调整留下的说明（哪根柱子没修好、为什么），接在累计系数后面。 */
+    private fun notes(): String {
+        val n = MktData.SplitBook.notesFor(curSym())
+        return if (n.isEmpty()) "" else "  ⚠ " + n.joinToString("；")
     }
 
     private fun fmtRatio(r: Double): String =
