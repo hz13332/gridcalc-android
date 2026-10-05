@@ -163,6 +163,21 @@ object MktSuggest {
         return out
     }
 
+    // Yahoo 缺名时的标签回退：**按品种类型给，不写死「美股」**。
+// ⚠ 2026-10-04 实测：搜 `688825` 时联想行显示 `sh688825 / 美股` —— 名字来自 Yahoo，
+    //   而 Yahoo 对这只票没给 shortname，于是落进写死的「美股」。
+    //   标签写死 = 任何 Yahoo 不认识品种的都会被误标成美股（A 股首当其冲）。
+    //   与 [FavPanel] 的 badge 词表保持一致：贵金/商品/港股/韩股/A股。
+    private fun typeTag(sym: String): String = when (MktData.symType(sym)) {
+        "hk" -> "港股"
+        "kr" -> "韩股"
+        "ashare" -> "A股"
+        "gold", "silver" -> "贵金"
+        "cmdty" -> "商品"
+        "crypto" -> "币"
+        else -> "美股"
+    }
+
     private fun yahooSearch(q: String, quotesCount: Int = 6): List<SugItem> {
         val out = mutableListOf<SugItem>()
         try {
@@ -176,7 +191,7 @@ object MktSuggest {
                 if (sym.isEmpty()) continue
                 if (x.optString("quoteType", "") != "EQUITY") continue
                 val sn = x.optString("shortname", "")
-                out.add(SugItem(sym, if (sn.isEmpty()) "美股" else sn, sym.startsWith(q)))
+                out.add(SugItem(sym, if (sn.isEmpty()) typeTag(sym) else sn, sym.startsWith(q)))
             }
         } catch (_: Exception) {
         }

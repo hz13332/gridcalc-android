@@ -77,6 +77,12 @@ object MktData {
         if (u.contains("XAG") || u.contains("SILVER") || u.startsWith("SI=F")) return "silver"
         // 稿§5:6位数字→韩股(东财177),5位(4位待补零)→港股(东财116)。
         // 顺序保持 商品→金银→6位韩→5位港→币对→美股;纯数字不会命中币对分支,放币对前安全
+        // ⚠ 2026-10-03 **新增 A 股识别**（用户给出 sh688825 = 长鑫存储，科创板）。
+        //   【为什么要加】原来**根本没有 A 股分支**：`^\d{6}$` 不匹配 "sh688825"（带前缀），
+        //   `^\d{4,5}$` 也不匹配，于是它一路穿到最后的美股兜底 ⟹ 拿美股接口查 A 股代码，恒空。
+        //   所以「A 股找不到」不是缺源，是**根本没路由过去**。
+        //   放在纯数字两条**之前**无害（那些带 ^$ 锚点，本来就匹配不到带前缀的串）。
+        if (Regex("^(SH|SZ)\\d{6}$", RegexOption.IGNORE_CASE).matches(u)) return "ashare"
         if (Regex("^\\d{6}$").matches(u)) return "kr"
         if (Regex("^\\d{4,5}$").matches(u)) return "hk"
         if (u.endsWith("USDT") || u.endsWith("USD") || u.endsWith("USDC") ||
@@ -155,6 +161,116 @@ object MktData {
         }
         synchronized(tgtLock) { tgtMap[key] = Triple(r, System.currentTimeMillis(), ok) }
         return r
+    }
+
+    /**
+     * ⚠⚠⚠ 2026-10-03 **港股机构目标价 —— etnet(经济通)源**。
+     *
+     * 【为什么需要它】美股走 [fetchTgt] 的纳斯达克接口；港股那边**纳斯达克不认**
+     *   （实测 0700 / 0700.HK / hk0700 / 700 / TCEHY 五种写法全 `status=400`，
+     *     同一接口查 AAPL 正常返回 334.9 ⟹ 接口本身是通的，是它没有港股的库）。
+     *   逐个试过的其余源也全挂：新浪港股 F10（Service not valid）、腾讯港股（404）、
+     *   雪球（400）、富途（404 + 前端渲染）、AAStocks（0 字节）、同花顺（0 字节）。
+     * ⟹ **etnet 是唯一实测通了的一个**，而且它是 akshare `stock_hk_profit_forecast_et`
+     *   用的同一个 URL —— **有人验证过的接口，不是猜出来的路径**。
+     *
+     * 【URL】`https://www.etnet.com.hk/www/sc/stocks/realtime/quote_profit.php?code={去零代码}`
+     *   00700 → code=700。**服务端渲染的纯 HTML**（实测 123KB），不是 JS 拼的 ⟹ 可直接解析。
+     *
+     * 【只取目标价，不取评级】用户明确：「我不需要评级，我只需要美股那样的机构目标价」。
+     *   ⟹ 页面上的「平均评级 1.94」「综合 N 份证券商报告」**一律不解析**。
+     *
+     * 【表结构（2026-10-04 实测 00700 的页面，126KB 简化）】目标价表是**固定 9 列**的数据行：
+     * ```
+     * 财年 | 纯利(百万) | 每股盈利 | 每股派息 | 证券商 | 评级 | 目标价(港元) | (空) | 更新日期
+     * 2026 | 223,319.00 | 2,930.00 | 472.00 | 美银   | 买入 | 780.00 |  | 17/08/2026
+     * 2026 | 266,299.00 | 2,910.00 | 562.00 | 瑞银   | 买入 | 770.00 |  | 20/08/2026
+     * ```
+     *   ⚠ **2027 / 2028 块的第 7 列全是 `--`**（那两个块只给盈利预测，不给目标价）。
+     *   ⟹ 「第 7 列能不能解析成数字」就是数据行的天然判据，
+     *     也让「只取有价的那个财年」自动成立，**不存在跨财年混合**。
+     *   页面**不给平均值**，所以取逐家的**算术平均**（与纳斯达克 consensusOverview.priceTarget
+     *   的口径一致：都是分析师目标价的均值）。
+     *
+     * 【币种】etnet 给的是**港元**，纳斯达克给的是**美元**。
+     *   ⟹ 这里返回**已按当前汇率折成美元**的值，与屏幕其余数字同量纲；
+     *     **屏上因此不必标「港元」**（标了反而会和旁边 USD 数字不同量纲）。
+     *   ⚠ 折算这一步必须写明，别让下一个读代码的人以为是直接抓来的港元数字。
+     *
+     * @param n 返回的 [Tgt.n] 是**参与平均的家数**（不是报告总数）。
+     */
+    fun fetchTgtEtnet(hkCode: String): Tgt? {
+        // 只收 5 位以内的纯数字港股代码（00001/00700/09999）；带 sh/sz 前缀的走 A 股，不归这里
+        val code = hkCode.trim()
+        if (!Regex("^\\d{1,5}$").matches(code)) return null
+        val bare = code.trimStart('0').ifEmpty { "0" }     // 00700 → 700（etnet 用去零写法）
+        val html = try {
+            get(
+                "https://www.etnet.com.hk/www/sc/stocks/realtime/quote_profit.php?code=$bare",
+                ua = uaRnd(), timeoutMs = 12000, referer = "https://www.etnet.com.hk/"
+            )
+        } catch (_: Exception) {
+            return null
+        }
+        if (html.isEmpty()) return null
+
+        val at = html.indexOf("目标价")
+        if (at < 0) return null                      // 没这个表头（可能已改版或该股无覆盖）
+
+        // ⚠⚠⚠ 2026-10-04 **解析方式整体换掉**：从「日期锚点 + 向前回看数字」改成**按表格行取列**。
+        //
+        // 【为什么必须换】原写法 `(\d+\.\d+)\s*(</?[^>]*>)*\s*$` 要求目标价与日期之间**只能是标签**，
+        //   而 etnet 那一行实际是：
+        //     <td>780.00</td><td width="60">&nbsp;</td><td>17/08/2026</td>
+        //                            ^^^^^^ HTML 实体不是标签 ⟹ 锚定断裂
+        //   实测：同一天页面里有 **24 个日期锚点、成功取值 0 个** ⟹ 整条功能恒空
+        //   （表现：港股屏上「机构目标均价」那一行整行缺失）。
+        //   ⚠ 这**不是源挂了**：同一次实测页面 126KB、简体中文、目标价表完整（17 家券商）。
+        //
+        // 【另一个坑】截表必须**截到本表的 `</table>` 为止**。只按「表头往后 N 字符」切会溢出到
+        //   下一张表，把「去年度业绩表现」那张误认成目标价表（Python 复刻时先错了一版）。
+        val tblStart = html.lastIndexOf("<table", at)
+        val tblEnd = html.indexOf("</table>", at)
+        if (tblStart < 0 || tblEnd <= tblStart) return null
+        val seg = html.substring(tblStart, tblEnd)
+
+        // 这三条在 60+ 行上反复用，提到循环外建一次
+        val reTr = Regex("<tr[^>]*>(.*?)</tr>", RegexOption.DOT_MATCHES_ALL)
+        val reTd = Regex("<td[^>]*>(.*?)</td>", RegexOption.DOT_MATCHES_ALL)
+        val reTag = Regex("<[^>]+>")
+        val reYear = Regex("^\\d{4}$")
+
+        val seen = HashSet<String>()       // 同一家券商只算一次（防将来页面改版后重复行）
+        val vals = mutableListOf<Double>()
+        for (tr in reTr.findAll(seg)) {
+            // ⚠ 必须**先按 <td> 切、再去标签**：反过来的话 </td><td> 被剥掉后列边界就没了。
+            // ⚠ `Regex.replace` 没有单参重载，必须给 replacement（去标签就是替换成空串）。
+            val cells = reTd.findAll(tr.groupValues[1])
+                .map { m -> reTag.replace(m.groupValues[1], "").replace("&nbsp;", " ").trim() }
+                .toList()
+            if (cells.size < 7) continue
+            if (!reYear.matches(cells[0])) continue              // 第 1 列必须是财年
+            val p = cells[6].replace(",", "").toDoubleOrNull() ?: continue   // `--` 自然落在这
+            if (!(p > 0)) continue
+            val broker = cells[4]
+            if (broker.isBlank() || !seen.add(broker)) continue
+            vals.add(p)
+        }
+        // 少于 3 家不敢称共识：页面改版或只剩一两行时，宁可不显示，也不给一个单点数字
+        if (vals.size < 3) return null
+        val avgHkd = vals.sum() / vals.size
+        if (!(avgHkd > 0)) return null
+
+        // 港元 → 美元（取不到汇率就返回 null，不拿未折算的数字糊弄）
+        // ⚠⚠⚠ 2026-10-04 **这里原先写的是 `avgHkd * rate`，方向反了**。
+        //   [FX] 的口径是「**1 USD = rate 外币**」（`fxText` 屏上就写「1 USD = 7.848 HKD」，
+        //   `keyRate` 的注释也写着「原生价→美元 = ÷X」）⟹ 外币折美元是**除**。
+        //   写成乘法的后果：661.47 港元被算成 661.47×7.848 = **5,190.63**（实测屏上就是这个数）。
+        //   ⚠ 它一直没被发现，是因为上一行 `vals` 恒空（解析 0 条）⟹ **这行从没被执行过**。
+        //   「没被执行过的代码不一定是错的，但一定是没被验过的」—— 这次是后者被前者掩盖。
+        val rate = FX.rateOf("HKD") ?: return null
+        if (!(rate > 0)) return null
+        return Tgt(avgHkd / rate, vals.size)
     }
 
     // 币:base/quote拆分(照稿子,quote兜底USDT)
@@ -532,7 +648,18 @@ object MktData {
         val u = sym.trim().uppercase(Locale.US)
         // 稿(可搜索:「hk+5位补零」):5位→hk+5位补零;6位→kr+6位(韩股目前**只有腾讯能取**);
         // 其余→us+代码+交易所后缀(.OQ纳斯达克/.N纽交所/.AR/.P美股Arca)
+        //
+        // ⚠⚠⚠ 2026-10-04 **补 A 股**：`sh`/`sz` 前缀 6 位 → 原样小写交给腾讯。
+        // 【实测 2026-10-04】`sh688825`（长鑫存储）
+        //     month → 3 根（2011-01 那种老代码不该出现，只因该股 2026-07-27 才上市）
+        //     day   → 47 根，首 2026-07-27 收 49.00
+        //   ⟹ **腾讯是本仓当前唯一能出 A 股 K 线的源**：百度 `code_type` 只有 us/hk，
+        //   东财在本机不可达（push2his / push2 实测全空）。
+        //   「3 根/47 根看着太少」不是取数失败 —— 是新股真的只有这么多，
+        //   `fetchStocks` 的 ≥3 根门槛刚好放行。
+        // ⚠ 腾讯 key 用**小写**前缀（`sh688825`），传 `SH688825` 取不到。
         val cands = when {
+            Regex("^(SH|SZ)\\d{6}$").matches(u) -> listOf(sym.trim().lowercase(Locale.US))
             Regex("^\\d{5}$").matches(u) -> listOf("hk" + u)
             Regex("^\\d{6}$").matches(u) -> listOf("kr" + u)
             else -> listOf("us$u.OQ", "us$u.N", "us$u.AR", "us$u.P")
@@ -812,6 +939,13 @@ private fun raceOk(
         if (ty == "kr") return listOf(
             "腾讯" to { fetchTencent(sym, tf, count, 8000, maxBars) },
             "东财" to { fetchEastmoney(sym, tf, count, EM_TIMEOUT_MS) }
+        )
+        // ⚠⚠⚠ 2026-10-04 **A 股单腿走腾讯**。
+        // 【为什么不竞速】`fetchBaidu` 的白名单是 `ctype != "hk" && ctype != "stock" → return emptyList()`，
+        //   本来就不接 ashare；硬把它塞进腿链只会让**每次**都白打一次百度。
+        //   而且 A 股只有一条腿，竞速没有意义 —— 单腿直接省掉一次请求。
+        if (ty == "ashare") return listOf(
+            "腾讯" to { fetchTencent(sym, tf, count, 8000, maxBars) }
         )
         return listOf(
             "百度" to { fetchBaidu(sym, tf, count, maxBars) },
@@ -1683,10 +1817,15 @@ private fun raceOk(
         // 汇率异步到达回调(主线程重画说明行+图表);由MainActivity接线
         var onReady: (() -> Unit)? = null
 
-        // 币种按代码形状判断(4/5位数字=港股HKD,6位=韩股KRW,其余美元;A股CNY路由未做,币种判断保留)
-
+        // 币种按代码形状判断(4/5位数字=港股HKD,6位=韩股KRW,sh/sz前缀=A股CNY,其余美元)
+        // ⚠⚠⚠ 2026-10-04 **A 股接进汇率层**。原来这行注释写着「A股CNY路由未做」——
+        //   那是 A 股还没有源时的权宜之计。A 股接通腾讯源之后不补，就会把
+        //   **人民币价格当美元显示**，量纲错得无声无息。
+        //   实测 `sh688825` 走腾讯月线收 53.97，是人民币；不换算就会屏上写「USD 53.97」。
+        //   （对照：港股 00700 屏上显示 53.68 也是美元，是 FX 正常折算后的结果。）
         fun curOf(sym: String): String {
             val u = sym.trim().uppercase(Locale.US)
+            if (Regex("^(SH|SZ)\\d{6}$").matches(u)) return "CNY"   // A股：CNY（必须排在 5/6 位数字之前）
             if (Regex("^\\d{4}$").matches(u) || Regex("^\\d{5}$").matches(u)) return "HKD"
             if (Regex("^\\d{6}$").matches(u)) return "KRW"
             return "USD"
@@ -1848,8 +1987,140 @@ private fun raceOk(
     fun aggregate(vs: List<VendorKs>): Agg {
         val win = vs.find { it.v == PIN && it.k.size >= 3 }
             ?: vs.maxByOrNull { v -> v.k.sumOf { numD(it.qv) } }!!
-        val disp = win.k.sortedBy { it.t }.takeLast(240)
+        // ⚠ 先**前复权**再 takeLast(240)：顺序不能反。
+        //   复权要在整段历史上做（断层可能在被截掉的老段里），截完再复权就只剩一半信息。
+        val disp = forwardAdjust(win.k.sortedBy { it.t }).takeLast(240)
         return Agg(disp, vendorName(win.v))
+    }
+
+    // ══════════════════════ 前复权 ══════════════════════
+    //
+    // ⚠⚠⚠ 2026-10-03 **前复权 v2** —— 拆股比不再锁死在少数几个整数。
+    //
+    // 【背景】百度返回的是**不复权**序列（用户实见：「百度的数据源并未进行前复权」），
+    //   叠加 TSLA 2022-08-25 三拆一（用户实见），实测整段历史被切成两个尺度：
+    // ```
+    // 2020-03 收 524.00   2021-07 收 687.20   2022-03 收 1077.60   ← 拆股前尺度
+    // 2022-08 收 275.61   ← 跨拆股月：open/high 还在拆股前，close/low 已切
+    // 2022-11 收 194.70   2026-03 收 371.75                        ← 拆股后尺度
+    // ```
+    //   ⟹ 只有**跨线那一根**内部同时带两个尺度，其余每根各自自洽。
+    //   ⟹ 早先「把异常柱丢掉」的处置是错的：**丢掉的是证据，不是病根**。
+    //
+    // 【百度侧解决不了】实测 `all=0` / `all=1` / `all=2` 返回**完全相同** ——
+    //   该接口**没有任何复权参数**。⟹ 只能在数据侧自己补做。
+    //
+    // 【v1 的问题（用户指出）「系数其实就等于拆股比，可是其他股票也有这种情况怎么办」】
+    //   v1 候选集只有 {2,3,4,5,10}。现实里还有 AAPL 2014 的 7:1、NVDA 2021 的 20:1、
+    //   以及反向拆股 1:10 —— v1 对这些**一律不修正**。
+    //   而 v1 能唯一解出 N=3，靠的正是「拆股比是整数」这个假设
+    //   （约束链给的是区间 [2.14, 3.43]，里面还有 2.5、3.33，是整数性才锁到 3）。**这个假设很脆。**
+    //
+    // 【v2 三步】
+    //   ① 候选集扩到真实范围（见 [SPLIT_CANDIDATES]），含非整数与反向
+    //   ② **用数据自己估初值**再吸附：[estimateRatio] 用该股**自身** high/close 中位数
+    //      算 N̂ 再吸附 —— 这一步**不依赖整数假设**，7:1、2.5:1 也能落到正确候选
+    //   ③ **改完必须回验**（[residualJump]）：应用系数后重扫全段，若残留断层没变小，
+    //      说明这次没修好 ⟹ **撤销不提交**。
+    //      ⟹ 这是 v2 最关键的一步：**不管候选集怎么定，「改完无残留断层」都成立**。
+    //         它不关心拆股比是多少，只关心结果对不对
+    //         ⟹ 把「猜错且不自知」降级为「猜错会被发现」。
+    //
+    // 【v2 仍然不是查表 —— 局限写在这里，别当成已彻底解决】
+    //   · 这是「从价格反推拆股比」，不是「查到了拆股比」：
+    //       查表 = 确定；反推 = 大概率对，小概率错。
+    //   · **真正的确定解只有一个：数据源直接给复权序列。** 百度无复权参数、
+    //     腾讯美股只回 1 根 ⟹ 现有源里反推已是最好办法，但它终究不是查表。
+    //   · 现金分红（除权除息）未做：拆股是**乘性**，断层明显好认；
+    //     分红是**减性**、量小，反推容易把它误判成正常波动而漏掉。
+    //   · 一根柱子里既跨拆股又跨分红时，单一系数无法表达，本函数会保守地不动。
+
+    private val SPLIT_CANDIDATES = listOf(
+        // 正向拆股（含少量非整数：现实中确实存在 3:2、8:5 这类）
+        1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 5.0, 6.0, 7.0, 8.0, 10.0, 20.0, 25.0, 50.0,
+        // 反向拆股（1:2、1:10 等）
+        1.0 / 2.0, 1.0 / 3.0, 1.0 / 4.0, 1.0 / 5.0, 1.0 / 7.0, 1.0 / 10.0, 1.0 / 20.0
+    )
+    private const val SPLIT_HI_K = 1.6   // 相邻柱 high 的合理上限，超过即视为断层
+
+    /** 全段相邻柱 high 的最大比值。< [SPLIT_HI_K] 即视为无残留断层。 */
+    private fun residualJump(ks: List<KLine>): Double {
+        var worst = 1.0
+        for (i in 0 until ks.size - 1) {
+            val a = ks[i].h; val b = ks[i + 1].h
+            if (a > 0.0 && b > 0.0) {
+                if (a / b > worst) worst = a / b
+                if (b / a > worst) worst = b / a
+            }
+        }
+        return worst
+    }
+
+    /**
+     * 用该股**自身**的正常 high/close 中位数估断层系数，再吸附到最近候选。
+     * TSLA 实测：`944.00 / (275.61 × 1.10) ≈ 3.12` → 吸附到 3。
+     * ⟹ 不依赖「拆股比是整数」—— 7:1、2.5:1 都能落到正确候选上。
+     */
+    private fun estimateRatio(a: KLine, normalHiClose: Double): Double? {
+        if (!(a.h > 0.0 && a.c > 0.0) || normalHiClose <= 0.0) return null
+        val raw = a.h / (a.c * normalHiClose)
+        if (!(raw > 1.0)) return null
+        val best = SPLIT_CANDIDATES.minByOrNull { kotlin.math.abs(it - raw) / raw } ?: return null
+        return if (kotlin.math.abs(best - raw) / raw <= 0.25) best else null
+    }
+
+    fun forwardAdjust(ks: List<KLine>): List<KLine> {
+        if (ks.size < 3) return ks
+        var out = ArrayList(ks)
+
+        // 该股正常的 high/close 中位数 —— 先滤掉疑似异常柱再取中位数，避免被断层污染
+        val ratios = out.filter { it.h > 0.0 && it.c > 0.0 && it.h / it.c < SPLIT_HI_K }
+            .map { it.h / it.c }.sorted()
+        if (ratios.isEmpty()) return ks
+        val normalHiClose = ratios[ratios.size / 2]
+        if (!(normalHiClose > 1.0)) return ks
+
+        var guard = 0
+        while (guard++ < 5) {
+            val before = residualJump(out)
+            if (before <= SPLIT_HI_K) break          // 已无断层，收工
+
+            var cut = -1
+            var ratio = 0.0
+            // 从新到旧找第一处断层（最近的先修）
+            for (i in out.size - 2 downTo 0) {
+                val a = out[i]; val b = out[i + 1]
+                if (!(b.h > 0.0 && a.h > 0.0)) continue
+                if (a.h / b.h < SPLIT_HI_K) continue
+                // ② 用数据估初值 → 吸附候选；估不出再退回「直接吸附到比值」
+                val n = estimateRatio(a, normalHiClose)
+                    ?: SPLIT_CANDIDATES.minByOrNull { kotlin.math.abs(it - a.h / b.h) }
+                    ?: continue
+                val trial = a.copy(
+                    o = a.o / n, h = a.h / n, l = a.l / n, c = a.c / n,
+                    v = a.v * n, qv = a.qv * n
+                )
+                // 调整后该柱自身必须成立
+                if (!(trial.h >= trial.c && trial.l <= trial.c && trial.o > 0.0)) continue
+                cut = i; ratio = n; break
+            }
+            if (cut < 0) break
+
+            val fixed = ArrayList<KLine>(out.size)
+            for (i in out.indices) {
+                val k = out[i]
+                fixed.add(
+                    if (i <= cut) k.copy(o = k.o / ratio, h = k.h / ratio,
+                        l = k.l / ratio, c = k.c / ratio, v = k.v * ratio, qv = k.qv * ratio)
+                    else k)
+            }
+
+            // ③ **回验**：残留断层没变小 ⟹ 这次没修好 ⟹ 撤销，不提交
+            if (residualJump(fixed) >= before) break
+
+            out = fixed
+        }
+        return out
     }
 
     fun profileOf(ks: List<KLine>): Profile {

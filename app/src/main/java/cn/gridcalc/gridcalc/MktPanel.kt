@@ -1065,8 +1065,15 @@ private fun clearForNewSymbol() {
         //   详见 MainActivity.stepThrFor 的注释。
         if (symChanged) act.stepThrFor(su)
         val seq = ++reqSeq
-        if (type == "stock" || type == "hk" || type == "kr") {
-            // 港/韩与美同走股票串行腿(稿§6);绝不落到下方商品(gold/silver/cmdty)兜底
+        if (type == "stock" || type == "hk" || type == "kr" || type == "ashare") {
+            // 港/韩/A股与美同走股票串行腿(稿§6);绝不落到下方商品(gold/silver/cmdty)兜底
+            //
+            // ⚠⚠⚠ 2026-10-04 **补 "ashare"**。原来这份白名单只有 stock/hk/kr，
+            //   A 股于是**掉进下方的贵金属/商品分支**，被拿 `fetchMetals` 去查一个股票代码 ——
+            //   实测表现：自选行有数据（+4.32%），行情页却是「—」+「未取到」，冷启动也复现。
+            //   和 `FavPanel.badge` 漏 `ashare` 是**同一个病**：加了枚举值、漏改穷举分支。
+            //   ⟹ 教训照抄进墓碑：**`symType` 每多返回一个值，这里、`badge()`、`curOf()`、
+            //     `isUs`、`tz`、`phase` 全都要跟着核一遍。**
             loadStockParallel(s, fetchN, mkt, seq)
             return
         }
@@ -1233,10 +1240,10 @@ private fun clearForNewSymbol() {
         val ty = if (sym.isEmpty()) "" else MktData.symType(sym)
         // 时区:只有美股用 GMT-4 的 marketPhase;亚洲市场不能拿美股时区冒充
         val isUs = ty != "crypto" && ty != "hk" && ty != "kr" && ty != "gold" &&
-            ty != "silver" && ty != "cmdty"
+            ty != "silver" && ty != "cmdty" && ty != "ashare"   // ⚠ A股是亚洲盘，不能按美股算
         val phase = if (isUs) when (MktData.marketPhase()) {
             "open" -> "开盘"; "pre" -> "盘前"; "post" -> "盘后"; else -> "收盘"
-        } else if (ty == "hk" || ty == "kr") t122Phase(ty) else "收盘"
+        } else if (ty == "hk" || ty == "kr" || ty == "ashare") t122Phase(ty) else "收盘"
         // ⚠ 2026-10-02 用户裁定删掉行情页顶部的品种搜索框后，**品种代码原本只出现在那一处**，
         //   直接删掉会让「现在看的是哪个品种」在屏上消失。这里把代码补进价格块右上角，
         //   与现行稿一致：稿 v2.html:2117 逐字 `{shortSym(S_)}{…' · 行情中'}`，即 **代码 + 时段**。
@@ -1258,6 +1265,7 @@ private fun clearForNewSymbol() {
         // 这是 t122 自己定的规矩(L891-892「拿不准一律说『收盘』,不编」), 不是新规矩。
         val tz = when (ty) {
             "hk" -> "GMT+8"
+            "ashare" -> "GMT+8"          // ⚠ 同港股时区；漏了会落到 else 写成 GMT-4（美东）
             "kr" -> "GMT+9"
             "crypto" -> "UTC"          // 24h 市场, 日线按 UTC 结算, 这是事实
             "gold", "silver", "cmdty" -> ""   // 拿不准, 不编
@@ -1345,6 +1353,11 @@ private fun clearForNewSymbol() {
         val cur = ag.ks.lastOrNull()?.c ?: 0.0
         val sym = lastSym
         val isStock = lastType == "stock"
+        // ⚠ 2026-10-03 港股也接目标价（etnet 源，见 MktData.fetchTgtEtnet 的说明）。
+        //   原来这里只有 `isStock`（**仅美股**）才走机构目标价，港股的 lastType 是 "hk"
+        //   ⟹ 掉进 [predTarget]，而它只认 crypto/贵金属/商品，对港股 `else -> return null`
+        //   ⟹ 港股这一行恒空。这是「两层都断了」，不是港股没这个数据。
+        val isHq = lastType == "hk"
         val kind = MktData.symType(sym)   // crypto / cmdty / gold / silver / ...
         /** 品种是否还是当前显示的那个。**两道守卫缺一不可**，见下方墓碑。 */
         fun stillSame(): Boolean =
@@ -1352,7 +1365,9 @@ private fun clearForNewSymbol() {
         // 步长阈值那条腿可能还没跑完，先等它把日线缓存写进来再算预测价
         val run = { ->
             Thread {
-                val v: Double? = if (isStock) MktData.fetchTgt(sym)?.avg else MktData.predTarget(sym)
+                val v: Double? = if (isStock) MktData.fetchTgt(sym)?.avg
+                else if (isHq) MktData.fetchTgtEtnet(sym)?.avg
+                else MktData.predTarget(sym)
                 act.runOnUiThread {
                     // ⚠⚠ 2026-10-03 用户报「预测价混了策略」——**实测确认是这个串台**：
                     //   屏上是 01211(港股)，mkt_tgt 却写着 `预测价(最高×1.2) 115,045.76`，

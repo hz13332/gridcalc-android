@@ -1392,6 +1392,8 @@ if (::calcIdleHint.isInitialized) calcIdleHint.visibility = View.GONE
     private var pendingExport = false
     private val recPref get() = getSharedPreferences("gridcalc_records_v1", Context.MODE_PRIVATE)
 
+    // 前向声明：clearCurrentSymRecs 在它定义之前就要用（Kotlin 对成员函数本可后置，
+    // 但这里 saveBtnSaved 是同文件内的局部函数，跨定义顺序会报 unresolved）
 
     /**
  * ⚠⚠⚠ 2026-10-03 **恢复本函数**（我把它当死代码删掉了，那是个错误）。
@@ -1425,7 +1427,56 @@ private fun recLoad() {
           recPaint()
       }
 
-      private fun recSave() {
+      /**
+ * ⚠ 2026-10-03 **删除当前品种的已保存记录**（用户：「计算界面也要有个清空数据的功能」）。
+ *
+ * 【范围】**只删当前品种** —— 用户在三个选项里明确选的这个。
+ *   ⟹ 不删全部，是为了保住「按品种关联」那套能力：删全部会把别的品种存好的参数一起清掉，
+ *     那正是这个会话花大力气打通的东西。
+ *   ⚠ 本函数是当初被我当「死代码」删掉的 [recLoad] 的同类邻居（clearRecords）。
+ *     **教训同上：先摘调用点、再按「无调用」删被调方，这两步必须一起判断。**
+ *
+ * 【无二次确认】用户裁定。⚠ 这是破坏性操作且**不可撤销** —— 用户的原话是针对
+ *   保存说的（「点完确定直接保存」），此处是他对删除单独给的答复，照办。
+ *   ⟹ 所以给的是**即时可见反馈**（按钮短暂显示删了几条），而不是弹窗。
+ *
+ * 【顺带】删完当前页的回填也要撤：否则 [restoreGuardSym] 还指着这个品种，
+ *   联动会被永久误挡（同 restoreCalc 里 rec == null 那个分支的清零点逻辑）。
+ */
+
+    // ⚠ 2026-10-03 **删除当前品种的已保存记录**（用户：「计算界面也要有个清空数据的功能」）。
+    //   范围=**当前品种**、**无二次确认**（用户裁定）。只删当前品种是为了保住「按品种关联」——
+    //   删全部会把别的品种存好的参数一起清掉，那正是本会话花大力气打通的东西。
+    //   ⚠ 本函数的同类邻居 [recLoad]/[clearRecords] 都曾被我当「死代码」删掉：
+    //     **先摘调用点、再按「无调用」删被调方，这两步必须一起判断。**
+    //   ⚠ 放在 [saveBtnSaved] 之后：[saveBtnSaved] 在本文件里定义得比这里晚，
+    //     声明顺序反了会报 unresolved（Kotlin 的 class 成员不支持前向声明，抽象声明也不行）。
+    fun clearCurrentSymRecs() {
+        val sym = try { if (::mktPanel.isInitialized) mktPanel.curSym() else "" } catch (_: Throwable) { "" }
+        if (sym.isBlank()) return
+        val key = normSym(sym)
+        val before = recs.size
+        recs = recs.filter { normSym(it.optString("sym")) != key }.toMutableList()
+        val removed = before - recs.size
+        if (removed > 0) {
+            recSave()
+            if (restoreGuardSym == key) restoreGuardSym = null   // 清零点：闸必须放开
+            pendingRec = null
+            saveIdle()
+        }
+        saveBtn.text = if (removed > 0) "已删除 $removed 条" else "没有已保存记录"
+        // ⚠ 不能调 [saveBtnSaved] —— 它是 onCreate 里的**局部函数**，Kotlin 的局部函数
+        //   不是类成员，类成员里调它会 unresolved。这里直接写复位样式。
+        saveBtn.background = null
+        saveBtn.setTextColor(attrColor("colorFaint"))
+        uiHandler.postDelayed({
+            if (saveBtn.text.startsWith("已删除") || saveBtn.text.startsWith("没有已保存")) {
+                saveBtn.text = "保存数据"
+            }
+        }, 1600)
+    }
+
+    private fun recSave() {
         try {
             recPref.edit().putString("recs", org.json.JSONArray(recs).toString()).apply()
         } catch (e: Exception) {
@@ -2794,6 +2845,10 @@ ladderNote = calcPage.findViewById(R.id.ladder_note)
         paintDbl()
         // 稿§1.1 保存数据按钮:默认disabled,点击落库暂存结果,1.6s后文案复原
         saveBtn = calcPage.findViewById(R.id.save_btn)
+        // ⚠ 2026-10-03「清空数据」按钮：用户要求「计算界面也要有个清空数据的功能，
+        //   用来删除保存了的数据」。范围=**当前品种**、**无二次确认**（用户裁定）。
+        //   ⚠ 只删当前品种是为了保住「按品种关联」那套能力 —— 删全部会把别的品种的参数一起清掉。
+        calcPage.findViewById<Button>(R.id.clear_rec_btn).setOnClickListener { clearCurrentSymRecs() }
         // 稿 L833 `const [st,setSt]=React.useState('ok')` ⟹ **首屏默认就是「有结果」**,
         // 不是空态。改前这里是 t169 的 `idle()`(冷启动没人打字,TextWatcher 不触发,
         // calc_idle_hint 停在 XML 默认的 gone), 于是首屏永远显示「输入参数后回车计算」。

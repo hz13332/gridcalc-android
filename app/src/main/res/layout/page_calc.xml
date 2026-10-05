@@ -1138,14 +1138,35 @@
         android:paddingTop="17.2dp"
         android:paddingEnd="@dimen/space_4"
         android:paddingBottom="13.4dp">
+    <!-- ⚠ 2026-10-03 加「清空数据」：用户要求「计算界面也要有个清空数据的功能，
+         用来删除保存了的数据」。范围=**当前品种**（不动别的品种，保住按品种关联那套能力），
+         位置=「保存数据」旁边，且**不做二次确认**（用户裁定）。
+         ⚠ 横向排布：保存键让出宽度给清空键，两个各占一半。 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
     <Button
         android:id="@+id/save_btn"
-        android:layout_width="match_parent"
+        android:layout_width="0dp"
+        android:layout_weight="1"
         android:layout_height="45.8dp"
+        android:layout_marginEnd="@dimen/space_2"
         android:background="@drawable/save_btn_bg"
         android:text="保存数据"
         android:textColor="?attr/colorOnPrimary"
 android:textSize="@dimen/fs_title"
         android:textStyle="bold" />
+    <Button
+        android:id="@+id/clear_rec_btn"
+        android:layout_width="0dp"
+        android:layout_weight="1"
+        android:layout_height="45.8dp"
+        android:background="@drawable/save_btn_bg"
+        android:text="清空数据"
+        android:textColor="?attr/colorOnPrimary"
+        android:textSize="@dimen/fs_title"
+        android:textStyle="bold" />
+    </LinearLayout>
     </FrameLayout>
 </LinearLayout>
