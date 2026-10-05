@@ -1591,6 +1591,13 @@ private fun raceOk(
         private val map = LinkedHashMap<String, E>()
 
         // v4§7:缓存键必须带汇率——汇率变了键就变,强制重新抓,不沿用旧美元价
+        //
+        // ⚠⚠⚠ 2026-10-04 **手动拆股刻意不进这个键**，我一度加上去，又撤了：
+        //   缓存里躺的是**复权之前**的数据 —— 写盘顺序是 `FX.fxify` → `MktCache.put` →
+        //   `renderStock(aggregate(...))`，而拆股/前复权是在 `aggregate` 里现算的。
+        //   ⟹ 缓存内容与拆股**无关**，键也不该含它。
+        //   带了会怎样：用户每改一条拆股就换一个键 ⟹ 缓存与留底全部作废 ⟹ **强制重发网络请求**。
+        //   那不只是慢，是在拿限流换一条本来不需要重取的数据（用户明确要求别把源打爆）。
         fun key(sym: String, tf: String, n: Int): String =
             sym.trim().uppercase(Locale.US) + "|" + tf + "|" + n + "@" + FX.keyRate(sym)
 
@@ -1984,13 +1991,26 @@ private fun raceOk(
     }
 
     // 终画选优:PIN源(BN)有≥3根直接钉死,否则按报价成交额qv选优(照稿子)
-    fun aggregate(vs: List<VendorKs>): Agg {
+    fun aggregate(vs: List<VendorKs>): Agg = aggregate(vs, "")
+
+    /**
+     * [sym] 只用于取该品种的**手动拆股**;传空串即退化成旧的纯启发式行为
+     *（保留这个重载是为了让既有调用点不必为了编译而改语义）。
+     *
+     * ⚠⚠⚠ 2026-10-04 **手动拆股与启发式二选一，绝不同时生效**。
+     *   开关打开 ⟹ 只用用户录的条目；开关关闭 ⟹ 走 [forwardAdjust] 启发式。
+     *   两套同时跑会出两个结果，而用户录的那份是**他确认过的信息**，
+     *   让一个猜出来的结果去覆盖它是本末倒置。
+     */
+    fun aggregate(vs: List<VendorKs>, sym: String): Agg {
         val win = vs.find { it.v == PIN && it.k.size >= 3 }
             ?: vs.maxByOrNull { v -> v.k.sumOf { numD(it.qv) } }!!
-        // ⚠ 先**前复权**再 takeLast(240)：顺序不能反。
+        // ⚠ 先**复权**再 takeLast(240)：顺序不能反。
         //   复权要在整段历史上做（断层可能在被截掉的老段里），截完再复权就只剩一半信息。
-        val disp = forwardAdjust(win.k.sortedBy { it.t }).takeLast(240)
-        return Agg(disp, vendorName(win.v))
+        val sorted = win.k.sortedBy { it.t }
+        val manual = SplitBook.enabled(sym)
+        val adj = if (manual) SplitBook.apply(sorted, sym) else forwardAdjust(sorted)
+        return Agg(adj.takeLast(240), vendorName(win.v))
     }
 
     // ══════════════════════ 前复权 ══════════════════════
@@ -2121,6 +2141,191 @@ private fun raceOk(
             out = fixed
         }
         return out
+    }
+
+    // ══════════════ 手动拆股（前复权）══════════════
+    //
+    // 【为什么要有它】见上面 [forwardAdjust] 那段论证：从**未复权 OHLC 反推拆股比**在信息上欠定 ——
+    //   3:1 拆股与「真跌了 3 倍」产出**逐位相同**的数据；
+    //   实测合法涨幅上沿 2.23（TSLA 季线 2019-12→2020-03）与最小拆股比 3.01 只隔 1.35 倍，
+    //   原判据阈值 1.6 正落在合法暴涨区中间 ⟹ 必然误判。
+    //   **缺的那条信息（哪天、几拆几）数据里根本没有，只能由人给。**
+    //   用户裁定：「在行情界面设置开关，我来输入拆股日期和比例，然后你计算」。
+    //
+    // 【因此本对象只做一件事】把用户给的 (日期, 比例) 变成价格因子。
+    //   **不做检测、不猜、不自动** —— 猜不出来的那部分交给人，这就是本设计的全部理由。
+    //   相应地：有手动拆股时 [aggregate] **完全跳过**启发式，两套逻辑不同时生效
+    //   （否则会拿用户已经给对的信息去和猜测打架）。
+
+    /** 一次拆股。[date] 是除权日，形如 `2022-08-25`；[ratio] 是拆股比，3.0 表示 3:1。 */
+    data class Split(val date: String, val ratio: Double) {
+        /** 屏上显示：比例用「N:1」写法；反向拆股(0.1)照样如实显示，不藏。 */
+        override fun toString(): String =
+            "$date  " + (if (ratio >= 1.0) {
+                val r = if (ratio == Math.floor(ratio)) ratio.toInt().toString() else ratio.toString()
+                "$r:1"
+            } else {
+                "1:" + Math.round(1.0 / ratio)
+            })
+    }
+
+    private data class Entry(var on: Boolean = false, val splits: MutableList<Split> = mutableListOf())
+
+    object SplitBook {
+        private const val SP = "gridcalc_splits_v1"
+        private const val PKEY = "splits"
+
+        /** 内存态。[aggregate] 是静态入口、没有 Context，只能靠 [ensure] 预载。 */
+        @Volatile private var data = HashMap<String, Entry>()
+        private val lock = Any()
+
+        private fun norm(sym: String) = sym.trim().uppercase(Locale.US)
+
+        private fun entry(sym: String): Entry = synchronized(lock) {
+            data.getOrPut(norm(sym)) { Entry() }
+        }
+
+        // ---------- 持久化（读写全程 try/catch：存不下就算了，绝不因它崩）----------
+
+        fun ensure(c: android.content.Context) {
+            try {
+                val s = c.getSharedPreferences(SP, android.content.Context.MODE_PRIVATE)
+                    .getString(PKEY, null) ?: return
+                val jo = JSONObject(s)
+                val m = HashMap<String, Entry>()
+                for (sym in jo.keys()) {
+                    val o = jo.optJSONObject(sym) ?: continue
+                    val e = Entry()
+                    e.on = o.optBoolean("on", false)
+                    val arr = o.optJSONArray("splits") ?: JSONArray()
+                    for (i in 0 until arr.length()) {
+                        val x = arr.optJSONObject(i) ?: continue
+                        val d = x.optString("d", "")
+                        val r = x.optDouble("r", 0.0)
+                        if (d.isNotEmpty() && r > 0) e.splits.add(Split(d, r))
+                    }
+                    e.splits.sortBy { it.date }
+                    m[sym] = e
+                }
+                data = m
+            } catch (_: Exception) {
+            }
+        }
+
+        private fun persist(c: android.content.Context) {
+            try {
+                val jo = JSONObject()
+                synchronized(lock) {
+                    for ((k, e) in data) {
+                        val o = JSONObject()
+                        o.put("on", e.on)
+                        val arr = JSONArray()
+                        for (s in e.splits) {
+                            val x = JSONObject()
+                            x.put("d", s.date); x.put("r", s.ratio)
+                            arr.put(x)
+                        }
+                        o.put("splits", arr)
+                        jo.put(k, o)
+                    }
+                }
+                c.getSharedPreferences(SP, android.content.Context.MODE_PRIVATE)
+                    .edit()?.putString(PKEY, jo.toString())?.apply()
+            } catch (_: Exception) {
+            }
+        }
+
+        // ---------- 读 ----------
+
+        fun list(sym: String): List<Split> = synchronized(lock) { data[norm(sym)]?.splits?.toList() } ?: emptyList()
+
+        fun enabled(sym: String): Boolean = synchronized(lock) { data[norm(sym)]?.on } ?: false
+
+        /** 有没有手动数据可依（开关开 + 至少一条）。决定 [aggregate] 走手动还是启发式。 */
+        fun hasData(sym: String): Boolean = enabled(sym) && list(sym).isNotEmpty()
+
+        // ---------- 写 ----------
+
+        fun setEnabled(c: android.content.Context, sym: String, on: Boolean) {
+            entry(sym).on = on
+            persist(c)
+        }
+
+        /** 覆盖式写入（UI 的增/删都走它）。同一天重复录入按**后者覆盖**处理。 */
+        fun put(c: android.content.Context, sym: String, list: List<Split>) {
+            val e = entry(sym)
+            e.splits.clear()
+            val byDate = LinkedHashMap<String, Double>()
+            for (s in list) {
+                if (s.date.isBlank() || !(s.ratio > 0)) continue
+                byDate[s.date] = s.ratio
+            }
+            e.splits.addAll(byDate.map { Split(it.key, it.value) })
+            e.splits.sortBy { it.date }
+            persist(c)
+        }
+
+        // ---------- 输入解析 ----------
+
+        /**
+         * 解析用户输入的一行。支持：
+         *   `2022-08-25 3`   `2022-08-25 3:1`   `1:10`   `20220825 5`   `2022/08/25 5`
+         * 返回 null 表示**这一行没看懂** —— UI 据此提示，不猜、不吞。
+         */
+        fun parseLine(line: String): Split? {
+            val parts = line.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }
+            if (parts.size < 2) return null
+            val d = parts[0].trim().replace('/', '-').replace(Regex("^(\\d{4})-(\\d{2})-(\\d)$"), "$1-$2-0$3")
+            if (!Regex("^\\d{4}-\\d{2}-\\d{2}$").matches(d)) return null
+            val r = parseRatio(parts[1]) ?: return null
+            return Split(d, r)
+        }
+
+        /** `3` / `3:1` / `1:10` / `5:4` → 拆股比。写错就 null，不做默认。 */
+        fun parseRatio(t: String): Double? {
+            val s = t.trim().removeSuffix("倍")
+            if (s.isEmpty()) return null
+            if (!s.contains(':')) {
+                val v = s.toDoubleOrNull() ?: return null
+                return if (v > 0 && v <= 100) v else null
+            }
+            val ab = s.split(':')
+            if (ab.size != 2) return null
+            val a = ab[0].trim().toDoubleOrNull() ?: return null
+            val b = ab[1].trim().toDoubleOrNull() ?: return null
+            if (!(a > 0) || !(b > 0)) return null
+            val r = a / b
+            return if (r > 0 && r <= 100) r else null
+        }
+
+        // ---------- 应用 ----------
+
+        private fun dayKey(t: Long): String =
+            java.text.SimpleDateFormat("yyyy-MM-dd", Locale.US).format(java.util.Date(t))
+
+        /**
+         * 前复权：**除权日之前**的柱子整体乘 (1/比例)；量反向放大。
+         * ⚠ 边界用「日期字符串比大小」（ISO 格式字典序 == 时间序），不碰时区 ——
+         *   数据源的 t 是"日期"不是"时刻"，任何本地时区换算都会把跨日判断挪错一天。
+         * ⚠ **跨线那一根柱内含两种尺度，单一线性系数修不了**：
+         *   月/季线的柱子是按月末标注的，拆股落在月中时，那一根的 high 仍是拆股前。
+         *   这时把日期**往后挪一天**（2022-08-25 → 2022-09-01）就能把整根也纳进来。
+         *   UI 里就写着这句提示 —— 不替用户猜哪个对。
+         */
+        fun apply(ks: List<KLine>, sym: String): List<KLine> {
+            val sp = list(sym)
+            if (!enabled(sym) || sp.isEmpty()) return ks
+            val out = ArrayList(ks)
+            for (i in out.indices) {
+                var f = 1.0
+                for (s in sp) if (dayKey(out[i].t) < s.date) f *= 1.0 / s.ratio
+                if (f == 1.0) continue
+                val k = out[i]
+                out[i] = k.copy(o = k.o * f, h = k.h * f, l = k.l * f, c = k.c * f,
+                    v = k.v / f, qv = k.qv / f)   // 拆股后股数变多 ⟹ 量放大
+            }
+            return out
+        }
     }
 
     fun profileOf(ks: List<KLine>): Profile {

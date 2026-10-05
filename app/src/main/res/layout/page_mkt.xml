@@ -476,6 +476,140 @@
 
         </LinearLayout><!-- /mkt_period_row（周期 + 数量 同一行）-->
 
+        <!-- ⚠⚠⚠ 2026-10-04 **手动拆股 · 前复权**（用户裁定："在行情界面里设置一个开关，
+             我来输入拆股日期和比例，然后你计算"）。
+
+             【为什么必须是手动】数据源给的是**未复权**序列，而「哪天、几拆几」这条信息
+             在 OHLC 里根本不存在 —— 3:1 拆股和「真跌了 3 倍」产出逐位相同的数据。
+             实测合法涨幅上沿 2.23 与最小拆股比 3.01 只隔 1.35 倍，
+             自动判据（无论怎么调阈值）都必然在正常上涨上开火。
+             ⟹ 缺的那条信息只能由人给，本块只负责**录入 + 展示**，不做任何检测。
+
+             【开关语义】开 = 只用手动拆股、完全跳过自动启发式；
+                          关 = 回到自动启发式（旧的 forwardAdjust）。
+             ⟹ 两套绝不同时生效：用户录的那份是他确认过的信息，
+               让一个猜出来的结果去覆盖它是本末倒置。 -->
+        <LinearLayout
+            android:id="@+id/mkt_split_head"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingTop="@dimen/space_3"
+            android:paddingBottom="@dimen/space_3">
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="手动拆股 · 前复权"
+                    android:textColor="?attr/colorInk"
+                    android:textSize="@dimen/fs_title" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="1.5dp"
+                    android:text="行情源不复权，断层由你录"
+                    android:textColor="?attr/colorFaint"
+                    android:textSize="@dimen/fs_note" />
+            </LinearLayout>
+            <!-- 与设置页 set_auto_sw 同一形态：尺寸由代码 setTrackDrawable 决定轨道两态，
+                 thumb 两态由 t211PaintSwitch 同款染色。这里不写 android:track，
+                 与 page_settings.xml 保持同一来源。 -->
+            <Switch
+                android:id="@+id/mkt_split_sw"
+                android:layout_width="42dp"
+                android:layout_height="24.8dp"
+                android:contentDescription="手动拆股 前复权"
+                android:minWidth="0dp"
+                android:minHeight="0dp" />
+        </LinearLayout>
+
+        <!-- 编辑区：开关打开才显示。列表由代码逐条渲染（每条右侧一个 × 可删）。 -->
+        <LinearLayout
+            android:id="@+id/mkt_split_box"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone">
+            <TextView
+                android:id="@+id/mkt_split_hint"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:paddingBottom="@dimen/space_2"
+                android:lineSpacingExtra="3dp"
+                android:textColor="?attr/colorFaint"
+                android:textSize="@dimen/fs_note"
+                android:text="每行一条，格式「日期 比例」，如 2022-08-25  3:1。除权日之前的柱子整体除以比例，成交量按同比例放大。月/季线上若仍剩一根断层，把日期往后挪一天。" />
+            <LinearLayout
+                android:id="@+id/mkt_split_list"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical" />
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginTop="@dimen/space_2">
+                <EditText
+                    android:id="@+id/mkt_split_date"
+                    android:layout_width="0dp"
+                    android:layout_weight="1.4"
+                    android:layout_height="34.3dp"
+                    android:background="@drawable/mkt_count_box"
+                    android:hint="2022-08-25"
+                    android:importantForAutofill="no"
+                    android:inputType="text"
+                    android:maxLines="1"
+                    android:paddingLeft="7.6dp"
+                    android:paddingRight="7.6dp"
+                    android:textColor="?attr/colorInk"
+                    android:textColorHint="?attr/colorFaint"
+                    android:textSize="@dimen/fs_title" />
+                <EditText
+                    android:id="@+id/mkt_split_ratio"
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:layout_height="34.3dp"
+                    android:layout_marginStart="@dimen/space_2"
+                    android:background="@drawable/mkt_count_box"
+                    android:hint="3:1"
+                    android:importantForAutofill="no"
+                    android:inputType="text"
+                    android:maxLines="1"
+                    android:paddingLeft="7.6dp"
+                    android:paddingRight="7.6dp"
+                    android:textColor="?attr/colorInk"
+                    android:textColorHint="?attr/colorFaint"
+                    android:textSize="@dimen/fs_title" />
+                <Button
+                    android:id="@+id/mkt_split_add"
+                    android:layout_width="wrap_content"
+                    android:layout_height="34.3dp"
+                    android:layout_marginStart="@dimen/space_2"
+                    android:background="@drawable/mkt_count_box"
+                    android:minWidth="0dp"
+                    android:paddingLeft="10.5dp"
+                    android:paddingRight="10.5dp"
+                    android:text="添加"
+                    android:textAllCaps="false"
+                    android:textColor="?attr/colorInk"
+                    android:textSize="@dimen/fs_note" />
+            </LinearLayout>
+            <TextView
+                android:id="@+id/mkt_split_note"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:paddingTop="@dimen/space_2"
+                android:textColor="?attr/colorFaint"
+                android:textSize="@dimen/fs_note"
+                android:text="" />
+        </LinearLayout>
+
         <View
             android:layout_width="match_parent"
             android:layout_height="1dp"

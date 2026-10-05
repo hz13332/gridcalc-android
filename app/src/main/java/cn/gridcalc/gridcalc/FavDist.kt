@@ -213,7 +213,7 @@ object FavDist {
                 vsShared = runCatching { MktData.MktSave.saved(ckShared) }.getOrNull()
             }
             if (vsShared != null && vsShared.isNotEmpty()) {
-                val ag = MktData.aggregate(vsShared)
+                val ag = MktData.aggregate(vsShared, s)
                 if (ag.ks.size >= 2) {
                     val vp = MktData.profileOf(ag.ks)
                     val cur = ag.ks.last().c
@@ -264,7 +264,7 @@ object FavDist {
             }
             // ⟹ 复用命中时 vs 是空的，走这里不会覆盖已算好的 r
             if (vs != null && vs.isNotEmpty()) {
-                val ag = MktData.aggregate(vs)
+                val ag = MktData.aggregate(vs, s)
                 val vp = MktData.profileOf(ag.ks)
                 val cur = ag.ks.last().c
                 val prv = if (ag.ks.size > 1) ag.ks[ag.ks.size - 2].c else cur

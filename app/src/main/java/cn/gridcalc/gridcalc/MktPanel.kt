@@ -92,6 +92,19 @@ class MktPanel(private val act: MainActivity, page: View) {
     @Volatile private var stepSym: String = ""
     // t108 (2) 日期范围独占行已删(稿里没有),srcNote 视图随之移除
     private val winBtn: Button = page.findViewById(R.id.mkt_win)  // t107 (3) gone on screen, logic kept
+
+    // ⚠⚠⚠ 2026-10-04 **手动拆股 · 前复权**（用户裁定：行情界面里给开关，他自己录日期和比例）。
+    //   为什么只能手动：未复权 OHLC 里**没有**「哪天、几拆几」这条信息 ——
+    //   3:1 拆股与「真跌 3 倍」产出逐位相同的数据；实测合法涨幅上沿 2.23 与最小拆股比 3.01
+    //   只隔 1.35 倍，任何自动阈值都会在正常上涨上开火。详见 MktData.SplitBook 的说明。
+    private val splitHead: LinearLayout = page.findViewById(R.id.mkt_split_head)
+    private val splitSw: android.widget.Switch = page.findViewById(R.id.mkt_split_sw)
+    private val splitBox: LinearLayout = page.findViewById(R.id.mkt_split_box)
+    private val splitList: LinearLayout = page.findViewById(R.id.mkt_split_list)
+    private val splitDate: EditText = page.findViewById(R.id.mkt_split_date)
+    private val splitRatio: EditText = page.findViewById(R.id.mkt_split_ratio)
+    private val splitAdd: Button = page.findViewById(R.id.mkt_split_add)
+    private val splitNote: TextView = page.findViewById(R.id.mkt_split_note)
     private val titleTx: TextView = page.findViewById(R.id.mkt_title)   // 稿 L522: 顶栏标题恒为「行情」(布局里写死), 不显示品种名
     private val searchTx: TextView = page.findViewById(R.id.mkt_searchtx) // t252 稿 L527: 描边盒右侧的「搜索/收起」
     // t252 稿 L526: 描边盒左侧的品种名。值来自 symInp —— 它是品种的唯一真源(MktPanel L45)。
@@ -528,6 +541,10 @@ fun setSym(s: String) {
 
     init {
         MktData.MktSave.attach(act) // 落盘留底需要 applicationContext(稿:1353-1355)
+        // ⚠ 2026-10-04 手动拆股簿也要预载进内存：`aggregate` 是静态入口、没有 Context，
+        //   只能靠 ensure() 提前读一次（与 FX.ensure 同一形状）。
+        MktData.SplitBook.ensure(act)
+        initSplitUi()
         // ⚠ 2026-10-03 **源状态行的展开/收起点击监听整块删除**。
         //   它挂在 srcRow 上，而 srcRow 已随「源状态行」按用户裁定删除（见 page_mkt.xml 墓碑）。
         //   配套的 syncLegRows/paintLegRows 一并删除 —— 后者是 dispatchDraw 闪退的元凶，
@@ -681,6 +698,147 @@ fun setSym(s: String) {
             //   t321 加 #77 的时候踩了这个: 两个 view 语义重叠, 收错了那一个。
             status.visibility = View.GONE
         }
+    }
+
+    // ══════════════ 手动拆股 · 前复权（UI）══════════════
+    //
+    // 【职责边界】这里只做三件事：显示当前品种的条目、把用户输入的文本**解析**成 (日期, 比例)、
+    //   把结果写回 [MktData.SplitBook]。**不做任何检测、不推断、不替用户补默认值** ——
+    //   「哪天、几拆几」是数据里没有的信息，猜出来就是错的价格。
+    //
+    // 【为什么改完要重载】拆股是在 `MktData.aggregate` 里现算的，缓存里存的是复权前的数据
+    //   （写盘顺序 fxify → MktCache.put → aggregate），所以改一条拆股**不需要重新联网**，
+    //   只需重跑一次渲染。`reloadAfterSplit` 走的是既有 mkLoad 路径，命中内存缓存就不发请求。
+
+    /** [splitSw] 的监听回调用它做程序化 setChecked，必须静音，否则会回写成用户操作。 */
+    private var suppressSplitCb = false
+
+    private fun initSplitUi() {
+        // ⚠ 资源取法：本类只有构造形参 `page`，它不是属性；Activity 专属的 `resources` / `theme`
+        // 在这里都不可见。settings 页那段写法（MainActivity 内用 `resources.getDrawable(id, theme)`）
+        // 搬不过来 ⟹ 统一从控件自身取 context，不新开成员。
+        splitSw.setTrackDrawable(
+            splitSw.resources.getDrawable(R.drawable.switch_track, splitSw.context.theme)
+        )
+        splitSw.setOnCheckedChangeListener { _, on ->
+            if (suppressSplitCb) return@setOnCheckedChangeListener
+            val sym = curSym()
+            if (sym.isBlank()) {
+                mkStatus("先选一个品种，再开手动拆股", true)
+                suppressSplitCb = true
+                splitSw.isChecked = false
+                suppressSplitCb = false
+                return@setOnCheckedChangeListener
+            }
+            MktData.SplitBook.setEnabled(act, sym, on)
+            paintSplitUi()
+            reloadAfterSplit()
+        }
+        splitAdd.setOnClickListener { addSplitFromInput() }
+    }
+
+    /** 当前品种的开关状态 → 开关、编辑区、条目列表、提示行，四样一起刷新。 */
+    fun paintSplitUi() {
+        val sym = curSym()
+        val has = sym.isNotBlank()
+        splitHead.visibility = if (has) View.VISIBLE else View.GONE
+        if (!has) {
+            splitBox.visibility = View.GONE
+            return
+        }
+        val on = MktData.SplitBook.enabled(sym)
+        suppressSplitCb = true
+        splitSw.isChecked = on
+        suppressSplitCb = false
+        splitSw.thumbTintList = android.content.res.ColorStateList.valueOf(
+            if (on) act.attrColor("colorOnPrimary") else act.attrColor("colorFaint")
+        )
+        splitBox.visibility = if (on) View.VISIBLE else View.GONE
+        if (!on) return
+
+        val list = MktData.SplitBook.list(sym)
+        splitList.removeAllViews()
+        for (s in list) {
+            val row = LinearLayout(act).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = android.view.Gravity.CENTER_VERTICAL
+                setPadding(0, 4, 0, 4)
+            }
+            val tv = TextView(act).apply {
+                text = s.toString()
+                setTextColor(act.attrColor("colorInk"))
+                textSize = 13f
+                layoutParams = LinearLayout.LayoutParams(0,
+                    LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            }
+            val del = TextView(act).apply {
+                text = "×"
+                setTextColor(act.attrColor("colorFaint"))
+                textSize = 17f
+                setPadding(22, 0, 4, 0)
+                // 删除不弹二次确认（与计算页「清空数据」同一裁定：即时反馈胜过弹窗）。
+                // ⚠ 但删除只影响该品种的复权系数，原始数据没动 ⟹ 可原样再加回来，不是不可撤销。
+                setOnClickListener {
+                    val rest = MktData.SplitBook.list(sym).filter { it.date != s.date }
+                    MktData.SplitBook.put(act, sym, rest)
+                    paintSplitUi()
+                    reloadAfterSplit()
+                }
+            }
+            row.addView(tv)
+            row.addView(del)
+            splitList.addView(row)
+        }
+        splitNote.text = when {
+            list.isEmpty() -> "还没有条目。开关开着但一条都没录 ⟹ 不做任何调整（也不走自动猜测）。"
+            else -> "已录 ${list.size} 条，" +
+                "累计 ${fmtRatio(list.fold(1.0) { a, b -> a * b.ratio })} → 除权日之前的价格全部乘以 " +
+                (1.0 / list.fold(1.0) { a, b -> a * b.ratio }).toString().take(6)
+        }
+    }
+
+    private fun fmtRatio(r: Double): String =
+        if (r == Math.floor(r) && r < 1e9) r.toLong().toString() + ":1"
+        else (Math.round(r * 100.0) / 100.0).toString() + ":1"
+
+    /**
+     * 解析两格输入并入库。
+     * ⚠ **看不懂就明说**：日期或比例解析失败时只写提示行、不改数据、不猜默认值。
+     *   这与本仓「拿不到就说拿不到，不拿兜底糊弄」的规矩一致。
+     */
+    private fun addSplitFromInput() {
+        val sym = curSym()
+        if (sym.isBlank()) return
+        val d = splitDate.text?.toString()?.trim().orEmpty()
+        val r = splitRatio.text?.toString()?.trim().orEmpty()
+        if (d.isEmpty() || r.isEmpty()) {
+            splitNote.text = "日期和比例都要填。格式：2022-08-25  与  3:1"
+            return
+        }
+        val sp = MktData.SplitBook.parseLine("$d $r")
+        if (sp == null) {
+            splitNote.text = "看不懂「$d $r」。日期要 YYYY-MM-DD，比例写 3 或 3:1（反向拆股写 1:10）"
+            return
+        }
+        val old = MktData.SplitBook.list(sym)
+        val replaced = old.any { it.date == sp.date }
+        MktData.SplitBook.put(act, sym, old + sp)   // 同日重复录入由 put 覆盖
+        splitDate.setText("")
+        splitRatio.setText("")
+        splitNote.text = (if (replaced) "已覆盖 " else "已添加 ") + sp.toString()
+        paintSplitUi()
+        reloadAfterSplit()
+    }
+
+    /** 改完拆股只重画、不重取：mkLoad 会先查内存缓存/留底，命中就不发网络请求。 */
+    private fun reloadAfterSplit() {
+        val s = curSym()
+        if (s.isBlank()) return
+        if (symInp.text.toString().trim().uppercase(java.util.Locale.US) !=
+            s.trim().uppercase(java.util.Locale.US)) {
+            symInp.setText(s)
+        }
+        mkLoad()
     }
 
     // t102 第3步:源状态行。**只读 MktData.lastLegs,不改任何取数逻辑、不新增定时器。**
@@ -1059,6 +1217,10 @@ private fun clearForNewSymbol() {
         // ⚠⚠ 2026-10-03 换品种同时清空行情区，避免「标题是新的、数据是上一个品种的」。
         //   原因与范围见 [clearForNewSymbol] 的注释。
         if (symChanged) clearForNewSymbol()
+        // ⚠ 2026-10-04 换品种要同步刷新手动拆股区：开关状态与条目都是**按品种**存的，
+        //   不刷的话上一只票的开关/条目会挂在新品种头上 —— 看着像给新票配了拆股。
+        //   位置在 lastSym 赋值之后（1169），curSym() 才拿得到新品种。
+        if (symChanged) paintSplitUi()
         // ⚠⚠ 2026-10-03 步长阈值改为**按当前品种**取（用户报「大量品种的网格数量没有自动计算」）。
         //   原先 stepThr 只由 loadStepThr 写一次、取的是 mkt_last_sym 那**一个**品种，
         //   于是算别的品种时它属于别人或为 null ⟹ autoGridN 恒返回 null ⟹ 永远不自动算。
@@ -1109,14 +1271,14 @@ private fun clearForNewSymbol() {
         //     用 su 会读不到自己写的那份。
         val ckM = MktData.MktCache.key(ysym, tf, fetchN)
         MktData.MktCache.get(ckM)?.let { vs ->
-            renderAgg(MktData.aggregate(vs), mkt, seq)
+            renderAgg(MktData.aggregate(vs, ysym), mkt, seq)
             return   // ← 命中内存缓存，与另两条路径同：不再发后台请求
         }
         var hadSavedM = false
         MktData.MktSave.saved(ckM)?.let { sv ->
             hadSavedM = true
             // 留底已是美元价(_u=1)，**不再 fxify** —— 二次折算会让价格越刷越小。
-            renderAgg(MktData.aggregate(sv), mkt, seq)
+            renderAgg(MktData.aggregate(sv, ysym), mkt, seq)
             mkStatus("东财 拉取中 · 失败不回退重试", false)
         }
         if (!hadSavedM) mkStatus("东财 拉取中 · 失败不回退重试", false)
@@ -1137,7 +1299,7 @@ private fun clearForNewSymbol() {
                 }
                 MktData.MktCache.put(ckM, vs)
                 MktData.MktSave.store(ckM, vs) // 稿:1422-1423
-                val ag = MktData.aggregate(vs)
+                val ag = MktData.aggregate(vs, ysym)
                 act.runOnUiThread {
                     if (seq != reqSeq) return@runOnUiThread
                     renderAgg(ag, mkt, seq)
@@ -1414,7 +1576,8 @@ private fun clearForNewSymbol() {
     private fun renderStock(v: VendorKs, mkt: String, seq: Int, prelim: String?) {
         if (seq != reqSeq) return
         prelimTag = prelim
-        renderAgg(MktData.aggregate(listOf(v)), mkt, seq)
+        // ⚠ 这里没有 `s` 形参（品种只存在于 lastSym）—— 一度写成 `s` 编译不过。
+        renderAgg(MktData.aggregate(listOf(v), lastSym), mkt, seq)
     }
 
     // t44:形参由 `n` 改名 `fetchN` —— 它收到的是 **mkLoad 的取数档位 MktData.FETCH_N(240)**，
@@ -1495,7 +1658,7 @@ private fun clearForNewSymbol() {
     private fun renderCrypto(vs: List<VendorKs>, mkt: String, seq: Int, prelim: String?) {
         if (seq != reqSeq) return
         prelimTag = prelim
-        renderAgg(MktData.aggregate(vs), mkt, seq)
+        renderAgg(MktData.aggregate(vs, lastSym), mkt, seq)   // 同 renderStock：品种取 lastSym
     }
 
     // 同上:形参是**取数档位**,不是用户填的根数。
