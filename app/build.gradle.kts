@@ -50,9 +50,13 @@ android {
         //          收益率/收益比恒绿（用户裁定）；竞速改替补；手续费吃单0.04%/挂单0% 拆分
         //          维持保证金率改按杠杆查表八档阶梯取值（用户提供的币安实测值）
         // CI 传入 -PciBuildNumber 后 versionCode = 30000+run，保证单调递增可覆盖安装
+        // ⚠ 2026-10-05 本地默认值跟到 40400（对齐 versionName 4.4）。发版正式包走 CI，
+        //   那里 versionCode = 30000+run，本地这个值只在手工 assembleRelease 时生效。
         val ciRun = (findProperty("ciBuildNumber") as String?)?.toIntOrNull()
-        versionCode = if (ciRun != null) 30000 + ciRun else 40200
-        versionName = "4.2"
+        versionCode = if (ciRun != null) 30000 + ciRun else 40400
+        // ⚠ **版本号唯一来源**：Release 名与 tag 都是 v{versionName}（见 .github/workflows/build-apk.yml）。
+        //   最近一次已发布是 v4.1；此后累计 4.2.1 / 4.3 / 4.3.1 / 4.3.2 / 4.3.3 / 4.4 ⟹ 本次发 4.4。
+        versionName = "4.4"
     }
 
     // ⚠⚠⚠ 2026-10-03 **签名口令移出源码，改走环境变量**（用户裁定，从仓库移除密钥）。
