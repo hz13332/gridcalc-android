@@ -85,9 +85,15 @@ object MktSuggest {
         return items
     }
 
-    // 反查中文名(对标稿子favName):命中第一个值相等的键,无则查港韩表,再无则空串
+    // 反查中文名(对标稿子favName):命中第一个值相等的键,无则查港韩表,再查 A 股运行时缓存,再无空串
+    //
+    // ⚠ 2026-10-05 A 股这一层是**新增**的：`sh688825` 本地表里查不到，
+    //   早先返回空 ⟹ 自选行标题回落成原始代码，第二行也不再显示代码
+    //   （`titleIsCode` 判据），于是那一行与港/美/币的排版规则对不上。
+    //   名字由 [MktData.NameBook] 后台从腾讯行情查一次并落盘。
     fun favName(s: String): String =
-        CNNAME.firstOrNull { it.second == s }?.first ?: marketName(s)
+        CNNAME.firstOrNull { it.second == s }?.first
+            ?: marketName(s).ifEmpty { MktData.NameBook.of(s) }
 
     private val SPOT_QUOTES = setOf("USDT", "USD", "USDC")
 

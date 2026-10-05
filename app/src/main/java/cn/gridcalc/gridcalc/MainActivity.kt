@@ -2580,6 +2580,10 @@ private fun recLoad() {
 
         body = findViewById(R.id.body)
         val inf = LayoutInflater.from(this)
+        // ⚠ 2026-10-05 **必须在两个 Panel 构造之前 attach**：
+        //   `MktSuggest.favName` 是同步函数，自选行首帧就要读它；
+        //   名字缓存在 NameBook 里，这里晚一行 attach，首帧就会把中文名读成空。
+        MktData.NameBook.attach(this)
         calcPage = inf.inflate(R.layout.page_calc, body, false)
         settingsPage = inf.inflate(R.layout.page_settings, body, false)
         mktPage = inf.inflate(R.layout.page_mkt, body, false)

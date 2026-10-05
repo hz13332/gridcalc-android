@@ -109,7 +109,10 @@ object MktData {
 
     internal fun get(
         url: String, accept: String? = null, ua: String = UA, timeoutMs: Int = 0,
-        origin: String? = null, referer: String? = null
+        origin: String? = null, referer: String? = null,
+        // ⚠ 2026-10-05 **可指定字符集**。腾讯行情 `qt.gtimg.cn` 返回的是 **GBK**，
+        //   早先这里写死 UTF-8 ⟹ 中文名会整串乱码（实测 curl 出来是 `???οƼ?`）。
+        charset: java.nio.charset.Charset = Charsets.UTF_8
     ): String {
         val c = (URL(url).openConnection() as HttpURLConnection).apply {
             connectTimeout = if (timeoutMs > 0) timeoutMs else 12000
@@ -125,7 +128,7 @@ object MktData {
         try {
             val code = c.responseCode
             if (code !in 200..299) throw Exception("http $code")
-            return c.inputStream.bufferedReader(Charsets.UTF_8).readText()
+            return c.inputStream.bufferedReader(charset).readText()
         } finally {
             c.disconnect()
         }
@@ -2256,6 +2259,97 @@ private fun raceOk(
                 if (i < out.size) out[i] = crossBar(out[i], s.ratio)
             }
             return out
+        }
+    }
+
+    // ---------- 品种中文名 ----------
+    //
+    // 【为什么需要】自选行按「**中文名** · 徽章 · 代码」排（见 FavPanel 的 fname/fsub）。
+    //   港/韩/美/币的名字都在 [MktSuggest] 的本地表里，**A 股没有**——
+    //   `favName("sh688825")` 返回空，标题就回落成原始代码 `sh688825`，
+    //   第二行因为「标题已是代码」而不再重复显示代码（见 `titleIsCode`）。
+    //   ⟹ 屏上那一行就成了「原始代码 + A股 + 空代码」，与其他品种的规则对不上。
+    //   用户裁定：「我给你代码是让你去搜它的名字叫什么、它的代码是什么，
+    //   你直接把这个给贴上去了。有没有看其他股票展示的规则是什么？」
+    //
+    // 【数据源】腾讯行情 `qt.gtimg.cn/q=`，**一次可查多个代码**（逗号分隔），
+    //   返回 `v_sh688825="51~长鑫存储~688825~54.79~..."`，第 2 个 `~` 之间就是中文名。
+    //   ⚠ **GBK 编码**，必须显式指定字符集（见 [get] 的 charset 参数）。
+    //   选它而不是百度/东财：腾讯是本仓 A 股 K 线已在用的源，同一个域名不新增可达性风险；
+    //   而东财在本机实测不可达。
+    //
+    // 【限流】一次请求查一批（上限 30 个），结果**落盘缓存**，命中就不再发请求。
+    object NameBook {
+        private const val SP = "gridcalc_names_v1"
+        private const val PKEY = "names"
+        private const val BATCH = 30
+        private val lock = Any()
+        @Volatile private var map = HashMap<String, String>()
+        @Volatile private var inflight = false
+
+        private fun norm(sym: String) = sym.trim().lowercase(java.util.Locale.US)
+
+        /** 本地查，不发网络。UI 同步路径用它。 */
+        fun of(sym: String): String = synchronized(lock) { map[norm(sym)] } ?: ""
+
+        fun attach(c: android.content.Context) {
+            try {
+                val s = c.getSharedPreferences(SP, android.content.Context.MODE_PRIVATE)
+                    .getString(PKEY, null) ?: return
+                val jo = JSONObject(s)
+                val m = HashMap<String, String>()
+                for (k in jo.keys()) m[norm(k)] = jo.optString(k, "")
+                map = m
+            } catch (_: Exception) {
+            }
+        }
+
+        private fun persist(c: android.content.Context) {
+            try {
+                val jo = JSONObject()
+                synchronized(lock) { for ((k, v) in map) if (v.isNotBlank()) jo.put(k, v) }
+                c.getSharedPreferences(SP, android.content.Context.MODE_PRIVATE)
+                    .edit()?.putString(PKEY, jo.toString())?.apply()
+            } catch (_: Exception) {
+            }
+        }
+
+        /**
+         * 给「本地表里查不到名字」的符号补名。**整批一次请求**，后台线程跑。
+         * [done] 在主线程回调，供 UI 刷新（结果异步到达，不刷新就看不到名字）。
+         */
+        fun ensure(c: android.content.Context, syms: List<String>, done: (() -> Unit)? = null) {
+            val miss = syms.filter { it.isNotBlank() && of(it).isEmpty() }
+                .map { it.trim() }.distinct().take(BATCH)
+            // ⚠ miss 为空时**直接返回、不回调** —— [done] 的语义是「有东西变了」。
+            //   无条件回调会让「repaint → ensure → done → repaint」绕成死循环。
+            if (miss.isEmpty()) return
+            if (inflight) return
+            inflight = true
+            Thread {
+                try {
+                    val url = "https://qt.gtimg.cn/q=" + miss.joinToString(",")
+                    val txt = get(url, ua = uaRnd(), timeoutMs = 8000,
+                        referer = "https://gu.qq.com/", charset = java.nio.charset.Charset.forName("GBK"))
+                    synchronized(lock) {
+                        for (line in txt.split(';')) {
+                            val a = line.indexOf('=')
+                            if (a < 0) continue
+                            val key = line.substring(0, a).trim().removePrefix("v_").trim()
+                            if (key.isEmpty()) continue
+                            // "51~长鑫存储~688825~..." ⟹ 取第 2 段
+                            val f = line.substring(a + 1).trim().trim('"').split('~')
+                            val nm = if (f.size > 1) f[1].trim() else ""
+                            if (nm.isNotEmpty()) map[norm(key)] = nm
+                        }
+                    }
+                    persist(c)
+                } catch (_: Exception) {
+                } finally {
+                    inflight = false
+                    if (done != null) android.os.Handler(android.os.Looper.getMainLooper()).post(done)
+                }
+            }.start()
         }
     }
 

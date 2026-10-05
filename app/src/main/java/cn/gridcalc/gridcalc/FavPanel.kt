@@ -43,6 +43,17 @@ object FavStore {
     private const val KEY = "gc_fav"
     private const val SORTKEY = "gc_favsort"
 
+    /**
+     * 屏上显示的符号：去掉 A 股的 `sh`/`sz` **取数前缀**。
+     * 港/美/币原样返回 —— 它们的内部符号本来就与屏上一致
+     * （港股那行显示 `00700` 而不是 `hk00700`）。
+     * ⚠ 只影响**显示**，取数仍用原始符号 —— 拆掉前缀会让 `symType` 认不出 A 股。
+     */
+    fun displaySym(s: String): String {
+        val t = s.trim()
+        return if (Regex("^(SH|SZ)\\d{6}$", RegexOption.IGNORE_CASE).matches(t)) t.drop(2) else t
+    }
+
     fun tag(t: String): String = when (t) {
         "crypto" -> "币"
         // ⚠ t8 照稿 A1②：这里喂的是**徽章**，稿的徽章用词是「贵金」。
@@ -1157,7 +1168,11 @@ class FavPanel(
         val titleIsCode = (cnForSub.isEmpty() || cnForSub == f.s)
         if (!titleIsCode) {
             val codeTv = TextView(act).apply {
-                text = f.s
+                // ⚠ 2026-10-05 **A 股显示去前缀的代码**。
+                //   自选行的规则是「中文名 · 徽章 · 代码」，港股那行显示 `00700` 而不是
+                //   `hk00700`（App 内部港股符号本就不带前缀）⟹ A 股同理只该显示 `688825`，
+                //   `sh`/`sz` 是**取数用的市场前缀**，属于内部表示，不该出现在屏上。
+                text = FavStore.displaySym(f.s)
                 setTextColor(act.attrColor("colorSub"))       // 稿 --ink2
                 textSize = TS(R.dimen.fs_note)
                 maxLines = 1
@@ -1362,6 +1377,14 @@ class FavPanel(
         }
         // 距离窗口读distWin:已提交冻结/未提交跟随周期控件+根数(稿favKey=distWin)
         val (tf, n) = mkt.distWin()
+
+        // ⚠ 2026-10-05 **补中文名**。自选行的排版规则是「中文名 · 徽章 · 代码」，
+        //   本地表（MktSuggest）里没有 A 股 ⟹ `favName` 返回空，标题回落成原始代码
+        //   `sh688825`，第二行又因为「标题已是代码」而不再显示代码 ——
+        //   屏上那一行就成了「原始代码 + A股 + 空」，与其他品种的规则对不上。
+        //   这里把「查不到名字」的符号整批交给 NameBook（腾讯行情，一次一批、落盘缓存），
+        //   到了再 repaint 一次。**先出旧样子、名字到了再刷新**，不阻塞首帧。
+        MktData.NameBook.ensure(act, a.map { it.s }) { repaint() }
         data class Row(val it: FavItem, val d: DistR?, val m: RowMeta, val ratio: Double?)
         // 冷启动/断网首帧:display()兜底沿用持久化旧值,不先画无源;
         // 记录侧取该品种最新一条(latestRecOf,追加语义下读取取最新)
