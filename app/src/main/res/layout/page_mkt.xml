@@ -508,13 +508,6 @@
                     android:text="手动拆股 · 前复权"
                     android:textColor="?attr/colorInk"
                     android:textSize="@dimen/fs_title" />
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="1.5dp"
-                    android:text="行情源不复权，断层由你录"
-                    android:textColor="?attr/colorFaint"
-                    android:textSize="@dimen/fs_note" />
             </LinearLayout>
             <!-- 与设置页 set_auto_sw 同一形态：尺寸由代码 setTrackDrawable 决定轨道两态，
                  thumb 两态由 t211PaintSwitch 同款染色。这里不写 android:track，
@@ -535,15 +528,6 @@
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:visibility="gone">
-            <TextView
-                android:id="@+id/mkt_split_hint"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:paddingBottom="@dimen/space_2"
-                android:lineSpacingExtra="3dp"
-                android:textColor="?attr/colorFaint"
-                android:textSize="@dimen/fs_note"
-                android:text="每行一条，格式「日期 比例」，如 2022-08-25  3:1。除权日之前的柱子整体除以比例，成交量按同比例放大。拆股落在月中时，那一根内部含两种尺度 —— 以它的月末收盘价为尺子，超出常倍范围的开/高/低判为拆股前并除以比例，收盘不动。若调整后这根自身不成立（高低于收），就原样保留并在下面写明。" />
             <LinearLayout
                 android:id="@+id/mkt_split_list"
                 android:layout_width="match_parent"

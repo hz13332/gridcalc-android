@@ -1994,168 +1994,36 @@ private fun raceOk(
     fun aggregate(vs: List<VendorKs>): Agg = aggregate(vs, "")
 
     /**
-     * [sym] 只用于取该品种的**手动拆股**;传空串即退化成旧的纯启发式行为
-     *（保留这个重载是为了让既有调用点不必为了编译而改语义）。
+     * [sym] 只用于取该品种的**手动拆股**；传空串即不做任何复权。
      *
-     * ⚠⚠⚠ 2026-10-04 **手动拆股与启发式二选一，绝不同时生效**。
-     *   开关打开 ⟹ 只用用户录的条目；开关关闭 ⟹ 走 [forwardAdjust] 启发式。
-     *   两套同时跑会出两个结果，而用户录的那份是**他确认过的信息**，
-     *   让一个猜出来的结果去覆盖它是本末倒置。
+     * ⚠⚠⚠ 2026-10-05 **不再有任何自动判定**（用户裁定：「你不要自己判定了，
+     *   我说了我手动输入数据。把自动复权填写数据的功能取消。」）。
+     *   原启发式 forwardAdjust 与配套（SPLIT_CANDIDATES / SPLIT_HI_K /
+     *   residualJump / estimateRatio）**整块删除** —— 本文件里已不存在任何
+     *   「看数据猜拆股比」的代码，也就没有「猜错了悄悄生效」的可能。
+     *   ⟹ 开关关 = 原样显示；开关开 = 按用户录的 (日期, 比例) 算。**没有第三种行为。**
      */
     fun aggregate(vs: List<VendorKs>, sym: String): Agg {
         val win = vs.find { it.v == PIN && it.k.size >= 3 }
             ?: vs.maxByOrNull { v -> v.k.sumOf { numD(it.qv) } }!!
         // ⚠ 先**复权**再 takeLast(240)：顺序不能反。
-        //   复权要在整段历史上做（断层可能在被截掉的老段里），截完再复权就只剩一半信息。
+        //   复权要在整段历史上做（除权日可能在被截掉的老段里），截完再复权就只剩一半信息。
         val sorted = win.k.sortedBy { it.t }
-        val manual = SplitBook.enabled(sym)
-        val adj = if (manual) SplitBook.apply(sorted, sym) else forwardAdjust(sorted)
-        return Agg(adj.takeLast(240), vendorName(win.v))
-    }
-
-    // ══════════════════════ 前复权 ══════════════════════
-    //
-    // ⚠⚠⚠ 2026-10-03 **前复权 v2** —— 拆股比不再锁死在少数几个整数。
-    //
-    // 【背景】百度返回的是**不复权**序列（用户实见：「百度的数据源并未进行前复权」），
-    //   叠加 TSLA 2022-08-25 三拆一（用户实见），实测整段历史被切成两个尺度：
-    // ```
-    // 2020-03 收 524.00   2021-07 收 687.20   2022-03 收 1077.60   ← 拆股前尺度
-    // 2022-08 收 275.61   ← 跨拆股月：open/high 还在拆股前，close/low 已切
-    // 2022-11 收 194.70   2026-03 收 371.75                        ← 拆股后尺度
-    // ```
-    //   ⟹ 只有**跨线那一根**内部同时带两个尺度，其余每根各自自洽。
-    //   ⟹ 早先「把异常柱丢掉」的处置是错的：**丢掉的是证据，不是病根**。
-    //
-    // 【百度侧解决不了】实测 `all=0` / `all=1` / `all=2` 返回**完全相同** ——
-    //   该接口**没有任何复权参数**。⟹ 只能在数据侧自己补做。
-    //
-    // 【v1 的问题（用户指出）「系数其实就等于拆股比，可是其他股票也有这种情况怎么办」】
-    //   v1 候选集只有 {2,3,4,5,10}。现实里还有 AAPL 2014 的 7:1、NVDA 2021 的 20:1、
-    //   以及反向拆股 1:10 —— v1 对这些**一律不修正**。
-    //   而 v1 能唯一解出 N=3，靠的正是「拆股比是整数」这个假设
-    //   （约束链给的是区间 [2.14, 3.43]，里面还有 2.5、3.33，是整数性才锁到 3）。**这个假设很脆。**
-    //
-    // 【v2 三步】
-    //   ① 候选集扩到真实范围（见 [SPLIT_CANDIDATES]），含非整数与反向
-    //   ② **用数据自己估初值**再吸附：[estimateRatio] 用该股**自身** high/close 中位数
-    //      算 N̂ 再吸附 —— 这一步**不依赖整数假设**，7:1、2.5:1 也能落到正确候选
-    //   ③ **改完必须回验**（[residualJump]）：应用系数后重扫全段，若残留断层没变小，
-    //      说明这次没修好 ⟹ **撤销不提交**。
-    //      ⟹ 这是 v2 最关键的一步：**不管候选集怎么定，「改完无残留断层」都成立**。
-    //         它不关心拆股比是多少，只关心结果对不对
-    //         ⟹ 把「猜错且不自知」降级为「猜错会被发现」。
-    //
-    // 【v2 仍然不是查表 —— 局限写在这里，别当成已彻底解决】
-    //   · 这是「从价格反推拆股比」，不是「查到了拆股比」：
-    //       查表 = 确定；反推 = 大概率对，小概率错。
-    //   · **真正的确定解只有一个：数据源直接给复权序列。** 百度无复权参数、
-    //     腾讯美股只回 1 根 ⟹ 现有源里反推已是最好办法，但它终究不是查表。
-    //   · 现金分红（除权除息）未做：拆股是**乘性**，断层明显好认；
-    //     分红是**减性**、量小，反推容易把它误判成正常波动而漏掉。
-    //   · 一根柱子里既跨拆股又跨分红时，单一系数无法表达，本函数会保守地不动。
-
-    private val SPLIT_CANDIDATES = listOf(
-        // 正向拆股（含少量非整数：现实中确实存在 3:2、8:5 这类）
-        1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 5.0, 6.0, 7.0, 8.0, 10.0, 20.0, 25.0, 50.0,
-        // 反向拆股（1:2、1:10 等）
-        1.0 / 2.0, 1.0 / 3.0, 1.0 / 4.0, 1.0 / 5.0, 1.0 / 7.0, 1.0 / 10.0, 1.0 / 20.0
-    )
-    private const val SPLIT_HI_K = 1.6   // 相邻柱 high 的合理上限，超过即视为断层
-
-    /** 全段相邻柱 high 的最大比值。< [SPLIT_HI_K] 即视为无残留断层。 */
-    private fun residualJump(ks: List<KLine>): Double {
-        var worst = 1.0
-        for (i in 0 until ks.size - 1) {
-            val a = ks[i].h; val b = ks[i + 1].h
-            if (a > 0.0 && b > 0.0) {
-                if (a / b > worst) worst = a / b
-                if (b / a > worst) worst = b / a
-            }
-        }
-        return worst
-    }
-
-    /**
-     * 用该股**自身**的正常 high/close 中位数估断层系数，再吸附到最近候选。
-     * TSLA 实测：`944.00 / (275.61 × 1.10) ≈ 3.12` → 吸附到 3。
-     * ⟹ 不依赖「拆股比是整数」—— 7:1、2.5:1 都能落到正确候选上。
-     */
-    private fun estimateRatio(a: KLine, normalHiClose: Double): Double? {
-        if (!(a.h > 0.0 && a.c > 0.0) || normalHiClose <= 0.0) return null
-        val raw = a.h / (a.c * normalHiClose)
-        if (!(raw > 1.0)) return null
-        val best = SPLIT_CANDIDATES.minByOrNull { kotlin.math.abs(it - raw) / raw } ?: return null
-        return if (kotlin.math.abs(best - raw) / raw <= 0.25) best else null
-    }
-
-    fun forwardAdjust(ks: List<KLine>): List<KLine> {
-        if (ks.size < 3) return ks
-        var out = ArrayList(ks)
-
-        // 该股正常的 high/close 中位数 —— 先滤掉疑似异常柱再取中位数，避免被断层污染
-        val ratios = out.filter { it.h > 0.0 && it.c > 0.0 && it.h / it.c < SPLIT_HI_K }
-            .map { it.h / it.c }.sorted()
-        if (ratios.isEmpty()) return ks
-        val normalHiClose = ratios[ratios.size / 2]
-        if (!(normalHiClose > 1.0)) return ks
-
-        var guard = 0
-        while (guard++ < 5) {
-            val before = residualJump(out)
-            if (before <= SPLIT_HI_K) break          // 已无断层，收工
-
-            var cut = -1
-            var ratio = 0.0
-            // 从新到旧找第一处断层（最近的先修）
-            for (i in out.size - 2 downTo 0) {
-                val a = out[i]; val b = out[i + 1]
-                if (!(b.h > 0.0 && a.h > 0.0)) continue
-                if (a.h / b.h < SPLIT_HI_K) continue
-                // ② 用数据估初值 → 吸附候选；估不出再退回「直接吸附到比值」
-                val n = estimateRatio(a, normalHiClose)
-                    ?: SPLIT_CANDIDATES.minByOrNull { kotlin.math.abs(it - a.h / b.h) }
-                    ?: continue
-                val trial = a.copy(
-                    o = a.o / n, h = a.h / n, l = a.l / n, c = a.c / n,
-                    v = a.v * n, qv = a.qv * n
-                )
-                // 调整后该柱自身必须成立
-                if (!(trial.h >= trial.c && trial.l <= trial.c && trial.o > 0.0)) continue
-                cut = i; ratio = n; break
-            }
-            if (cut < 0) break
-
-            val fixed = ArrayList<KLine>(out.size)
-            for (i in out.indices) {
-                val k = out[i]
-                fixed.add(
-                    if (i <= cut) k.copy(o = k.o / ratio, h = k.h / ratio,
-                        l = k.l / ratio, c = k.c / ratio, v = k.v * ratio, qv = k.qv * ratio)
-                    else k)
-            }
-
-            // ③ **回验**：残留断层没变小 ⟹ 这次没修好 ⟹ 撤销，不提交
-            if (residualJump(fixed) >= before) break
-
-            out = fixed
-        }
-        return out
+        return Agg(SplitBook.apply(sorted, sym).takeLast(240), vendorName(win.v))
     }
 
     // ══════════════ 手动拆股（前复权）══════════════
     //
-    // 【为什么要有它】见上面 [forwardAdjust] 那段论证：从**未复权 OHLC 反推拆股比**在信息上欠定 ——
+    // 【为什么只做手动】从**未复权 OHLC 反推拆股比**在信息上欠定 ——
     //   3:1 拆股与「真跌了 3 倍」产出**逐位相同**的数据；
-    //   实测合法涨幅上沿 2.23（TSLA 季线 2019-12→2020-03）与最小拆股比 3.01 只隔 1.35 倍，
-    //   原判据阈值 1.6 正落在合法暴涨区中间 ⟹ 必然误判。
+    //   实测合法涨幅上��� 2.23（TSLA 季线 2019-12→2020-03）与最小拆股比 3.01 只隔 1.35 倍，
+    //   任何阈值都会在正常上涨上开火。
     //   **缺的那条信息（哪天、几拆几）数据里根本没有，只能由人给。**
-    //   用户裁定：「在行情界面设置开关，我来输入拆股日期和比例，然后你计算」。
     //
-    // 【因此本对象只做一件事】把用户给的 (日期, 比例) 变成价格因子。
-    //   **不做检测、不猜、不自动** —— 猜不出来的那部分交给人，这就是本设计的全部理由。
-    //   相应地：有手动拆股时 [aggregate] **完全跳过**启发式，两套逻辑不同时生效
-    //   （否则会拿用户已经给对的信息去和猜测打架）。
+    // ⚠ 2026-10-05 用户进一步裁定：「不要自己判定了，把自动复权填写数据的功能取消」。
+    //   ⟹ 本对象**只做一件事**：把用户给的 (日期, 比例) 变成价格因子。
+    //     没有检测、没有猜测、没有兜底启发式 —— 屏上看到的价格要么是源的原始值，
+    //     要么就是用户自己填出来的，**不存在第三种来源**。
 
     /** 一次拆股。[date] 是除权日，形如 `2022-08-25`；[ratio] 是拆股比，3.0 表示 3:1。 */
     data class Split(val date: String, val ratio: Double) {
@@ -2241,9 +2109,6 @@ private fun raceOk(
 
         fun enabled(sym: String): Boolean = synchronized(lock) { data[norm(sym)]?.on } ?: false
 
-        /** 有没有手动数据可依（开关开 + 至少一条）。决定 [aggregate] 走手动还是启发式。 */
-        fun hasData(sym: String): Boolean = enabled(sym) && list(sym).isNotEmpty()
-
         // ---------- 写 ----------
 
         fun setEnabled(c: android.content.Context, sym: String, on: Boolean) {
@@ -2303,128 +2168,30 @@ private fun raceOk(
         private fun dayKey(t: Long): String =
             java.text.SimpleDateFormat("yyyy-MM-dd", Locale.US).format(java.util.Date(t))
 
-        /** 本品种上一次 [apply] 的说明（哪根柱子没修好、为什么）。屏上要如实讲，不能默默留坑。 */
-        @Volatile private var noteSym = ""
-        @Volatile private var lastNotes: List<String> = emptyList()
-
-        /** [apply] 单次运行期间的说明累加器（[splitCrossBar] 在里面直接写）。 */
-        private var curNotes: MutableList<String> = mutableListOf()
-
-        fun notesFor(sym: String): List<String> =
-            if (noteSym == norm(sym)) lastNotes else emptyList()
-
         /**
-         * 一根 K 线自身是否成立：**高 ≥ max(开,收)** 且 **低 ≤ min(开,收)**。
-         * 跨拆股的那根若调整后违反它，说明我们对这根的判定与源数据对不上 ⟹ 宁可不调。
-         */
-        private fun selfConsistent(k: KLine): Boolean =
-            k.o > 0.0 && k.h >= maxOf(k.o, k.c) && k.l <= minOf(k.o, k.c) && k.l > 0.0
-
-        /** 与后一根是否「接得上」：收盘落在同一尺度带内（[0.5, 2.2]，与 [splitCrossBar] 同一带）。 */
-        private fun smoothTo(a: KLine, n: KLine?): Boolean {
-            if (n == null || !(a.c > 0.0) || !(n.c > 0.0)) return true
-            val k = a.c / n.c
-            return k >= 0.5 && k <= 2.2
-        }
-
-        /**
-         * 跨拆股那一根的处理 —— 用户裁定：**「拆股在月中，就直接用月末的股价」**。
+         * 前复权：**除权日之前**的柱子整体除以比例；成交量按同比例放大。
          *
-         * 【为什么只用一根柱子自己的收盘就够了】那根柱子的**收盘是那期的最后一个价**，
-         *   而除权日就落在这一期之内 ⟹ 收盘必然**已经在拆股之后**。它就是这根柱子的尺子。
-         *   实测 TSLA 2022-08-30（3:1 在 8/25）：
-         * ```
-         *   c = 275.61                                   ← 锚，拆股后
-         *   o/c = 903.83/275.61 = 3.28  超带 → 开在拆股前 → ÷3 = 301.28
-         *   h/c = 944.00/275.61 = 3.42  超带 → 高在拆股前 → ÷3 = 314.67
-         *   l/c = 271.81/275.61 = 0.99  在带 → 低已是新价 → 不动
-         *   → [301.28, 314.67, 271.81, 275.61]
-         * ```
-         *
-         * 【带 [0.5, 2.2]】一根柱子内部 o/h/l 与 c 的比值天然有界（高/收、低/收通常 <1.2），
-         *   超出这个带只可能是**尺度不对**。要排除 1/3=0.33、1/5=0.20 与 3、5 这些拆股尺度，
-         *   同时容纳真实的月涨幅（实测最大 +98% = 1.98）。
-         *
-         * ⚠ 早先版本拿**前后邻居**逐字段比（写了很长一段），是绕远路：
-         *   邻居比值里混着真实的涨跌，判据反而更容易失效。锚在**自己这根的收盘**上更干净。
-         *
-         * @return null = 调整后这根**自身不成立**，调用方退回原值并出说明。
-         */
-        private fun splitCrossBar(b: KLine, r: Double): KLine? {
-            if (!(b.c > 0.0)) return b
-            fun isPre(f: Double): Boolean {
-                if (!(f > 0.0)) return false
-                val k = f / b.c
-                return k < 0.5 || k > 2.2
-            }
-            val cand = KLine(b.t,
-                if (isPre(b.o)) b.o / r else b.o,
-                if (isPre(b.h)) b.h / r else b.h,
-                if (isPre(b.l)) b.l / r else b.l,
-                b.c,                              // 收盘是锚，拆股后，不动
-                b.v, b.qv)
-            if (cand == b) return b
-            if (selfConsistent(cand)) return cand
-            // ⚠ 自洽性没过 ⟹ 原值保留并出说明，**不退而求其次去整根除**。
-            //   TSLA 2020-08-30 实测：整根除看着自洽，可 close 498.32 本身就是真实的
-            //   拆股后价，被除成 99.66 —— 错 5 倍，而且错得很像真的。
-            //   看得见的错图好过看不见的错价。
-            curNotes.add(dayKey(b.t) +
-                " 这根调整后自身不成立（高<收 或 低>开），**已原样保留**，请核对源数据")
-            return null
-        }
-
-        /**
-         * 前复权：**除权日之前**的柱子整体乘 (1/比例)；量反向放大；
-         * **跨除权日的那一根走 [splitCrossBar] 逐字段定标**。
-         *
-         * ⚠ 边界用「日期字符串比大小」（ISO 格式字典序 == 时间序），不碰时区 ——
-         *   数据源的 t 是"日期"不是"时刻"，任何本地时区换算都会把跨日判断挪错一天。
-         * ⚠ 日线没有跨线柱：除权日当天那根就是新价，`<` 是严格的，天然不误伤。
+         * ⚠ 边界用「日期字符串比大小」（ISO 字典序 == 时间序），不碰时区 ——
+         *   数据源的 t 是「日期」不是「时刻」，任何本地时区换算都会把跨日判断挪错一天。
+         * ⚠ 除权日当天那根**不动**：那天开盘就已经是新价。
+         * ⚠⚠ **跨除权日的那一根（拆股落在月/季中）按同一条规则处理，不做任何特殊判定**
+         *   ——2026-10-05 用户裁定「不要自己判定了」，自动判定已整块删除。
+         *   ⟹ 那根内部混没混尺度，是**源数据**的性质，App 不猜也不修。
+         *     真要连它一起归入「之前」，把除权日往后挪一天即可，完全由你决定。
          */
         fun apply(ks: List<KLine>, sym: String): List<KLine> {
             val sp = list(sym)
-            if (!enabled(sym) || sp.isEmpty()) {
-                noteSym = ""; lastNotes = emptyList(); return ks
-            }
-            val src = ArrayList(ks)          // 原值：判据必须拿**没调过的**邻居比
+            if (!enabled(sym) || sp.isEmpty()) return ks
             val out = ArrayList(ks)
-            curNotes = mutableListOf()
-            // 由旧到新：先调更早的，后面那次的「后一根参照」仍在它右边、尺度未被扰动
             for (s in sp.sortedBy { it.date }) {
-                var ci = -1
-                for (i in out.indices) if (dayKey(out[i].t) >= s.date) { ci = i; break }
-                if (ci < 0) continue                       // 除权日在这段历史之前
-                // ① 默认：除权日之前的**全部**柱子整体除（ci-1 也在内）
-                for (i in 0 until ci) {
+                for (i in out.indices) {
+                    if (dayKey(out[i].t) >= s.date) break      // 到除权日就停
                     val k = out[i]
                     out[i] = k.copy(o = k.o / s.ratio, h = k.h / s.ratio,
                         l = k.l / s.ratio, c = k.c / s.ratio,
                         v = k.v * s.ratio, qv = k.qv * s.ratio)
                 }
-                // ② ci-1 只在「整体除之后**接不上** ci」时才当成跨界柱重做。
-                //   ⚠ 早先版本把 ci-1 无条件豁免出整体除，结果 AAPL 2014-05 这种
-                //     **根本不含除权日**的柱子被判不出、就此不调，原样留下一处断层。
-                //   ⟹ 判据改成**看数据**：整体除完还跟后一根对不上，才说明它内部混了尺度。
-                if (ci > 0 && !smoothTo(out[ci - 1], src[ci])) {
-                    val fx = splitCrossBar(src[ci - 1], s.ratio)
-                    // ⚠⚠⚠ 判不出/不自洽 ⟹ 退回 **src 原值**，不是「已经整体除过的 out 值」。
-                    //   这一步我写错过一次：`return null` 等于保留了整体除的结果，
-                    //   注释却写着「原样保留」—— **注释和代码说的不是一回事**。
-                    //   实测后果（TSLA 月线 2020-08，5:1 在 8/31、3:1 在 2022-08-25）：
-                    //     close 原值 498.32 是**真实的拆股后价**
-                    //     保留整体除的结果 → ÷15 = 33.22   ← 错 5 倍
-                    //     退回原值后由 2022 那次拆股正常处理 → ÷3 = 166.11  ← 对
-                    //   更晚的拆股按循环顺序继续作用于这个原值，不需要额外补。
-                    out[ci - 1] = fx ?: src[ci - 1]
-                }
-                // ③ ci 本身：标签 ≥ 除权日 ⟹ 一定跨界，逐字段
-                if (ci < out.size) {
-                    val fx = splitCrossBar(src[ci], s.ratio)
-                    if (fx != null) out[ci] = fx
-                }
             }
-            noteSym = norm(sym); lastNotes = ArrayList(curNotes)
             return out
         }
     }
