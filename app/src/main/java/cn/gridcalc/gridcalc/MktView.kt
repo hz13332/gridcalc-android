@@ -161,6 +161,9 @@ class MktView @JvmOverloads constructor(
     }
 
     // 窗口恒为全量(MK.view=null常态),只由上方输入决定
+    // ⚠⚠ 2026-10-10:这里返回的是 setData() 收到的**原始**列表(可能含脏柱/跨尺度柱),
+    //   它**只**用来喂 profileOf。真正上屏的那一份是 Profile.ks(过滤后),见 onDraw 顶部。
+    //   ⟹ 本文件不做任何过滤:过滤逻辑只允许存在一处,在 MktData.profileOf 里。
     private fun visible(): List<KLine> = all
 
     override fun onTouchEvent(e: MotionEvent): Boolean {
@@ -192,9 +195,43 @@ class MktView @JvmOverloads constructor(
 
     override fun onDraw(c: Canvas) {
         super.onDraw(c)
-        val ks = visible()
+        val raw = visible()
+        if (raw.isEmpty()) return
+        // ══════════════════════════════════════════════════════════════════════════
+        // ⚠⚠⚠ 2026-10-10 【用户报:行情图 K 线掉出绘图区之外 · 真机截图】
+        //   用户原话：「k线会掉出行情图显示的范围之外」「行情的上下没有变价」。
+        //
+        // 【根因 · 绘制集合与量程集合**不同源**】
+        //   · MktData.profileOf() 先做两级过滤(clean 非法柱 → 尺度带 [cur/3, cur*3])，
+        //     然后**只拿过滤后的 ks** 算 lo/hi(MktData.kt 里那段 lo/hi 循环)；
+        //   · 而本函数改前画的是 setData() 收到的**未过滤**列表，y() 又按 vp.lo/vp.hi
+        //     线性映射且**不做钳位** ⟹ 被尺度带整根剔除的跨尺度柱(拆股前后)照样被画，
+        //     y 坐标直接落到绘图区上/下边界之外 —— 截图里那些出界的柱子就是这么来的。
+        //
+        // 【方案 (a)：绘制侧只认 profileOf 交回来的那一份】
+        //   Profile 新增 `ks` 字段(= 算 lo/hi / rv / sup 用的**同一份**列表)，
+        //   本函数此后 K 线、cw、时间轴刻度、十字、支撑过滤**全部**走 `vp.ks`，
+        //   不再有第二个列表来源。⟹ lo = min(l)、hi = max(h) 就是这一份的极值，
+        //   而 y() 是单调映射 ⟹ 画出来的每一根恒有 y ∈ [m, m+plotH]，**结构上不可能出界**。
+        //
+        // 【为什么不用方案 (b)（保留全部柱子 + y() 钳位）】
+        //   · 钳位只是把越界的柱子**贴在边界上画**，既没消除「这一根不属于这个尺度」，
+        //     又会把「两侧又不同源了」这件事藏起来 —— 下次再犯就查不出来；
+        //   · 跨尺度柱(如 NFLX 10:1 拆股前后的 1078 → 107.58)**本来就该剔除**:
+        //     它与现价不在同一个价格尺度上，同一根 Y 轴里要么把整屏压成一条线、
+        //     要么被画到框外，两种都读不出东西 —— 这正是 profileOf 当初加尺度带的原因；
+        //   · 过滤逻辑**只允许存在一处**:尺度带仍只在 MktData.profileOf 里，本文件
+        //     一个字都不复制(本文件已有一份 onFill() 两份拷贝的血泪注释，不添第二例)。
+        //
+        // ⚠ 本改动**不碰网络、不改任何请求频率**(用户 2026-10-10:「抓取行情信息不要频繁打,
+        //   不要被限流」):绘制层只是换个引用去读**已经取回来**的那一份列表。
+        // ⚠ 唯一例外说明:实体最矮 1px 的那道 `max(1f, abs(yC-yO))` 会让柱底最多多出 1px，
+        //   与本 bug 无关(不是「整根画到框外」)，未动。
+        // ══════════════════════════════════════════════════════════════════════════
+        val vp = MktData.profileOf(raw)
+        // vp.ks = profileOf 真正用来算 lo/hi 的那一份(退化:有效柱<3 时可能为空 ⟹ 什么都不画)
+        val ks = vp.ks
         if (ks.isEmpty()) return
-        val vp = MktData.profileOf(ks)
 
         val W = width.toFloat()
         val H = height.toFloat()
@@ -350,6 +387,11 @@ class MktView @JvmOverloads constructor(
         }   // ← SHOW_AXIS 墓碑结束
         paint.alpha = 255
 
+        // ⚠⚠ 2026-10-10:这里的 `ks` 是 **vp.ks**(过滤后、与 vp.lo/vp.hi 同源的那一份)。
+        //   根数 n、cw、K 线、时间轴刻度(下面 tickIdx 用的也是这个 n)、十字、支撑过滤
+        //   全部走它 —— 全函数**没有第二个列表来源**(这就是本 bug 的修法,见 onDraw 顶部)。
+        //   ⚠ 连带:MktInfo.count = n 报的是**画出来的根数**(跨尺度柱本来就没上屏,不该计入)，
+        //     与 MktPanel「N 根…已更新」的既有语义(画出来的根数,不是取到的根数)一致。
         val n = ks.size
         val cw = (plotRight - chartX) / n
         val bw = max(1f, cw * 0.6f)
@@ -429,6 +471,9 @@ class MktView @JvmOverloads constructor(
         //   (稿 L495 的 x={PR-标签宽}),它盖住线的右端而不是让出一列 —— 与稿一致。
         //   底色不透明(与页面背景同色系,**不是绿色**——绿是线色,同色必糊);
         //   文字高对比墨色;垂直居中于线;两条都在且标签靠太近时**只把第二支撑的标签往下推**,互不压。
+        // ⚠ 2026-10-10:现价锚点取**绘制列表**的最后一根 —— 它正常就是 profileOf 尺度带的
+        //   锚点柱 cur0(inBand 恒含锚点柱,除非该柱自身跨尺度)；用同一份列表当锚，
+        //   现价虚线、支撑过滤、十字读数就不会与画出来的 K 线各说各话。
         val curPx = ks.last().c
         val supShow = vp.sup.filter { it < curPx }
         // t6:供下面「现价标签」用 —— 现价标签要与第一支撑芯片防压(见那里的 curGap),

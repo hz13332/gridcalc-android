@@ -669,9 +669,14 @@ fun setSym(s: String) {
             //   把它去掉之后 `Int + String` 在 Kotlin 里**没有这个重载**, 编译直接报错。
             //   「函数可不可解析, 编译器才是判据」—— 断言当时没覆盖到这一行的类型。
             // t44【F-2c③】**这行「N 根」= 画出来的根数,不是取到的根数**,语义与改动前一致:
-            //   info.count 由 MktView 构造时取的是 setData() 收到的**列表长度**(MktView.kt:84-85 `all = ks`
-            //   → :457 `count = n`),而 renderAgg 已按 curN() 切过一道 ⟹ 报的就是用户实际看到的那几根。
-            //   取数档位(FETCH_N=240)不会出现在这一行里。
+            //   ⚠⚠ 2026-10-10 **口径更正（t1 改了语义，此处当时未同步）**：
+            //   info.count 现在 = **MktView 真正画出来的根数** = `vp.ks.size`
+            //   （MktView.kt:233 `val ks = vp.ks` → :395 `val n = ks.size` → onInfo 的 `count = n`），
+            //   而 `vp.ks` 是 MktData.profileOf **过滤后**的那一份（干净柱 + 尺度带 [cur/3, cur*3]）。
+            //   改前这里写的是「setData() 收到的列表长度」—— 那是**未过滤**的 `show`；
+            //   t1 之后两者可能不等：跨尺度的拆股柱**不上屏**，也就不计入这个 N（这正是 t1 要的）。
+            //   ⟹ 口径仍是"画出来的根数"（用户看到几根就报几根），只是"画出来的"这一侧
+            //     从「收到的」收紧成「真的画上屏的」；取数档位(FETCH_N=240)照样不会出现在这一行里。
             //   用户填 100 但源只回 20 根时,这里**照实写「20 根」**,不谎报 100。
             stateline.text = "${info.count} 根${MktData.tfName(curTf())}已更新"
             stateline.setTextColor(act.attrColor("colorFaint"))
@@ -883,6 +888,18 @@ private fun clearForNewSymbol() {
         try {
             price.text = "—"
             chg.text = ""
+            // ⚠⚠⚠ 2026-10-05 补三处（用户实机截图：打开一个**取不到数**的品种后标题已经换了，
+            //   屏上却还挂着 **TSLA · 开盘 / 12:00:00 GMT-4** 和 **步长阈值 4.17%**）。
+            //   原来这个函数只清价格/涨跌/来源/目标价/支撑/图表 —— 「交易所·盘口」「时间」
+            //   这两行小字和步长阈值行**都漏了**，于是换到一个取不到数的品种时，
+            //   上一个品种的残留原样留着，看起来就像新品种的数据。
+            //   后果不止观感：步长阈值是计算页**自动算网格数量**的输入，
+            //   残留会用上一个品种的阈值去算新品种的网格数。
+            venueT.text = ""
+            timeT.text = ""
+            stepTv = 0.0
+            stepSym = ""
+            stepT.visibility = View.GONE
             srcName.text = ""
             srcName.setTextColor(act.attrColor("colorFaint"))
             tgt.visibility = View.GONE
@@ -1019,8 +1036,10 @@ private fun clearForNewSymbol() {
     //   屏上「步长阈值」那一行迟迟不参与布局(uiautomator 抓到的是旧状态)。
     //   现在:值与可见性都没变 ⟹ 直接 return,不碰 View、不发回调。
     private var stepInFlight = false
+    /** 幂等闸用的：当前显示的原因文案，避免同一句反复重画。 */
+    private var stepWhyShown: String = ""
     private fun t103PaintStepT(sym: String) {
-        if (sym.isEmpty()) { stepTv = 0.0; stepSym = ""; stepT.visibility = View.GONE; return }
+    /** 幂等闸用的：当前显示的原因文案，避免同一句反复重画。 */
         // 稿:1188 —— 换品种先清零,防旧品种阈值参与新区间
         if (stepSym != sym) { stepSym = sym; stepTv = 0.0; stepT.visibility = View.GONE }
         // 同一个品种的阈值已经拿到且已在屏上 ⟹ 不再重复取(MktData 侧本就有 5 分钟缓存,
@@ -1028,24 +1047,37 @@ private fun clearForNewSymbol() {
         if (stepTv > 0.0 && stepT.visibility == View.VISIBLE) return
         if (stepInFlight) return
         stepInFlight = true
-        MktData.stepThresholdAsync(sym) { t ->
+        MktData.stepThresholdAsync(sym) { r ->
             // ⚠️ stepThresholdAsync 的回调在**后台线程**(MktData 里起的是 Thread),
             // 碰 View 会抛 CalledFromWrongThreadException —— 必须整段切回主线程。
             act.runOnUiThread {
                 stepInFlight = false
                 if (stepSym != sym) return@runOnUiThread   // 异步回来时品种已换
-                val wantOn = t != null && t > 0
-                // 幂等:值和可见性都没变 ⟹ 什么都不做,更不发回调(否则上面的死循环会回来)
-                if (wantOn && stepTv == t && stepT.visibility == View.VISIBLE) return@runOnUiThread
-                if (!wantOn && stepTv == 0.0 && stepT.visibility == View.GONE) return@runOnUiThread
+          val t = r.v
+        val why = r.why
+       val wantOn = t != null && t > 0
+        // ⚠ 2026-10-05 幂等闸必须**把 why 算进去**：改前这一条只看「没值 + 不可见」就早退，
                 if (wantOn) {
+         // 于是「要显示原因」的那一次也被当成「什么都没变」挡掉了 ⟹ 原因永远画不出来。
+    if (!wantOn && why.isEmpty() && stepTv == 0.0 && stepT.visibility == View.GONE) return@runOnUiThread
+      if (!wantOn && why == stepWhyShown && stepTv == 0.0 && stepT.visibility == View.VISIBLE) return@runOnUiThread
                     stepTv = t!!
                     stepT.text = "步长阈值 " + MktData.mkFmt(t * 100.0) + "%"
                     stepT.visibility = View.VISIBLE
-                } else {
-                    stepTv = 0.0
-                    stepT.visibility = View.GONE
-                }
+                } else if (why.isNotEmpty()) {
+       // ⚠⚠⚠ 2026-10-05 没算出来时**把原因显示出来**，不再无声隐藏那一行。
+    // 用户真机原话：「我不知道它出现的慢，还是**压根就没有拉取**」。
+   // 改前 else 支只做 GONE ⟹「正在取/网络不通/日线不够」在屏上长得一模一样。
+  stepTv = 0.0
+         stepWhyShown = why
+       stepT.text = "步长阈值 " + why
+  stepT.setTextColor(android.content.res.ColorStateList.valueOf(0xFF9AA0A6.toInt()))
+  stepT.visibility = View.VISIBLE
+   } else {
+          stepTv = 0.0
+ stepWhyShown = ""
+ stepT.visibility = View.GONE
+  }
                 t103StepCb?.invoke()
             }
         }
@@ -1090,22 +1122,66 @@ private fun clearForNewSymbol() {
      *  down 那句带缓存时刻, 与自选页 L447 的缓存横幅同源(MktData.lastLegsAt + t118Ago),
      *  没有缓存时照实只说前半句 —— 稿那句的"展示…缓存数据"在无缓存时不成立, 不能照抄。
      *  ⛔ 认不出来的 message 一律走【原样透传】, 不硬套任何一个稿文案 ——
-     *     把一条"诚实但不精确"的信息说成"精确但可能不实", 比前者坏。 */
-    private fun t210FailText(msg: String?, sym: String? = null): String = when {
-        // 稿 L517 kr: ['err', '韩股：腾讯只回 1 根 · 东财不可达 · 两腿皆无 → 本品种无源']。
-        // 这句话对**韩股这一条链路**是事实陈述, 不是猜: MktData.stockLegs 里韩股的腿
-        // 写死为 [腾讯, 东财], 且同处注释记着「腾讯韩股接口实测只回 1 根, 过不了 prep 的 ≥3 根门槛」。
-        // 所以韩股两腿皆无时能确定地报这一句; 其它品种不适用(它们的腿是 [百度, 腾讯])。
-        sym != null && MktData.symType(sym.trim().uppercase(Locale.US)) == "kr" ->
-            "韩股：腾讯只回 1 根 · 东财不可达 · 两腿皆无 → 本品种无源"
-        msg == null -> "行情拉取失败(网络或品种名不对)"
-        msg.contains("都没有该品种数据") -> "无此品种 · 源正常但没有这个代码，请检查拼写"
-        msg.contains("都不可达") -> {
-            val at = MktData.lastLegsAt
-            if (at > 0L) "各行情源均不可达 · 展示 " + hhmm(at) + " 缓存数据（" + t118Ago(at) + "）"
-            else "各行情源均不可达"
+     *     把一条"诚实但不精确"的信息说成"精确但可能不实", 比前者坏。
+     *
+     *  ⚠⚠⚠ 2026-10-10 **韩股写死那句：收窄判据（t9）+ 按新腿链改写文案（t12）**。
+     *
+     *  【改前的病】下面那句韩股文案原来是**无条件**的：只要 `symType=="kr"` 就先匹配、先返回，
+     *   把 MktData 传来的 message 整个吃掉 —— 包括 2026-10-10 t6 新增的第三类
+     *   「限流冷却中，已跳过（…），当前无兜底源」。两者是**两回事**：
+     *     · 第三类 = 「我们这轮**没问**东财」（它被 10 分钟硬熔断 / 20s 软冷却跳过）⟹ **可恢复**，
+     *       正确动作是等几十秒再试；
+     *     · 写死那句 = 「东财 · Naver **两条腿都问了、都取不到**」⟹ 读起来像品种/代码有问题。
+     *   把前者说成后者，用户会去反复检查代码拼写 —— 这正是用户此前实报过的误判形状。
+     *
+     *  【为什么现在能收窄】那句文案是 2026-10-04 写下的**事实陈述**（**当时**腾讯韩股只回 1 根、
+     *   东财确实不可达 —— ⚠ 这是**旧事实**，腾讯腿 2026-10-10 已被 Naver 取代，见下段）。
+     *   2026-10-10 事实变了：东财实测一直好（HTTP 200 / 240 根），t6 又把「熔断键只有源名 ⟹
+     *   黄金那边东财超时把韩股东财腿一起熔断」的跨链连坐修掉，并补了第三类文案。
+     *   ⟹ 继续**无条件**断言「两腿皆无」会掩盖真实状态。
+     *
+     *  ⚠⚠ 2026-10-10 **文案本身也得跟着腿链走（t12）**：韩股第二腿已由 t8 从**腾讯换成 Naver**
+     *   （`MktData.stockLegs` 的 kr 分支现在是 `[东财|kr, Naver|kr]`；腾讯腿对韩股恒回 1 根、
+     *   从不产出，是它占着位置却不干活）。原句「腾讯只回 1 根 · 东财不可达」于是**与取数链矛盾**：
+     *   真到兜底那一刻，屏上会指着一个**根本不在链上**的源名，用户与后来的人都会读错。
+     *   ⟹ 现文案 =「韩股：东财 · Naver 两腿皆无 → 本品种无源」。
+     *   ⚠ **耦合规则（下次改腿链必须一起改这里）**：本句点名的源必须与 `MktData.stockLegs`
+     *     的 kr 分支**逐字一致**；那两行一旦变了（换源 / 加腿 / 减腿），这句就同步 ——
+     *     这正是 t12 存在的理由，别再让文案追不上腿链。
+     *
+     *  【判据（写清，不靠猜）】写死那句只在「**真的两腿皆无**」时用 —— 即 MktData 报的是
+     *   **前两类**（`msg == null` / 含「都没有该品种数据」/ 含「都不可达」）；这三者都意味着
+     *   「腿**都投了**，都失败或都返回空」。第三类则意味着「有腿压根没投」，必须原样透传。
+     *   ⚠ t6 的第三类文案**刻意不含**那两个子串（见 MktData.allDeadText 的注释），
+     *     所以「先判第三类、再判前两类」不会互相误伤。
+     *   ⚠ 连带：韩股遇到**认不出来的** message 也从「硬套写死句」改成**原样透传** ——
+     *     这正是本函数上面那条 ⛔ 原则要求的（该分支对韩股当前不可达：fetchStocks 只抛这三类）。
+     *   ⚠ 非韩股品种**逐字不变**：新增的第一条分支对它们本来就落在 `else -> msg`（同一个字符串）。
+     */
+    private fun t210FailText(msg: String?, sym: String? = null): String {
+        val isKr = sym != null && MktData.symType(sym.trim().uppercase(Locale.US)) == "kr"
+        // 「真的两腿皆无」：msg==null，或 MktData 报的是前两类（都投了、都失败/都空）
+        val bothTried = msg == null || msg.contains("都没有该品种数据") || msg.contains("都不可达")
+        return when {
+            // ⚠ 2026-10-10 **第三类优先透传**（本次变更的主目的）：t6 的「限流冷却中，已跳过…」
+            //   对**所有**市场一视同仁地原样透传 —— 韩股不再被下面那句写死文案盖掉。
+            msg != null && msg.contains("限流冷却中") -> msg
+            // 韩股写死那句（稿 L517）：**只在真的两腿皆无时**才用（见上面【判据】）
+            // ⚠⚠ 2026-10-10 t12：文案已按**当前腿链**改写 —— 稿 L517 原文是
+            //   「韩股：腾讯只回 1 根 · 东财不可达 · 两腿皆无 → 本品种无源」，而韩股第二腿
+            //   已由 t8 从腾讯换成 Naver（MktData.stockLegs 的 kr 分支 = [东财|kr, Naver|kr]）。
+            //   ⚠ 改腿链必须同步这一句（源名要与 kr 分支逐字一致）。
+            isKr && bothTried ->
+                "韩股：东财 · Naver 两腿皆无 → 本品种无源"
+            msg == null -> "行情拉取失败(网络或品种名不对)"
+            msg.contains("都没有该品种数据") -> "无此品种 · 源正常但没有这个代码，请检查拼写"
+            msg.contains("都不可达") -> {
+                val at = MktData.lastLegsAt
+                if (at > 0L) "各行情源均不可达 · 展示 " + hhmm(at) + " 缓存数据（" + t118Ago(at) + "）"
+                else "各行情源均不可达"
+            }
+            else -> msg
         }
-        else -> msg
     }
 
     private fun hhmm(at: Long): String {
@@ -1196,6 +1272,7 @@ private fun clearForNewSymbol() {
             "silver" -> "白银 $su"
             "hk" -> "港股 $su"
             "kr" -> "韩股 $su"
+            "ashare" -> "A股 $su"
             else -> "美股 $su"
         }
         prelimTag = null
@@ -1225,6 +1302,7 @@ private fun clearForNewSymbol() {
         //   详见 MainActivity.stepThrFor 的注释。
         if (symChanged) act.stepThrFor(su)
         val seq = ++reqSeq
+        // ⚠ 绝不落入下方商品兜底（ashare 漏分支是同类事故）。
         if (type == "stock" || type == "hk" || type == "kr" || type == "ashare") {
             // 港/韩/A股与美同走股票串行腿(稿§6);绝不落到下方商品(gold/silver/cmdty)兜底
             //
@@ -1338,12 +1416,19 @@ private fun clearForNewSymbol() {
         // ⚠️ 用户填的数 > 实际可用根数时(如只有 20 根却填 100):
         //    takeLast 返回**全部可用**的 20 根,不多不少不少画。
         //    这不是静默截断 —— 状态行那行「N 根…已更新」读的是
-        //    MktInfo.count = 传给 chart.setData() 的**列表长度**(见 MktView.setData → onInfo),
-        //    所以屏上会**照实写「20 根」**而不是谎报 100。要改显示根数,改上面的输入框即可。
+        //    ⚠⚠ 2026-10-10 **口径更正（t1 改了语义，此处当时未同步）**：
+        //    MktInfo.count = **MktView 真正画出来的根数**（`vp.ks.size`，见 MktView.kt:233/395 → onInfo），
+        //    而 `vp.ks` 是 MktData.profileOf **过滤后**的那一份；改前这里写的是
+        //    「传给 chart.setData() 的列表长度」= **未过滤**的 `show`，t1 之后两者可能不等
+        //    （跨尺度的拆股柱不上屏、不计入这个 N）。
+        //    ⟹ 所以屏上会**照实写「20 根」**而不是谎报 100；若这 20 根里还有跨尺度柱被过滤，
+        //      写的会是**更小的那个真实上屏数**（不是 20）。要改显示根数,改上面的输入框即可。
         val show = ag.ks.takeLast(curN())
         lastKs = show
         lastSrc = ag.src
         lastMkt = mkt
+        // ⚠ 2026-10-07 自选复用：把刚画完的K线发布给FavDist（同批同口径，免得自选再打一次API还算出另一个支撑）。
+        try { MktData.LastChart.put(lastSym, tf, show) } catch (_: Exception) {}
         chart.setData(show)
         // t108 (2) 日期范围独占行已删(稿 2-quote 没有这一行)。
         // 原来在这里写 srcNote.text = "起始~结束" 的代码一并移除。
@@ -1400,7 +1485,7 @@ private fun clearForNewSymbol() {
         val ty = if (sym.isEmpty()) "" else MktData.symType(sym)
         // 时区:只有美股用 GMT-4 的 marketPhase;亚洲市场不能拿美股时区冒充
         val isUs = ty != "crypto" && ty != "hk" && ty != "kr" && ty != "gold" &&
-            ty != "silver" && ty != "cmdty" && ty != "ashare"   // ⚠ A股是亚洲盘，不能按美股算
+            ty != "silver" && ty != "cmdty" && ty != "ashare"
         val phase = if (isUs) when (MktData.marketPhase()) {
             "open" -> "开盘"; "pre" -> "盘前"; "post" -> "盘后"; else -> "收盘"
         } else if (ty == "hk" || ty == "kr" || ty == "ashare") t122Phase(ty) else "收盘"
@@ -1525,9 +1610,23 @@ private fun clearForNewSymbol() {
         // 步长阈值那条腿可能还没跑完，先等它把日线缓存写进来再算预测价
         val run = { ->
             Thread {
-                val v: Double? = if (isStock) MktData.fetchTgt(sym)?.avg
-                else if (isHq) MktData.fetchTgtEtnet(sym)?.avg
-                else MktData.predTarget(sym)
+                // ⚠ 2026-10-08 用户报「机构预测价是不是没保存，每次点进行情都要重新拉一次」——**属实**：
+                //   grep 全项目**没有 tgtSave/tgtLoad**，`fetchTgt`（美股）与 `fetchTgtEtnet`（港股）
+                //   **零缓存**，每次进行情页各打一次请求；而币/商品走的 `predTarget` 自带
+                //   MktSave.predSave 按天缓存 —— 同一个「预测价」，三类品种两种待遇。
+                //   修法：**只给缺缓存的这两类补上**，且与 predTarget 用**同一份**按天缓存
+                //   （一个品种一个预测价，不关心它来自机构均价还是历史最高），日界取同一天。
+                //   ⚠ 不把 predTarget 再包一层：它内部已是同一份缓存，再包等于重复查询。
+                val ck = sym.trim().uppercase(Locale.US)
+                val day = java.time.LocalDate.now().toString()
+                val v: Double? = if (isStock || isHq) {
+                    MktData.MktSave.predLoad(ck, day) ?: run {
+                        val t = if (isStock) MktData.fetchTgt(sym)?.avg
+                        else MktData.fetchTgtEtnet(sym)?.avg
+                        if (t != null && t > 0) MktData.MktSave.predSave(ck, day, t)
+                        t
+                    }
+                } else MktData.predTarget(sym)
                 act.runOnUiThread {
                     // ⚠⚠ 2026-10-03 用户报「预测价混了策略」——**实测确认是这个串台**：
                     //   屏上是 01211(港股)，mkt_tgt 却写着 `预测价(最高×1.2) 115,045.76`，
@@ -1553,14 +1652,14 @@ private fun clearForNewSymbol() {
                 }
             }.start()
         }
-        if (!isStock && MktData.predTarget(sym) == null) {
-            // 日线缓存还没就绪 ⟹ 等一拍再试一次（只等一次，不轮询）
-            act.runOnUiThread {
-                act.getWindow().getDecorView().postDelayed({ run() }, 2500)
-            }
-            return
-        }
+        // ⚠ 2026-10-07 BTC修正：判据不得在UI线程同步调predTarget（内含stepCloses网络，主线程必抛NetworkOnMainThread→恒null→恒延迟→旧串台复活）。
+        //   改为无条件run()一次（后台取，stillSame双守卫），缓存未就绪则run内兜底取；延迟重试只排一次且同样双守卫。
         run()
+        act.runOnUiThread {
+            act.getWindow().getDecorView().postDelayed({
+                if (tgt.visibility != View.VISIBLE && stillSame()) run()
+            }, 2500)
+        }
     }
 
     /** 行首标签按品种类型走，避免把「历史最高×1.1」也叫成「机构目标均价」。 */
@@ -1591,12 +1690,17 @@ private fun clearForNewSymbol() {
         // ③不管有没有留底,后台照样抓,抓到就覆盖(稿:1413-1414)。
         // 留底已是美元价(_u=1/usd=true),**不再 fxify**——二次折算会让价格越刷越小。
         var hadSaved = false
+        // ⚠ 2026-10-07 外汇/美债单腿是Yahoo，状态行不写百度/腾讯（写了就是编来源）。
+        val legsTxt = run {
+            val t = MktData.symType(s)
+            "百度股市通 / 腾讯 竞速中 · 失败腿不回退重试"
+        }
         MktData.MktSave.saved(ck)?.let { sv ->
             hadSaved = true
             renderStock(MktData.pickStockWinner(sv), mkt, seq, null)
-            mkStatus("百度股市通 / 腾讯 竞速中 · 失败腿不回退重试", false)
+            mkStatus(legsTxt, false)
         }
-        if (!hadSaved) mkStatus("百度股市通 / 腾讯 竞速中 · 失败腿不回退重试", false)
+        if (!hadSaved) mkStatus(legsTxt, false)
         // v4.2/t97:股票K线只用东方财富单源(用户要求「不切源」,不再回退 Nasdaq/腾讯/Yahoo),
         // 失败文案由 fetchStocks 按「抛异常=东财不可达 / 返回空=没有该品种数据」两类如实给出;
         // 这里**透传**它,不再一律盖成泛化的「行情拉取失败(网络或品种名不对)」——

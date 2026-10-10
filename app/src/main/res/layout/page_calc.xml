@@ -44,24 +44,17 @@
         android:orientation="vertical"
         android:paddingTop="@dimen/space_4"
         android:paddingBottom="@dimen/space_8">
-        <!-- t134 (1) AppBar「计算」:稿 L636 + 1px 下边线,padding 14/16/12 -->
-        <TextView
-            android:id="@+id/calc_title"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:paddingStart="@dimen/space_4"
-            android:paddingEnd="@dimen/space_4"
-            android:paddingTop="13.4dp"
-            android:paddingBottom="11.4dp"
-            android:text="计算"
-            android:textColor="?attr/colorInk"
-            android:textSize="@dimen/fs_title"
-            android:textStyle="bold"
-            android:letterSpacing="-0.01" />
-        <View
-            android:layout_width="match_parent"
-            android:layout_height="1dp"
-            android:background="?attr/colorBorder" />
+        <!-- ⚠⚠ 2026-10-08 用户裁定：**计算页顶部 AppBar 整块删除** ——
+             标题「计算」与它下面那条 1px 通栏线，两个节点一起从本布局移除。
+             原话：「下方导航栏已经标注了，我不想要再在上面显示了」：
+             底部 tabbar 第三项本来就写着「计算」，顶部再来一个同名大标题是重复的噪音。
+             ⚠ 真删节点，不是 visibility="gone"：id=calc_title 全仓 grep **零引用**
+               （Kotlin 侧没有任何 findViewById），删掉不会像 t108 那样把绑定删断。
+             ⚠ 删后本页第一屏从「做多 / 杠杆倍率」那一行开始（父容器 paddingTop=space_4 仍在），
+               原先那 1px 线下面紧接的是同一个「方向 + 杠杆」行，它本身没有上边框，
+               所以这里删线不会和任何一条线并成双线。
+             ⚠ t134 (1) 当初补这块是照稿 L636 的 <AppBar title="计算"/>；
+               本次是**用户裁定推翻稿**，稿若日后重出，这块不要按稿自动补回来。 -->
 
         <!-- ============ 参数(无标题、无卡片) ============ -->
         <!-- 做多 / 做空:Segmented 两段,当前项高亮(高亮由 MainActivity 用色切换) -->

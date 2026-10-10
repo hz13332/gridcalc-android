@@ -220,7 +220,7 @@ private lateinit var calcIdleHint: TextView
     private var mode = "follow"
 
     // ---------- 行情→计算软联动(稿L393-414:LINK/PH) ----------
-    private var lkPrev: Pair<Double, Double>? = null // 上次联动写入的一对支撑位(sup1,sup2)
+    private var lkPrev: Pair<Double, Double?>? = null // 上次联动写入的一对(sup1, sup2?)；sup2 可空（单支撑品种无上限档）
     private var lkCap: Double? = null // 目标爆仓价上限(sup2;×解除后同对不再回写)
     private var lkPh: Double? = null // 上次由机构目标均价写入的最高价(同值不扰手改)
     private lateinit var statLiqCard: View // 爆仓卡(超上限画红框)
@@ -236,6 +236,12 @@ private lateinit var calcIdleHint: TextView
     // 默认disabled;计算成功→enabled(暂存待存闭包);点击→落库一条+文案
     // 「已保存，继续计算后可再存」1.6s后复原「保存数据」;再次计算→重新enabled;
     private lateinit var saveBtn: Button
+
+    // ⚠ 2026-10-05 新增：「清空数据」按钮的句柄。
+    //   改前 [clearCurrentSymRecs] 把「已删除 N 条 / 没有已保存记录」写在了 **saveBtn** 上
+    //   ——用户点的是「清空数据」，提示却出现在旁边「保存数据」按钮上（实机确认）。
+    //   不是文案问题，是**反馈落在了你没点的那个按钮上**，等于没反馈。
+    private lateinit var clearRecBtn: Button
     // ⚠ 费率的说明见文件顶层 [FEE_TAKER] / [FEE_MAKER]（class 之前）。
     //   这里只留一句指向，避免同一段墓碑散在两处互相漂移。
     // ⚠⚠ [mmrFromLev] 已作废并删除（2026-10-03）：那个 `0.9/杠杆` 把维持率和杠杆绑死，
@@ -380,7 +386,18 @@ fun clearCalcInputs() {
             showErr(null)
             statLiqCard.background = null
             statVals["liq"]?.setTextColor(attrColor("colorInk"))
+            // ⚠ 2026-10-05 置位「刚回填」：紧随其后的那次自动重算（步长阈值到位触发）
+            //   就不该把「已保存」翻成「● 未保存」。见 [justRestored]。
+            justRestored = true
             saveIdle() // 稿§1.1 回填场景按钮保持disabled(没有新结果可存)
+      // ⚠⚠⚠ 2026-10-05 **回填完直接算一次，别等用户按回车**
+      //   （用户真机截图：七个字段全都填好了，结果区却停在「输入参数后回车计算」）。
+      //   【为什么】改前自动计算**只有一个入口**：`stepThrFor` 回调里
+      //     `if (stepThr != null && !nManual) onCalc()` ⟹ **阈值拿不到就永远不自动算**。
+      //   而阈值正是那个「刚加的品种经常没有」的东西 ⟹ 两个毛病叠在一起。
+      //   【改法】回填成功即算一次，不以阈值为前提（没阈值只是不自动改格数）。
+      //   [justRestored] 已置位，这一次不会把「已保存」翻成「● 未保存」。
+   uiHandler.post { onCalc() }
         } catch (e: Exception) {
             // ⚠⚠⚠ 2026-10-03 **删掉空 catch**。
             //   原来是 `catch (_: Exception) {}` —— 吞掉一切且不打日志。
@@ -1014,6 +1031,11 @@ fun clearCalcInputs() {
 
     /** 网格数量是否被你手改过。true ⟹ 不再用自动值覆盖。 */
     private var nManual = false
+    /**
+     * ⚠ 2026-10-08 [nManual] 绑定的品种 —— 用来把「手改」的生命周期**限制在本品种内**。
+     *   背景见 [stepThrFor] 里的根因说明：nManual 原先**只有置 true、没有重置**。
+     */
+    private var nManualSym: String = ""
 
     /** 该品种的**日线**步长阈值（用户裁定「固定用日线阈值」）。取不到时为 null。 */
     private var stepThr: Double? = null
@@ -1029,7 +1051,35 @@ fun clearCalcInputs() {
      *
      * @return 取不到步长阈值、或参数不合法时返回 null（调用方保留用户敲的值，不硬算）
      */
-    private fun autoGridN(pl: Double, ph: Double): Int? {
+    /**
+     * ⚠⚠⚠ 2026-10-05 **网格数量自动算，独立于 onCalc**。
+     *
+     * 【现象】用户真机截图：XOM 步长阈值 2.89% 有了、最低价 141 / 最高价 171 也自动填上了，
+     *   但**网格数量是空的**，同时报「保证金还没有填」。
+     * 【根因】n 的自动算原本只写在 [onCalc] 里，而 onCalc 有两个前置条件都不受我们控制：
+     *   ① `autoGridN` 要 `stepThr != null` —— 步长阈值是**异步**回来的；
+     *   ② n 算完往后走要读保证金/触发价/每格数量，缺一个就抛异常走 catch。
+     *   两者**错开**就会漏：阈值先到时 pl/ph 还没填（或反之），那一次 onCalc 算不出 n，
+     *   而事后**没有任何地方补算** ⟹ n 永远空着。
+     * 【改法】把它抽成一个幂等的小函数，在「三样东西齐了就填」的每个时点都调一次：
+     *   · 阈值到达（stepThrFor 回调）
+     *   · 最低价/最高价被联动写入（linkCalc / linkPhigh）
+     *   · onCalc 原本的位置（保留，不动它的语义）
+     * 【为什么安全】nManual 为真（用户自己填过格数）时直接返回，绝不覆盖用户的数；
+     *   写入走 [programWrite]，不触发 TextWatcher 把刚出的结果清掉。
+     */
+    private fun tryAutoGridN() {
+        if (nManual) return
+        val s = stepThr ?: return
+        val pl = inp["Pl"]?.text?.toString()?.trim()?.toDoubleOrNull() ?: return
+        val ph = inp["Ph"]?.text?.toString()?.trim()?.toDoubleOrNull() ?: return
+        if (ph <= pl) return
+        val n = autoGridN(pl, ph) ?: return
+        val ni = inp["N"] ?: return
+        if (ni.text.toString().trim() == n.toString()) return
+        programWrite { ni.setText(n.toString()) }
+    }
+private fun autoGridN(pl: Double, ph: Double): Int? {
         val s = stepThr ?: return null
         if (s <= 0.0 || s >= 1.0) return null
         if (pl <= 0.0 || ph <= pl) return null
@@ -1051,9 +1101,9 @@ fun clearCalcInputs() {
             getSharedPreferences("gridcalc", MODE_PRIVATE).getString("mkt_last_sym", "") ?: ""
         } catch (_: Exception) { "" }
         if (sym.isBlank()) { stepThr = null; return }
-        MktData.stepThresholdAsync(sym) { t ->
+        MktData.stepThresholdAsync(sym) { r ->
             runOnUiThread {
-                stepThr = t?.takeIf { it > 0 && it < 1.0 }
+       stepThr = r.v?.takeIf { it > 0 && it < 1.0 }
                 if (stepThr != null && !nManual) onCalc()
             }
         }
@@ -1078,13 +1128,36 @@ fun clearCalcInputs() {
     internal fun stepThrFor(sym: String) {
         if (sym.isBlank()) return
         val key = normSym(sym)
-        if (stepThrSym == key && stepThr != null) return     // 这个品种已经有了
-        MktData.stepThresholdAsync(sym) { t ->
+        // ⚠⚠⚠ 2026-10-08 用户报「网格数量还是没自动算：**保存过记录的有、
+        //   新的没计算过的、没加自选的就没有**」——**根因就在这下面三行**：
+        //
+        // 【根因】[nManual] 在全项目**只有置 true 的一处**（手填格数时），
+        //   **没有任何一处把它重置回 false**。于是只要手改过一次，
+        //   之后**所有品种**都永久不再自动算 —— [tryAutoGridN] 第一行 `if (nManual) return` 就拦掉了。
+        // 【为什么"保存过的有"】记录里存了 n 并由 restoreCalc 回填，走的是**记录值**，
+        //   不依赖自动算 ⟹ 看上去正常。新品种没有记录 ⟹ 暴露出这条卡死的开关。
+        // 【裁定漏实现】2026-10-02 用户确认的默认值里就有「**换品种时重置手改**」，
+        //   代码里从来没写过这句；只有被推翻前的那版注释提到过它。
+        // 【为什么不直接无条件清】同一条裁定的后半句是「**本品种内一直保持手改**」——
+        //   故判据绑定到品种，不是绑定到"这个函数被调用过"（[stepThrFor] 虽然目前
+        //   只由 MktPanel 的 `if (symChanged)` 唯一调用，但不能靠那个巧合）。
+        if (key != nManualSym) {
+            nManualSym = key
+            nManual = false
+        }
+        if (stepThrSym == key && stepThr != null) { tryAutoGridN(); if (!nManual) onCalc(); return }     // 这个品种已经有了：阈值虽在，但pl/ph可能是后填的，仍补算一次N
+        MktData.stepThresholdAsync(sym) { r ->
             runOnUiThread {
                 // ⚠ 异步回来时可能已经切到别的品种了 ⟹ 只在仍是同品种时写
                 if (normSym(curCalcSym()) != key) return@runOnUiThread
-                stepThr = t?.takeIf { it > 0 && it < 1.0 }
-                stepThrSym = key
+                stepThr = r.v?.takeIf { it > 0 && it < 1.0 }
+               // ⚠⚠⚠ 2026-10-05 **只有真的拿到数才记「这个品种算过了」**。
+    // 改前这一行无条件写 key ⟹ **一次失败就把这个品种永久挡住**，之后进来都不再试 ——
+                // 用户真机截图（00700 有价有支撑、就是没阈值）、口述「**老的有、刚加的就没有**」。
+          // 拿不到数就**不写** stepThrSym，下次进来还会再试；取数侧对失败的冷却只有 30 秒
+   // （见 MktData.stepCompute），所以「再试」不等于「连打接口」，限流纪律不受影响。
+            if (stepThr != null) stepThrSym = key
+          tryAutoGridN()   // ⚠ 阈值到了就补算网格数量（不必等 onCalc 走通）
                 if (stepThr != null && !nManual) onCalc()
             }
         }
@@ -1096,7 +1169,28 @@ fun clearCalcInputs() {
 
     private var stepThrSym: String = ""
 
+    /**
+     * ⚠⚠⚠ 2026-10-05 **回填后不该显示「● 未保存」**（用户实机截图）。
+     *
+     * 【现象】冷启动回填出一条**已保存**的记录，七个字段与结果区都对，
+     *   净收益下面却写着「● 未保存」—— 数据明明在，却告警没存。
+     *
+     * 【根因】一次**不是用户发起的**重算把 heroSub 覆盖掉了：
+     *   `restoreCalc` 把 heroSub 写成「收益率…已保存于 <时间>（点「计算」可重算）」，
+     *   随后**步长阈值的异步回调**落地（`stepThrFor` → `if (!nManual) onCalc()`），
+     *   onCalc 末尾 `t105SetDirty(true)` ⟹ 又写成「● 未保存」。
+     *   用户一个键都没按过，脏标记却翻了。
+     *
+     * 【修法】回填后**第一次**自动重算照常重画数值（数值可能因为阈值到位而更准），
+     *   但**不置脏**：输入框里的值仍是保存时那一套，用户没改过。
+     *   消费即清，所以用户之后真的按回车重算，那次**照常**置脏。
+     */
+    private var justRestored: Boolean = false
+
     private fun onCalc() {
+        // ① 取值即消费：只有「紧跟在回填之后的那一次」自动重算豁免置脏。
+        val exemptDirty = justRestored
+        justRestored = false
         suppressReset = false // v4 D2/D9:真实计算清闸,之后的程序写值照常生效
         restoreGuardSym = null // ② 清零点:点「计算」= 用户明确要基于当前输入重算 → 退出回填态
         showErr(null) // 稿calc()首行clear:清上一轮目标上限报错
@@ -1249,7 +1343,9 @@ if (::calcIdleHint.isInitialized) calcIdleHint.visibility = View.GONE
             // hero 副行现在只留身份提示;真正的值看下面四格。
             // t167 悬案 D:这两行是 t105SetDirty(true) 的逐字复制(同色同文案),
             // 在 onCalc 里绕过了那个已经收敛过的函数 —— 同一件事两个主人。改为调用它。
-            t105SetDirty(true)
+            // ⚠ 2026-10-05：[exemptDirty] 为真时**不置脏** —— 那是回填后阈值到位触发的自动重算，
+            //   用户没改过任何输入，屏上显示的就是已保存的那份（见 [justRestored] 的说明）。
+            if (!exemptDirty) t105SetDirty(true)
             // ④稿582:强平价≤0显示0.00(不再显示负数);null=永不爆仓
             statVals["liq"]!!.text = r.liq?.let { fmtSmart(it) } ?: "不爆仓"
             // t153 ⑨:稿 L622 负号用 U+2212 真减号,不是 ASCII '-'(与 hero 同一处理)
@@ -1275,7 +1371,8 @@ if (::calcIdleHint.isInitialized) calcIdleHint.visibility = View.GONE
             // stat_fx 行已按稿合并进 stat_ccy(本行),XML 侧那五行已删成四行。
             statVals["ccy"]!!.text = if (fx.isEmpty()) cur else "$cur · $fx"
             // t105:计算成功 = 结果区有东西了 → 置脏(● 未保存),等用户点「保存数据」才清
-            t105SetDirty(true)
+            // ⚠ 同上：回填后那一次自动重算不置脏（[justRestored]）。
+            if (!exemptDirty) t105SetDirty(true)
             detSum.setTextColor(ink)
             detSum.text = "买%d/卖%d/线%d · 持仓%.6f · 成本%.2f%s".format(
                 r.b, r.m, r.lines, r.q0, r.cost0, if (dbl) " · 加倍建仓" else "")
@@ -1464,16 +1561,17 @@ private fun recLoad() {
             pendingRec = null
             saveIdle()
         }
-        saveBtn.text = if (removed > 0) "已删除 $removed 条" else "没有已保存记录"
-        // ⚠ 不能调 [saveBtnSaved] —— 它是 onCreate 里的**局部函数**，Kotlin 的局部函数
-        //   不是类成员，类成员里调它会 unresolved。这里直接写复位样式。
-        saveBtn.background = null
-        saveBtn.setTextColor(attrColor("colorFaint"))
-        uiHandler.postDelayed({
-            if (saveBtn.text.startsWith("已删除") || saveBtn.text.startsWith("没有已保存")) {
-                saveBtn.text = "保存数据"
-            }
-        }, 1600)
+        // ⚠⚠ 2026-10-05 **提示写到清空按钮自己身上**（原来错写在 [saveBtn] 上）。
+        //   改前用户点「清空数据」，屏上却是「保存数据」按钮变成「已删除 N 条」——
+        //   反馈落在了没点的那个按钮上，等于没反馈。
+        //   ⟹ 这里改 [clearRecBtn]；[saveBtn] 的样式与复原逻辑全部不碰（那是保存按钮自己的）。
+        val msg = if (removed > 0) "已删除 $removed 条" else "没有已保存记录"
+        if (::clearRecBtn.isInitialized) {
+            clearRecBtn.text = msg
+            uiHandler.postDelayed({
+                if (clearRecBtn.text == msg) clearRecBtn.text = "清空数据"
+            }, 1600)
+        }
     }
 
     private fun recSave() {
@@ -1844,7 +1942,9 @@ private fun recLoad() {
     //      稿 L70/L496/L911 三处都只标第一支撑, t223 已按稿删净第二支撑
     //      (MktView.kt:225 names=["第一支撑"] / :234 cnt=minOf(1, supShow.size)),
     //      当时就该一并把这三行改掉, 拖到今天。
-    // 稿linkCalc(397-404):支撑位≥2才联动;同一对支撑原样返回不覆盖手改,值变才覆盖;
+    // 稿linkCalc(397-404):同一对支撑原样返回不覆盖手改,值变才覆盖;
+    // ⚠ 2026-10-07 **偏离稿**：稿的「支撑位≥2才联动」已改为「支撑≥1 即联动最低价」，
+    //   理由与拆判依据见 [linkCalc] 函数体内注释（单支撑品种算不出网格数量）。
     // sup1→计算页最低价(JS toPrecision(8)=jsPrec);sup2→记为目标爆仓价上限并paintCap
     /**
      * t304 静默改写用户输入时的那行说明。
@@ -1862,9 +1962,21 @@ private fun recLoad() {
     }
 
     fun linkCalc(sup: List<Double>) {
-        if (sup.size < 2) return
+        // ⚠⚠ 2026-10-07 用户实报「网格数量还是没有自动计算，都有步长阈值了」——**根因就在这道门槛**。
+        // 【现象】行情页 00700 只有**一个**支撑（第一支撑 52.85，无第二支撑），原门槛
+        //   `if (sup.size < 2) return` 于是直接返回：最低价不写入 → tryAutoGridN 拿不到 pl
+        //   → autoGridN 返回 null → 网格数量恒空。而步长阈值(3.38%)和最高价(84.3, linkPhigh 链入)
+        //   **都在**，唯独最低价缺位 —— 与用户描述逐字吻合。
+        // 【稿怎么说】上方注释记的是「稿linkCalc(397-404):支撑位≥2才联动」——稿要的是
+        //   「两个支撑一起联动」(最低价 + 上限 cap)。
+        // 【为什么那是错的】**上限 cap 是可选的，最低价是网格计算的必需输入**。
+        //   用一道门槛同时卡两件事，等于让所有单支撑品种永远算不出网格数量。
+        // 【用户裁定覆盖稿】用户要的是「有步长阈值就自动算」⟹ 拆开判：
+        //   支撑≥1 就写最低价；第二支撑有则写 cap，无则 lkCap 保持 null
+        //   （null 本来就是已支持的常态，见 L350 记录回填 / L2939 解绑）。
+        if (sup.isEmpty()) return
         val s1 = sup[0]
-        val s2 = sup[1]
+        val s2 = sup.getOrNull(1)   // ⚠ 可空：单支撑品种没有上限档，不构型由它决定
         val prev = lkPrev
         if (prev != null && prev.first == s1 && prev.second == s2) return
         lkPrev = Pair(s1, s2)
@@ -1880,6 +1992,7 @@ private fun recLoad() {
         //   改法与 linkPhigh（L1379）逐字同款:写值走 programWrite 闸，写完**按新最低价重算一次**，
         //   这样联动后的结果与屏上参数一致（稿 L397-404 联动即重算）。
         programWrite { inp["Pl"]!!.setText(qPx) }
+     tryAutoGridN()   // ⚠ 最低价写完，若阈值已到则补算
         // t304: 说清楚这个字段被程序改了、依据是什么
         // (不然用户只看到自己填的 272.85 变成了 273, 不知道发生过什么)。
         t304Note("最低价已改为 $qPx（来自行情页第一支撑，已按 1% 精度对齐；可直接改回）")
@@ -1915,6 +2028,7 @@ private fun recLoad() {
             //     它已经是**诚实**的: 每次程序改写用户字段, 都会在 calc_note 里留一行说明（t304）。
             t304Note("最高价已改为 $aPx（来自机构目标均价，已按 1% 精度对齐；可直接改回）")
         }
+        tryAutoGridN()   // ⚠ 最高价写完，若阈值已到则补算（与linkCalc对称；泛化：任一联动写完都补）
         // 与 linkCalc 同理:写完按新最高价重算,净收益/四格才与屏上参数一致(稿联动即出结果)。
         // programWrite 已挡住 idle();这里补上「联动后刷新结果」,否则结果区停在旧最高价的口径。
         try { onCalc() } catch (t: Throwable) { /* 联动重算失败不致命 */ }
@@ -2587,6 +2701,22 @@ private fun recLoad() {
         calcPage = inf.inflate(R.layout.page_calc, body, false)
         settingsPage = inf.inflate(R.layout.page_settings, body, false)
         mktPage = inf.inflate(R.layout.page_mkt, body, false)
+        // ⚠⚠ 2026-10-05 「关于」版本号**从 PackageInfo 取**，不再写死（原写死 v4.1.1，
+        //   而真机 App 已到 v4.5 —— 两份真相必然漂移）。发版只改 build.gradle.kts 一处。
+        val aboutV = settingsPage.findViewById<android.widget.TextView>(R.id.about_version)
+        // ⚠ 2026-10-06 关于页同时打出 versionCode（用户要求：设置界面做标记，
+        //   否则几个手工包 versionName 全是 4.5，装的是哪个根本分不清）。
+        //   versionName 仍是用户裁定的 4.5 不动；括号里的数字只用于对包。
+        val pkgInfo = try {
+            if (android.os.Build.VERSION.SDK_INT >= 33) {
+                packageManager.getPackageInfo(packageName, android.content.pm.PackageManager.PackageInfoFlags.of(0L))
+            } else { @Suppress("DEPRECATION") packageManager.getPackageInfo(packageName, 0) }
+        } catch (e: Exception) { android.util.Log.w("LP", "about version failed: $e"); null }
+        val vn = pkgInfo?.versionName
+        @Suppress("DEPRECATION")
+        val vc = pkgInfo?.versionCode
+        aboutV?.text = "网格交易收益计算器" + (vn?.let { " v$it" } ?: "") +
+            (vc?.let { " ($it)" } ?: "")
         mktPanel = MktPanel(this, mktPage)
         favPage = inf.inflate(R.layout.page_fav, body, false)
         favPanel = FavPanel(this, favPage, mktPanel) { s, disp ->
@@ -2751,6 +2881,17 @@ private fun recLoad() {
         toggleRowTopline = calcPage.findViewById(R.id.toggle_row_topline)
         hero = calcPage.findViewById(R.id.hero)
         heroSub = calcPage.findViewById(R.id.hero_sub)
+    // ⚠⚠⚠ 2026-10-05 **用户裁定：这一行小字不要**（真机截图圈出来的）。
+    //   原屏上是：「收益率 +192.38% · 12卖2买 · 00700 已保存于 2026-10-06 10:20:31
+    //   (原币 HKD · 汇率 7.8471)（点「计算」可重算)」。
+  //   前半截**和下面四格是同一批数**（收益率、买格卖格都另有一格），
+    //   后半截是保存时间与币种说明 —— 一屏里同一件事说两遍。
+    //   ⟹ 整行 GONE，不占位。
+    //   ⚠ **连带后果**：t105SetDirty 的「● 未保存 / 已保存」也挂在这行上（见该函数），
+    //     它随之一起消失；**保存状态改由「保存数据」按钮自己承担** ——
+    //     [saveIdle] 时 disabled、有新结果时 enabled，本就是那个按钮的职责。
+    //     若之后要未保存提示，**恢复一个最短版本**，不要把这一整行长回来。
+        heroSub.visibility = View.GONE
         statVals["liq"] = calcPage.findViewById(R.id.stat_liq)
         statVals["roe"] = calcPage.findViewById(R.id.stat_roe)
         statVals["pos"] = calcPage.findViewById(R.id.stat_pos)
@@ -2852,7 +2993,9 @@ ladderNote = calcPage.findViewById(R.id.ladder_note)
         // ⚠ 2026-10-03「清空数据」按钮：用户要求「计算界面也要有个清空数据的功能，
         //   用来删除保存了的数据」。范围=**当前品种**、**无二次确认**（用户裁定）。
         //   ⚠ 只删当前品种是为了保住「按品种关联」那套能力 —— 删全部会把别的品种的参数一起清掉。
-        calcPage.findViewById<Button>(R.id.clear_rec_btn).setOnClickListener { clearCurrentSymRecs() }
+        // ⚠ 2026-10-05 保留句柄：[clearCurrentSymRecs] 的结果提示要写在**这个**按钮上。
+        clearRecBtn = calcPage.findViewById(R.id.clear_rec_btn)
+        clearRecBtn.setOnClickListener { clearCurrentSymRecs() }
         // 稿 L833 `const [st,setSt]=React.useState('ok')` ⟹ **首屏默认就是「有结果」**,
         // 不是空态。改前这里是 t169 的 `idle()`(冷启动没人打字,TextWatcher 不触发,
         // calc_idle_hint 停在 XML 默认的 gone), 于是首屏永远显示「输入参数后回车计算」。

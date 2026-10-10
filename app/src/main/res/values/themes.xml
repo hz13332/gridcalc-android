@@ -36,6 +36,21 @@
         <!-- 2026-10-02 全局字体族换成 Inter（设计稿 v2.html:9 的第一顺位）。
              改前本主题未声明 fontFamily → 全 App 走系统默认 Roboto。详见 res/font/inter.xml 注释。 -->
         <item name="android:fontFamily">@font/inter</item>
+        <!-- ⚠⚠ 2026-10-07 **根因修复**（用户原话「我怎么看不到数值」）。
+             两个主题的 parent 都是 `android:Theme.Material.NoActionBar` —— 那是**深色**主题，
+             其 ?android:textColorPrimary 默认 = #B3FFFFFF（白 @70%）。
+             于是任何在 Kotlin 里 `TextView(act)` 新建、又没显式 setTextColor 的视图，
+             在浅色画布 #F9FAFD 上渲染成白字：实测字形像素 (253,254,254)，
+             与 #B3FFFFFF 叠在 #F9FAFD 上的理论值逐位吻合 —— 肉眼等于隐形。
+             自选屏「距支撑」数值就踩了这个：日志实测其 currentTextColor = #B3FFFFFF，
+             而代码传入的 colorPrimary 明明是 #FF6749B6。
+             【修在 owner 上】不逐格打补丁，把框架三档默认字色钉到本 App 的墨色 token，
+             以后任何漏上色的新视图都默认是墨色，不会再隐形。 -->
+        <item name="android:textColorPrimary">?attr/colorInk</item>
+        <item name="android:textColorSecondary">?attr/colorSub</item>
+        <item name="android:textColorTertiary">?attr/colorFaint</item>
+        <item name="android:textColor">?attr/colorInk</item>
+        <item name="android:textColorHint">?attr/colorFaint</item>
     </style>
 
     <!-- 深色 · 夜晚 -->
@@ -74,5 +89,14 @@
         <!-- 同浅色主题：全局字体族 Inter。两套主题必须都写，
              android:fontFamily 不会从 Light 继承到 Dark。 -->
         <item name="android:fontFamily">@font/inter</item>
+        <!-- ⚠⚠ 2026-10-07 同浅色：把框架默认字色钉到本 App 的墨色 token。
+             深色主题下 colorInk=#E7E9EF、colorSub=#9CA0A8、colorFaint=#82868f，
+             原先吃的是 Material-dark 默认 #B3FFFFFF 白 @70% —— 深色画布上勉强能看，
+             但与本 App 的墨色体系不是一套，同样属于漏上色。两套主题一起收敛。 -->
+        <item name="android:textColorPrimary">?attr/colorInk</item>
+        <item name="android:textColorSecondary">?attr/colorSub</item>
+        <item name="android:textColorTertiary">?attr/colorFaint</item>
+        <item name="android:textColor">?attr/colorInk</item>
+        <item name="android:textColorHint">?attr/colorFaint</item>
     </style>
 </resources>

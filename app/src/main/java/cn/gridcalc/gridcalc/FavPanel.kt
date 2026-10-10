@@ -1,6 +1,5 @@
 package cn.gridcalc.gridcalc
 
-import android.app.AlertDialog
 import android.content.Context
 import android.graphics.Color
 import android.graphics.Typeface
@@ -17,13 +16,11 @@ import android.text.style.StyleSpan
 import android.text.style.SuperscriptSpan
 import android.view.Gravity
 import android.view.KeyEvent
-import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
-import android.widget.PopupWindow
 import android.widget.ScrollView
 import android.widget.TextView
 import java.util.Locale
@@ -188,6 +185,10 @@ class FavPanel(
 ) {
 
     private val searchInp: EditText = page.findViewById(R.id.fav_search)
+    // ⚠ 2026-10-06 容器换回 LinearLayout（见 page_fav.xml 同日注释）：
+    //   嵌在 ScrollView 里的 RecyclerView 只量出一屏高度，12 个品种只画 6 个，
+    //   剩下根本不创建。点击保证靠监听挂法（行根监听 + 子控件不接管），与容器无关，
+    //   换回来之后全部保留。取数线一律不动。
     private val favList: LinearLayout = page.findViewById(R.id.fav_list)
     // t121 修必崩 NPE(原 FavPanel.kt:203)。
     //
@@ -250,24 +251,88 @@ class FavPanel(
         FavDist.attach(act)
     }
 
-    // 搜索结果浮层(对标稿子#favResults绝对定位浮层,不挤占列表;滚动条隐藏)
+    // 搜索候选内联容器(2026-10-06 起取代 PopupWindow 浮层,见 page_fav.xml fav_sug_box)。
+    // 同一窗口、不抢焦点,键盘不会被收。内容超 248dp 时内部滚动(口径沿用原来浮层的)。
+    private val sugBox: LinearLayout = page.findViewById(R.id.fav_sug_box)
     private val resultsBox: LinearLayout = LinearLayout(act).apply {
         orientation = LinearLayout.VERTICAL
         val p = dp(9.5f).toInt()
         setPadding(p, dp(3.8f).toInt(), p, dp(3.8f).toInt())
     }
-    private var resPopup: PopupWindow? = null
+    private val sugScroll: ScrollView = ScrollView(act).apply {
+        isVerticalScrollBarEnabled = false
+        addView(resultsBox)
+    }
 
     private val handler = Handler(Looper.getMainLooper())
     private var fsRunnable: Runnable? = null
     private var fsGen = 0
 
-    // 距离重试环(稿FAVRetry):行→胶囊映射用于行内逐条补数;
-    // hidden=离开自选页即停表清计时器,distSeq 递增丢弃在途旧结果
-    private val capsules = mutableMapOf<String, TextView>()
-    // 稿§2 收益比列与行元数据映射(重绘清空,刷新按行重画)
-    private val ratios = mutableMapOf<String, TextView>()
-    private val metas = mutableMapOf<String, RowMeta>()
+    // ⚠ 2026-10-06 RecyclerView 化：逐行 View 引用不再用三张 map 存，
+    //   改由 Adapter 持有一份数据 + ViewHolder 持有一行控件。
+    //   旧 maps（capsules/ratios/metas）随手拼 LinearLayout 时代一起退役 ——
+    //   它们是「整块 removeAllViews 重建后靠符号反查控件」的补丁，RecyclerView 下不需要。
+    private data class FavRow(
+        val it: FavItem,
+        var d: DistR?,
+        val m: RowMeta,
+        var ratio: Double?
+    )
+
+    // ⚠ 2026-10-06 容器换回 LinearLayout 后的行管理（见 favList 处注释）：
+    //   行壳照样建一次挂进 favList，用“符号→行壳”表做逐条更新；
+    //   点击挂法、确认条、不重建语义全部保留，只是触发点从 Adapter 回到面板。
+    private val shells = mutableMapOf<String, RowShell>()
+    private var rowData: List<FavRow> = emptyList()
+    /** 当前展开行内确认条的品种；null = 都没展开。同时只展开一行。 */
+    private var confirmSym: String? = null
+
+
+    /** 切换确认条：只重绑新旧两行。 */
+    private fun setConfirm(s: String?) {
+        if (confirmSym == s) return
+        val old = confirmSym
+        confirmSym = s
+        old?.let { o -> shells[o]?.let { sh -> rowData.find { it.it.s == o }?.let { r ->
+            bindRowShell(sh, r, pendingSyms.contains(o), false) } } }
+        s?.let { n -> shells[n]?.let { sh -> rowData.find { it.it.s == n }?.let { r ->
+            bindRowShell(sh, r, pendingSyms.contains(n), true) } } }
+    }
+
+
+    /** 全量换数据：重建所有行（品种增删/排序变化/刷新完成时）。LinearLayout 对全部子项无条件布局，行数再多也不会截断。 */
+    private fun submitRows(newRows: List<FavRow>) {
+        rowData = newRows
+        if (confirmSym != null && rowData.none { it.it.s == confirmSym }) confirmSym = null
+        shells.clear()
+        favList.removeAllViews()
+        for (r in newRows) {
+            val sh = createRowShell()
+            sh.root.setOnClickListener {
+                val s = sh.boundSym ?: return@setOnClickListener
+                hideResults()
+                onPick(s, MktSuggest.favName(s))
+            }
+            sh.root.setOnLongClickListener {
+                val s = sh.boundSym ?: return@setOnLongClickListener false
+                setConfirm(s)
+                true
+            }
+            bindRowShell(sh, r, pendingSyms.contains(r.it.s), confirmSym == r.it.s)
+            shells[r.it.s] = sh
+            favList.addView(sh.root)
+        }
+    }
+
+
+    /** 逐条更新：只重绑该行，不碰其他行、不重建列表。 */
+    private fun updateDist(s: String, d: DistR?) {
+        val r = rowData.find { it.it.s == s } ?: return
+        r.d = d
+        val distPct = if (d != null && d.ok) d.pct else null
+        r.ratio = ratioOf(distPct, r.m)
+        shells[s]?.let { sh -> bindRowShell(sh, r, pendingSyms.contains(s), confirmSym == s) }
+    }
     private var hidden = true
     private var distSeq = 0
 
@@ -378,7 +443,15 @@ class FavPanel(
         }
         fun show(v: View?, on: Boolean) { v?.visibility = if (on) View.VISIBLE else View.GONE }
         show(favEmptyV, st == "empty")
-        show(favSkelV, st == "load")
+        // ⚠⚠⚠ 2026-10-05 **取消骨架屏**（用户裁定：「能否取消，直接展示旧值就可以了，
+        //   然后等待条件更新，不需要全部加载出来再更新」）。
+        //   骨架屏整块退出列表显示，恒隐藏；下面的 favList 也恒可见 ——
+        //   这两处**合起来**才是「取数期间一行业务数据都没有、点/长按落空」的真凶。
+        //   行的值本来就取 FavDist.display(..., cached(...)) 的旧值，进页第一帧即出行；
+        //   refreshFavDist 逐品种刷新，回调里逐行 paintDist ⟹ 逐条更新照旧。
+        //   ⚠ 状态归属的修复原样保留（fetching 仍取 pendingSyms、[st] 仍照旧算、
+        //     repaint 末尾仍无条件求值）—— 只是不再用状态机去**遮蔽**列表。
+        show(favSkelV, false)
         // ⚠⚠⚠ 2026-10-03 用户裁定：**源状态行整块删除**。
         //   原话（早先一轮）：「图里的东西不要了」——点名要删的就是它和「· N 根月线已更新」。
         //   本轮原话：「为什么有多了这么多东西，**我有说要添加嘛？**」
@@ -397,7 +470,11 @@ class FavPanel(
         show(favErrHeadV, false)   // 恒隐藏
         // 稿 L449:err 态**错误头下面照样列出行**,每行 age='旧 3 小时'。
         // 错误头没了，列表照常显示。
-        favListV?.visibility = if (st == "ok" || st == "err") View.VISIBLE else View.GONE
+        // ⚠⚠ 2026-10-05 同上裁定：**列表恒可见**。改前是 `ok`/`err` 才 VISIBLE，
+        //   落在 `load`（自选在途取数）时整块 GONE —— 那是「骨架屏顶掉列表」的另一半。
+        //   ⚠ 空态不受影响：st=="empty" 时本容器没有子 View（height=wrap_content ⟹ 0 高、
+        //   不占位），fav_empty 是它的**兄弟**节点，位置与改前一致。
+        favListV?.visibility = View.VISIBLE
         // ⚠ 2026-10-02 照稿：自选屏的**源状态行只在非 ok 态出现**。
         //   稿的 ScreenList 里没有 SourceLine，只有 {st!=='ok' && <StateLine/>}（v2.html:1654）。
         //   现状是 paintSrcRow() 一有腿就 VISIBLE，于是正常态也多出「● 东财 · 展开」一行 ——
@@ -748,109 +825,14 @@ class FavPanel(
         return row
     }
 
-    // ---------- 左滑删除（2026-10-01 用户裁定「改成左滑」，取代长按 600ms）----------
-    // ⚠️ 本处原是 `armDelete()`（长按 600ms + 确认框），注释写着「对标稿子 touchstart
-    //   600ms+confirm」。**那句在 2026-09-30 裁定后已过期**：稿把删除改成了左滑，
-    //   2026-10-01 用户再次裁定「改成左滑」。**长按与 600ms 定时器已一并删除，不是并存**
-    //   （并存 = 左滑时还会弹长按确认框，两个手势打架）。
-    //
-    // 照稿 WatchRow:1123-1190。**三个常量照抄稿的数字，但单位必须换算**：
-    //   稿的 SWIPE_W=72 / TH=24 / SLOP=8 是 **CSS px**（与 e.clientX 同一坐标系）；
-    //   Android 的 MotionEvent.x 是**裸像素**，直接当 px 用 ⟹ 高密度屏上手势会缩到 1/3。
-    //   CSS px 的等价物是 **dp** ⟹ 这里按 dp 定义、用时乘 density 转像素。
-    //   **这不是自创数值，是同一个物理手感的正确单位换算**（t45 队长要求「不要照数字照抄」）。
-    private fun swipeW() = dp(68.7f)
-    private fun swipeTh() = dp(22.9f)
-    private fun swipeSlop() = dp(7.6f)
-    private fun swipeOver() = dp(15.3f)   // 稿 :1152 允许的回弹余量
-
-    /** 当前滑开行的代码；null = 都没滑开。稿的 `swiped` state（:1529）。 */
-    private var swipedSym: String? = null
-
-    /**
-     * 左滑露出删除键。逐条照抄稿的 move/end/click 守卫。
-     *
-     * ⚠️ 与被它取代的 armDelete **语义方向相反**：
-     *    原来「移动就取消长按」；现在「移动过 slop 才算滑，
-     *    **没滑够 TH 仍然是点行直达行情**」（稿 :1180-1184）。
-     */
-    private fun armSwipe(content: View, s: String, onOpen: () -> Unit) {
-        var st = false
-        var dx0 = 0f
-        var dy0 = 0f
-        var moved = false
-        val W = swipeW(); val TH = swipeTh(); val SLOP = swipeSlop(); val OVER = swipeOver()
-
-        content.setOnTouchListener { _, e ->
-            when (e.actionMasked) {
-                MotionEvent.ACTION_DOWN -> {
-                    st = true; dx0 = e.x; dy0 = e.y; moved = false
-                    false
-                }
-                MotionEvent.ACTION_MOVE -> {
-                    if (!st) return@setOnTouchListener false
-                    val ddx = e.x - dx0
-                    val ddy = e.y - dy0
-                    // 稿 :1150 竖向分量占优且过 slop ⟹ 判为滚动，**整支手势作废**、位移清零。
-                    // ⚠️ moved 保留 true ⟹ 后面的 click 被吞掉；滚动不该顺带激活行（稿 :1147）。
-                    if (Math.hypot(ddx.toDouble(), ddy.toDouble()) > SLOP && Math.abs(ddy) > Math.abs(ddx)) {
-                        st = false; moved = true
-                        content.translationX = 0f
-                        return@setOnTouchListener false
-                    }
-                    if (Math.abs(ddx) > SLOP || Math.abs(ddy) > SLOP) moved = true
-                    // 已滑开的行**锁死不跟手**（稿 :1169 open 时恒为 -SWIPE_W）；
-                    // 没滑开的才跟手，且夹在 [-(W+OVER), 0]，多出来的是回弹余量。
-                    content.translationX =
-                        if (swipedSym == s) -W else ddx.coerceIn(-(W + OVER), 0f)
-                    false
-                }
-                MotionEvent.ACTION_UP -> {
-                    if (!st) return@setOnTouchListener false
-                    st = false
-                    // 稿 :1159-1163 的守卫：手势已作废就别拿残留位移误开删除键。
-                    val opened = content.translationX <= -TH
-                    swipedSym = if (opened) s else null
-                    // ⚠ 2026-10-02 修 P0「点不进行情」：这里原先**无条件** repaint()。
-                    //   repaint() 会 favList.removeAllViews() 再重建全部行 —— 在 ACTION_UP
-                    //   派发**过程中**把当前正在被点的那个 View 拆了，框架随即补发 ACTION_CANCEL，
-                    //   performClick() 被中止，于是「点行跳行情」永远不触发（行看着可点、也不崩）。
-                    //   改法：① 没滑开就不 repaint，把 UP 交回框架让 click 正常跑完；
-                    //        ② 滑开了才需要重画（露出/收起删除键），且**延后一帧**执行，
-                    //           同样避免拆掉正在收事件的 View。
-                    if (opened) content.post { repaint() }
-                    false   // ← 不消费 UP：click 还要靠它决定「开/关/跳行情」
-                }
-                MotionEvent.ACTION_CANCEL -> {
-                    if (st) { st = false; content.translationX = 0f }
-                    false
-                }
-                else -> false
-            }
-        }
-        content.setOnClickListener {
-            when {
-                // 稿 :1181-1182 拖动过 ⟹ **整个吞掉**这次 click：
-                // 既不跳行情，也不顺手把刚滑开的行又关上。
-                moved -> moved = false
-                // 稿 :1183 已滑开时再点一下 ⟹ 收起（不是跳行情）
-                swipedSym == s -> { swipedSym = null; repaint() }
-                else -> onOpen()
-            }
-        }
-    }
-
-    private fun askDelete(s: String, onDismiss: () -> Unit) {
-        AlertDialog.Builder(act)
-            .setMessage("删除自选 $s？")
-            .setPositiveButton("删除") { _, _ ->
-                FavStore.remove(act, s)
-                repaint()
-            }
-            .setNegativeButton("取消", null)
-            .setOnDismissListener { onDismiss() }
-            .show()
-    }
+    // ---------- 左滑删除层退役（2026-10-06，随 RecyclerView 化一起拆掉）----------
+    // 用户 2026-10-01 先裁定「改成左滑」取代长按，又在 2026-10-05 裁定改回
+    // 「长按 → 悬浮菜单 → 删除」。侧滑手势与「点行进行情」共用点击通道，
+    // 在真机触摸噪声下互相抢事件（「只有名字和收益率能点进去」正源于此）。
+    // RecyclerView 下删除入口只有一处：itemView 长按 → askDelete 菜单。
+    // armSwipe/swipedSym/swipeW 四件套与行内的 del 层、wrap 容器一并删除。
+    // askDelete 弹窗一并退役（2026-10-06 用户选定 C 版行内确认）：
+    // 删除入口只有一处 —— itemView 长按展开确认条 → [删除]。
 
     /** 稿 L395: 零值渲染 "0.00%" **不加 + 号** —— "+0.00%" 是 App 自己的加法。 */
     private fun fmtPct(v: Double): String =
@@ -958,11 +940,9 @@ class FavPanel(
             // t117:「旧」角标**只留一处** —— 上面的 insert(base.length,"旧")(t102 稿做法)。
             // t116 我又追加了一段文本,两处都加 → 一行印两次「旧」。已删掉追加,只走上标。
             // 旧值字色仍弱化,不拿涨跌色假装是本次的涨跌。
-            if (old) {
-                // ⚠ 这一档**现行稿里没有**（v2.html:1194-1195 的判据只有 blankD 与符号两项）。
-                //   保留 t116 的旧值弱化: SP 落盘的旧值不许冒充本轮取到的值。
-                dc.setTextColor(act.attrColor("colorFaint"))
-            } else {
+            // ⚠ 2026-10-07 用户裁定「不喜欢获取到实时信息才变色」：新旧值同色，时效只看第二行flag文字。
+            //   旧值弱化整段删除（t116偏离的colorFaint），新值旧值都走同一套符号配色；无值仍走colorFaint。
+            {
                 // ⚠ 配色 = 稿 v2.html:964 逐字:
                 //     const distColor = d => d>0 ? 'var(--ac)' : d<0 ? 'var(--ink3)' : 'var(--ink)';
                 //   稿 v2.html:961-963 的口径原话:「距支撑不是涨跌，是离支撑还有多远」
@@ -1055,80 +1035,86 @@ class FavPanel(
     }
 
     // 自选行雪球式版式(照稿):行>pick>[名称列fcol(名称19px/700+fbadge徽标+代码),
-    // 距离列rq>dc胶囊];点行直达行情,**左滑删除**(2026-10-01 用户裁定,取代长按600ms)
-    private fun favRowView(f: FavItem, d: DistR?, m: RowMeta): View {
-        // 稿 L384 行容器: padding: flag ? '11px 16px' : '16px' + borderBottom '1px solid var(line)'
-        // flag 判据与 flagTv 同源(flagOf) ⟹ 「flag 画出来了」与「行高跟着变了」不可能脱节。
-        // 改前是写死的 setPadding(2dp, 14dp, 2dp, 14dp): 多了第二行时效的 flag 行并不比别的行矮。
-        val flagged = flagOf(d, pendingSyms.contains(f.s)).isNotEmpty()
-        val pv = dp(if (flagged) 11f else 16f).toInt()
-        // ⚠ 2026-10-02 曾把 ph 由 16dp 改成 0,2026-10-03 又改回 16dp —— 两次都被真机打回。
-        // 第一次(ph=0):以为用户说的「搜索框粘着东西」是表格左右错位,把内缩撤了,
-        //   结果行内文字与行的分隔线左端齐平,看着像线一直通到屏幕边。
-        // 第二次读到稿 v2.html:1610 与 :923-924 才看清真相:稿的滚动容器**零内边距**,
-        //   WatchRow 外层 div 的 borderBottom 也挂在**零内边距**的块上
-        //   ⟹ 行的横线本来就是**通栏**的,文字靠内层 div 的 '13px 16px' 内缩。
-        //   稿的规则是「线通栏 + 文字内缩 16px」,不是「线内缩 + 文字也内缩」。
-        // 现在横线通栏靠 page_fav.xml 里 fav_list 的 marginStart/End=-16dp 抵消容器外缩,
-        // 文字内缩靠这里 ph=16dp。两处缺一不可,别再只改一边。
-        // ⚠ 与 fav_head 的 paddingLeft/Right 必须**同一个数**,否则
-        //   「表头 ⟷ 行内右缘逐像素相等」那条不变量立刻破。
+    // 距离列rq>dc胶囊];点行直达行情,**长按删**(2026-10-01 用户裁定长按菜单,取代左滑600ms;
+    // 2026-10-06 侧滑删除层整体退役,见下)。
+    // ⚠ 2026-10-06 RecyclerView 化:建壳一次、绑定多次,点/长按只挂 itemView。
+    //   手拼 LinearLayout 时代,行内 TextView 的样式(autosize/tooltip/ellipsize)会悄悄
+    //   把触摸吃掉,「只有名字和收益率能点进行情」就是这么来的;加上 armSwipe 的手势
+    //   状态机共用点击通道,修一处漏一处。RecyclerView 下一行就是一个 ViewHolder,
+    //   子控件全部不可点击不可获焦,触摸只到 itemView —— 这一类问题从结构上消失。
+    //   取数线(FavDist/熔断/缓存/refreshFavDist/排序/空态/计数行)一律不动,只换显示层。
+    private class RowShell(
+        val root: LinearLayout,
+        val fname: TextView,
+        val bd: TextView,
+        val codeTv: TextView,
+        val fsub: LinearLayout,
+        val dc: TextView,
+        val gc: TextView,
+        val rc: TextView,
+        // C 版行内确认条(2026-10-06 用户选定):平时 GONE,长按才展开。
+        val strip: LinearLayout,
+        val stripTxt: TextView,
+        val stripCancel: TextView,
+        val stripDel: TextView
+    ) {
+        var boundSym: String? = null
+    }
+
+    /** 建行壳:只搭结构、不填数据(数据走 bindRowShell)。子控件全部剥掉点击与焦点。 */
+    private fun createRowShell(): RowShell {
+        // 稿 L384 行容器: padding: flag ? '11px 16px' : '16px' + borderBottom '1px solid var(line)'。
+        // 首帧默认按无 flag 的 16dp 建,bind 时按实际 flag 重算(见 bindRowShell)。
         val ph = dp(15.3f).toInt()
-        val row = LinearLayout(act).apply {
+        // 行内容(横向四列)。外层再包一个纵向 root,下面挂行内确认条。
+        val content = LinearLayout(act).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(ph, pv, ph, pv)
-            // 稿 L384: borderBottom 挂在**每一行**上, 所以最后一行下面也有一条(#32)。
-            // 改前是 repaint() 往行与行之间插一条占位 View, 末行下面空着 —— 正是这一处。
-            // ⚠ 横向内边距必须与 fav_head 的 paddingLeft/Right 同为 16dp:
-            //   文字内缩由这里承担,横线通栏由 fav_list 的 -16dp margin 承担,
-            //   两者是一个整体,只改一边就会出现「线到边 / 线不到边」或「列头与行错位」。
-            background = act.getDrawable(R.drawable.fav_row_line)
+            // ⚠ 2026-10-06 内边距只能有一处：行高与横向内缩**全部**由外层 root 的
+            //   setPadding(ph, pv) 承担（见 bindRowShell），这里必须全部归零。
+            //   换容器时这里留了横向 ph，加上 bind 里 root 的 ph ⟹ 横向也 double 了，
+            //   列全被往中间挤 —— 这就是"原来排版好好的，换完组件全挤在一起"。
+            //   纵向归零是上一轮修的，横向是这一轮补的，两次才算完。
+            // ⚠ 2026-10-06 线也只能有一处：borderBottom 搬到外层 root 上（见下），
+            //   这里不再画线。线画在没有内边距的内层底边 ⟹ 字下面几乎贴线、
+            //   线下面却是下一行的整段 pv —— 用户原话「上方的留白根本就没有」。
+            //   线跟着有内边距的外层走，上下才是同一把尺子。
+            setPadding(0, 0, 0, 0)
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT)
+            // ⚠ 2026-10-06 这里必须 NOT clickable：点击/长按的唯一主人是外层 root。
+            //   content 若 clickable=true 会把触摸就地吃掉（它自己又没挂监听），
+            //   事件到不了 root ⟹ 点行没反应。这正是之前「只有某几格能点」同一病根，
+            //   换容器时把旧 row 的 clickable 原样搬了过来，亲手复活了它。
+            isClickable = false
+            isFocusable = false
         }
         val pick = LinearLayout(act).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             layoutParams = LinearLayout.LayoutParams(0,
                 ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-            isClickable = true
-            isFocusable = true
+            isClickable = false
+            isFocusable = false
         }
-        val cn = MktSuggest.favName(f.s)
         val fcol = LinearLayout(act).apply {
             orientation = LinearLayout.VERTICAL
-            // t8 照稿 A1④：首列宽从 col_symbol(92dp) 改成稿 GRIDR 的**定死 88**（v2.html:952）。
-            //   旧值 92 来自 t351 引的旧稿 `92px 1.2fr …`；现行稿是定死四列 88/88/76/56。
-            // ⚠ 稿 v2.html:1192 的「长品种名整体省略、不把右三列挤出屏幕」由 fname 的
-            //   maxLines=1 + ellipsize=END 保证 —— 列定死后更成立，**不依赖 weight**。
-            // 稿 v2.html:955 实测: 品种 88 ← 042700.KS 84.5px。
+            // t8 照稿 A1④:首列定死 88(v2.html:952)。
             layoutParams = fixedColLp(COL_NAME)
+            isClickable = false
+            isFocusable = false
         }
         val fname = TextView(act).apply {
-            // ⚠ 2026-10-02 照稿：标题改回**中文名**（当前稿 v2.html:1189 `{nameOf(r)}`，
-            //   nameOf 返回 hit.cn 中文名，无中文名才回落 shortSym）。
-            //   改前是 t171 悬案E 的「标题=代码 r.sym」——那是照**旧一行**稿写的；
-            //   现行稿的标题是中文名（苹果/特斯拉/腾讯…），代码下沉到第二行与徽标并排。
-            //   ⟹ 有中文名用中文名，没有（币类 BTC/ETH 等 shortSym 即代码）才回落代码本身。
-            val cnName = MktSuggest.favName(f.s)
-            val titleTxt = if (cnName.isNotEmpty() && cnName != f.s) cnName else f.s
-            text = titleTxt
-            // 稿 L386  color: weak ? var(--ink3) : var(--ink)  —— 稿的 ink3 在 App 是 colorFaint
-            setTextColor(act.attrColor(if (isStale(d)) "colorFaint" else "colorInk"))
-            textSize = TS(R.dimen.fs_title)
             setTypeface(typeface, Typeface.BOLD)
-            // 稿 index.html:165-179:品种名/代码/徽标一律 nowrap + 超长省略号,
-            // 不得出现"XAUU/SD""GOO/GL"这类折行
+            // 稿 index.html:165-179:品种名/代码/徽标一律 nowrap + 超长省略号。
             maxLines = 1
             ellipsize = android.text.TextUtils.TruncateAt.END
+            isClickable = false
+            isFocusable = false
         }
         fcol.addView(fname)
-// 第二行容器(照稿 v2.html:1208): 徽标 + 代码(+右端时间戳) 同一行。
-        // ⚠ 2026-10-02：宽度改 MATCH_PARENT —— 第二行要**充满品种列**，
-        //   这样徽标/代码从左排、时间戳能被 flex spacer 推到右缘（稿 v2.html:1212-1215）。
-        //   改前是 WRAP_CONTENT，加了代码后长代码会顶出列宽。
+        // 第二行容器(照稿 v2.html:1208): 徽标 + 代码(+右端时间戳) 同一行,充满品种列。
         val fsub = LinearLayout(act).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -1136,105 +1122,65 @@ class FavPanel(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT)
             p.topMargin = dp(3.8f).toInt()          // 稿 v2.html:1208 marginTop:4
+            // ⚠ 2026-10-06 撤掉上一轮加在这里的 bottomMargin 4dp。
+            //   那一刀是为了"徽标不贴线"临时垫的，但只垫了下面 ⟹ 上下不对称，
+            //   用户实机报"分隔线上下留白不对称"。行底呼吸本来就由整行 pv 承担，
+            //   这里再垫就是第二套说法。回到稿原样：只有 topMargin。
             layoutParams = p
+            isClickable = false
+            isFocusable = false
         }
-        // ⚠ t8 照稿 A1②：第二行的品类徽章 —— 稿是**带 1px 中性描边的药丸**。
-        //   稿 v2.html:1209-1210 逐字:
-        //     <span style={{fontSize:T.note,color:'var(--ink2)',border:'1px solid var(--line)',
-        //                   borderRadius:4,padding:'1px 4px',whiteSpace:'nowrap',flexShrink:0}}>
-        //       {r.badge||r.ty}</span>
-        //   ⟹ 12px / --ink2 / 1px 描边 / radius 4 / padding 1·4。
-        //   改前是 12sp + **colorFaint** + `background = null` 的纯文字。
-        //   墓碑 · t111 把这个药丸去掉的理由是「它带彩底(橙/金/紫)，违反稿的三色硬规则」——
-        //   **那个彩底是 t126 自己加的，稿从来没有**；稿要的就是这圈 1px 中性描边。
-        //   本轮按用户 2026-10-02 裁定「完全照稿子改」加回**中性描边**，不加任何彩度
-        //   （稿 v2.html:2551「三色之外一切不许有彩度」仍成立）。
-        //   字色同时 ink3 → **ink2**（= colorSub），照稿 v2.html:1209。
+        // ⚠ t8 照稿 A1②:第二行的品类徽章 —— **带 1px 中性描边的药丸**(稿 v2.html:1209-1210),
+        //   12px / --ink2 / radius 4 / padding 1·4,无彩度。
         val bd = TextView(act).apply {
-            // 稿 v2.html:1210 的文本是 `{r.badge||r.ty}` —— 判据见 favSubLine。
-            text = favSubLine(f.t, cn)
             setTextColor(act.attrColor("colorSub"))      // 稿 --ink2
             textSize = TS(R.dimen.fs_note)
             maxLines = 1
             setPadding(dp(3.8f).toInt(), dp(1f).toInt(), dp(3.8f).toInt(), dp(1f).toInt())
             background = act.getDrawable(R.drawable.fav_badge)
+            isClickable = false
+            isFocusable = false
         }
         fsub.addView(bd)
-        // ⚠ 2026-10-02 照稿：第二行 = **徽标 + 代码 + (右端)时间戳**（稿 v2.html:1207-1216 一行 flex）。
-        //   稿的代码 span 有 display 条件（标题已是 shortSym 时不重复显示），这里同款：
-        //   标题用了中文名才显示代码；标题本身就是代码（币类）时不重复。
-        //   改前第二行只有徽标，代码被提到标题行去了，与稿的两行分工相反。
-        val cnForSub = MktSuggest.favName(f.s)
-        val titleIsCode = (cnForSub.isEmpty() || cnForSub == f.s)
-        if (!titleIsCode) {
-            val codeTv = TextView(act).apply {
-                // ⚠ 2026-10-05 **A 股显示去前缀的代码**。
-                //   自选行的规则是「中文名 · 徽章 · 代码」，港股那行显示 `00700` 而不是
-                //   `hk00700`（App 内部港股符号本就不带前缀）⟹ A 股同理只该显示 `688825`，
-                //   `sh`/`sz` 是**取数用的市场前缀**，属于内部表示，不该出现在屏上。
-                text = FavStore.displaySym(f.s)
-                setTextColor(act.attrColor("colorSub"))       // 稿 --ink2
-                textSize = TS(R.dimen.fs_note)
-                maxLines = 1
-                layoutParams = LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                    marginStart = dp(5.7f).toInt()                  // 稿 gap:6
-                }
+        val codeTv = TextView(act).apply {
+            // ⚠ 2026-10-05 **A 股显示去前缀的代码**(`688825` 而非 `sh688825`,
+            //   `sh`/`sz` 是取数用的市场前缀,不该出现在屏上;港股同理显示 `00700`)。
+            setTextColor(act.attrColor("colorSub"))       // 稿 --ink2
+            textSize = TS(R.dimen.fs_note)
+            maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.END
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                // ⚠ 2026-10-06 gap 由稿的 6 加到 8,有意偏离。
+                //   用户真机截图：徽标药丸的右边框压到了代码首字母(MSTR 的 M)。
+                //   根因是单位错配——徽标内边距与这个间距是 dp(**不跟**系统字号)，
+                //   而徽标字与代码字是 sp(**跟随**系统字号)：模拟器(1.0 倍字号)量着正好，
+                //   真机字号调大后两边向中间挤，5.7dp 就不够了。8dp 在 1.0 倍下只多一点气口，
+                //   在大字号下保住不重叠。另加 ellipsize：超长代码截断，不许顶出列宽。
+                marginStart = dp(8f).toInt()
             }
-            fsub.addView(codeTv)
+            isClickable = false
+            isFocusable = false
         }
-        // t201 ⑦:原本这里按稿 L449 逐行挂一个「旧 N 前」的 TextView, 已删。
-        //   稿的 r.age 是死数据(WatchRow 不读它), 所以 err 态下稿的行没有这个标记。
+        fsub.addView(codeTv)
         fcol.addView(fsub)
-        // 稿§2 右三格:宽度改由 fixedColLp(COL_DIST/COL_GAIN/COL_RATIO) 给（**类成员**，定义见 favRowView 之前），
-        // 间隙由 pick 里的三只 gapView() space-between 均分。照稿 v2.html:952 定死 88/76/56。
-        // 墓碑 · 旧口径「距支撑96dp/收益率66dp/收益比58dp,间距6dp」(引稿 index.html:172/174/175/181)
-        //   同样是旧一行，本轮整体下线。
-        // t171 悬案E:时效画在【距支撑这一列下面】。
-        // dc 原本是裸 TextView, 下面没有位置, 所以把它包一层纵向容器。
-        // 注意:capsules[f.s] 存的仍然是 dc 这个 TextView 本身,repaint 不受影响。
+        // t171 悬案E:时效画在【距支撑这一列下面】,dc 包一层纵向容器。
         val dcol = LinearLayout(act).apply {
             orientation = LinearLayout.VERTICAL
-            // ⚠ t354 稿 v2.html:1193: `<div style={{textAlign:'right', minWidth:0}}>` —— **右对齐**。
-            //   改前是 CENTER_HORIZONTAL(居中), 是 App 自己的发挥, 与稿相反。
+            // ⚠ t354 稿 v2.html:1193 右对齐(原居中是 App 自己的发挥,与稿相反)。
             gravity = Gravity.END or Gravity.CENTER_HORIZONTAL
-            // ⚠ t8：宽度**不再**在这里设 —— 统一由下面 `dcol.layoutParams = fixedColLp(COL_DIST)` 给。
-            //   墓碑 · t336 的 cellLp(weight 1.2/0.88/0.88) 与 t391 追的「每列 gap:10」本轮整体下线：
-            //   稿现行 v2.html:952 是**四列定死 88/88/76/56 + space-between 均分余量**，
-            //   间隙由三只 gapView() 平分，不再是 col_gap 的定值 10dp（见上方 GRIDR 处的说明）。
+            isClickable = false
+            isFocusable = false
         }
-        val dc = paintDist(TextView(act), d, pendingSyms.contains(f.s))
-        // 稿 L391: letterSpacing='-.02em'。+25.56% 是 7 个字符, 21sp 下约 224px,
-        // 而距支撑列实测 219px —— 不压缩就把最后一个 '%' 裁掉(t354 截图实锤)。
-        dc.letterSpacing = -0.02f
-        dc.layoutParams = LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-        dc.gravity = Gravity.CENTER
-        // 稿 L397-399: 时效 flag 另起一行(12sp, marginTop 4, 默认档 --ink3/400)。
-        // dcol 这个纵向容器本来就是为它准备的, 之前只放了 dc, 第二行一直空着。
-        // 挂在 dc.tag 上: repaint 走 paintDist(capsules[...], d) 只拿得到 dc,
-        // 不引入第二个 map, 免得两份真相。
+        val dc = TextView(act).apply {
+            isClickable = false
+            isFocusable = false
+        }
+        // 稿 L397-399: 时效 flag 另起一行(12sp, marginTop 4)。挂在 dc.tag 上,
+        // bind 走 paintDist 只拿得到 dc,不引入第二个 map,免得两份真相。
         val flagTv = TextView(act).apply {
             textSize = TS(R.dimen.fs_note)
-            // 稿 L398  none ? var(--dn) : r.nosrc ? var(--ink2) : var(--ink3)
-            // 无源标红是稿 L372 明确许可的:「红在此安全:真的什么都没有」。
-            // 改前恒 colorFaint, 于是「真的什么都没有」和「只是旧了」长得一样。
-            // ⚠️ **pending 必须排在 none 之前判**（t35）：用户 2026-09-30 裁定原文
-            //   「新增行显示『— + 待取数』，**绝不标红**」。改前 `d == null` 一律 colorRed，
-            //   而正在取数的行 d 正是 null ⟹ **它被当成缺源标红了**，那是误报。
-            //   pending 用 colorSub（中性次级），与 soft 同档。
-            val pend = pendingSyms.contains(f.s)
-            setTextColor(act.attrColor(
-                if (pend) "colorSub"
-                else if (d == null || !d.ok) "colorRed"
-                else if (d.soft) "colorSub" else "colorFaint"))
-            // 稿 L399 逐字: fontWeight (none || r.nosrc) ? 600 : 400。
-            // 判据与上面那行颜色**同源**(none ↔ d==null||!d.ok, nosrc ↔ d.soft),
-            // 两处不可能脱节; 稿的 600 在本盘就是 BOLD(同 paintSrcRow 的 main 行)。
-            // pending 不加粗：它是「进行中」的中性状态，不是「缺源」那种要示警的。
-            setTypeface(null, if (d == null || !d.ok || d.soft)
-                Typeface.BOLD else Typeface.NORMAL)
             maxLines = 1
             gravity = Gravity.CENTER
             visibility = View.GONE
@@ -1243,50 +1189,22 @@ class FavPanel(
                 ViewGroup.LayoutParams.WRAP_CONTENT).apply {
                 topMargin = dp(3.8f).toInt()
             }
+            isClickable = false
+            isFocusable = false
         }
         dc.tag = flagTv
-        // t295: paintDist 是在上面 L724 调用的, 那时 tag 还是 null, 它的 flag 写入是死代码。
-        // 这里 tag 一挂上就补一次 —— 之后 repaint 走的也是这条路径, 单一真相。
-        paintFlag(dc, d, pendingSyms.contains(f.s))
         dcol.addView(dc)
         dcol.addView(flagTv)
         dcol.layoutParams = fixedColLp(COL_DIST)
         val gc = TextView(act).apply {
             textSize = TS(R.dimen.fs_title)
             gravity = Gravity.END or Gravity.CENTER_VERTICAL
-            // t354 稿 v2.html:1198-1199: fontWeight:600。实测 +58.52% 占 158px 而列宽 161px,
-            // 差 3px 被截成「+58.5…」。稿没有 letterSpacing, 但稿的容器没有 App 这层额外的
-            // leftMargin; App 侧用与距支撑同样的 -0.02 压缩补齐这 3px。
-            // 稿 v2.html:1198 逐字: fontSize:T.title, fontWeight:600 —— **没有 letterSpacing**
-            // （只有距支撑 v2.html:1194 有 -0.02em）。t355 我给这一列也加了，是偏离稿的，本条撤掉。
             setTypeface(typeface, Typeface.BOLD)
-            // ⚠ 配色（2026-10-03 **用户裁定改绿**：「行情页面的交易品种的收益率和收益比改为绿色」）
-            //   ⟹ **恒定绿色**，不再按正负分色。
-            //
-            // 【推翻的是下面这段旧依据】
-            //   稿 v2.html:965 逐字: const pnlColor = v => v>0 ? 'var(--up)' : v<0 ? 'var(--dn)' : 'var(--ink)';
-            //   稿 v2.html:1199 逐字: color: blankAll ? 'var(--ink3)' : pnlColor(r.roi)
-            //   稿 v2.html:963 口径原话:「收益率·收益比 正 = 涨绿 / 负 = 跌红」⟹ 正绿 / 负红 / 零墨。
-            //   本轮按 v2.html:965 + :1199 补齐了负值那一档（改前是恒 colorTeal）。
-            //   **现在又改回恒绿** —— 用户直接看的稿的颜色，稿的「红」在这一列上不成立。
-            //   ⚠ 距支撑那一列**仍按正负分色**，未受影响（用户只点名了收益率与收益比）。
-            //
-            // token 映射见 res/values/attrs.xml: --up→colorTeal · --dn→colorRed
-            //     · --ink→colorInk · --ink3→colorFaint。
-            val roi = m.gain
-            val roiTxt = roi?.let { fmtPct(it) }
-            // ⚠ 无值/过期仍弱化 —— 「没有数据」与「有数据但恒绿」是两回事，
-            //   若这里也上绿，空白行会看起来像有收益。
-            setTextColor(
-                when {
-                    roi == null || isStale(d) -> act.attrColor("colorFaint")
-                    else -> act.attrColor("colorTeal")
-                })
             layoutParams = fixedColLp(COL_GAIN)
             maxLines = 1
             ellipsize = android.text.TextUtils.TruncateAt.END
-            text = roiTxt ?: "—"
-            gainTip(m)?.let { tooltipText = it } // 悬浮:收益率·净收益USD·保存时间
+            isClickable = false
+            isFocusable = false
         }
         val rc = TextView(act).apply {
             textSize = TS(R.dimen.fs_title)
@@ -1294,66 +1212,188 @@ class FavPanel(
             layoutParams = fixedColLp(COL_RATIO)
             maxLines = 1
             ellipsize = android.text.TextUtils.TruncateAt.END
+            isClickable = false
+            isFocusable = false
         }
-        paintRatioCell(rc, d, m)
-        // t8 照稿 A1④：四列定死 + 三条 space-between 间隙，**顺序必须与稿 GRIDR 一致**。
-        //   稿 v2.html:1190 的 grid 是 4 列一条；原来的 rq(权重容器) 本轮拆掉，
-        //   三列直接挂进 pick，与 fcol 之间各插一条 gapView()。
+        // t8 照稿 A1④:四列定死 + 三条 space-between 间隙,**顺序必须与稿 GRIDR 一致**。
         pick.addView(fcol)
         pick.addView(gapView()); pick.addView(dcol)
         pick.addView(gapView()); pick.addView(gc)
         pick.addView(gapView()); pick.addView(rc)
-        row.addView(pick)
-        // ---------- 左滑层（2026-10-01 用户裁定）----------
-        // 稿 :1171-1177 的结构照搬：外层 relative + overflow hidden，
-        // 右边一块 SWIPE_W 宽的「删除」纯文字（红色、无图标，SPEC §9/§10），
-        // 行内容盖在上面跟手平移。
-        // ⚠️ 未滑开时删除键必须不可点（稿 :1172 pointer-events:none），
-        //   否则那 72dp 虽被行盖住，事件仍会穿透 ⟹「没滑开也能删」的幽灵操作。
-        val del = TextView(act).apply {
-            text = "删除"
+        content.addView(pick)
+        // C 版行内确认条:平时 GONE,长按才展开。
+        // 「删除 {代码} {中文名}? [取消] [删除]」,眼睛不离开这一行。
+        val stripTxt = TextView(act).apply {
             textSize = TS(R.dimen.fs_title)
-            setTypeface(null, Typeface.BOLD)
-            gravity = Gravity.CENTER
-            setTextColor(act.attrColor("colorRed"))
-            setBackgroundResource(android.R.color.transparent)
+            setTextColor(act.attrColor("colorInk"))
+            layoutParams = LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
             isClickable = false
             isFocusable = false
         }
-        val wrap = android.widget.FrameLayout(act)
-        wrap.addView(del, android.widget.FrameLayout.LayoutParams(
-            // ⚠️ **只在布局这一处转 Int**：`LayoutParams(width:Int,…)` 只能收 Int。
-            //    `swipeW()` 本身**必须保持 Float** —— 拖拽时 `translationX` 用的是它，
-            //    改成 Int 会让左滑全程整数跳、一顿一顿。布局宽度是一次性求值，转 Int 不损平滑度。
-            swipeW().toInt(), ViewGroup.LayoutParams.MATCH_PARENT, Gravity.END))
-        row.layoutParams = android.widget.FrameLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-        wrap.addView(row)
-        val open = swipedSym == f.s
-        del.isClickable = open
-        del.visibility = if (open) View.VISIBLE else View.GONE
-        if (open) row.translationX = -swipeW()
-        del.setOnClickListener { if (swipedSym == f.s) askDelete(f.s) {} }
-        // ⚠️ onOpen **直接调 onPick(f.s)，不能用 pick.performClick()**：
-        //    armSwipe 把 OnClickListener 装在 pick 自己身上，
-        //    performClick() 会再触发它 → 又走 else 分支 → 无限递归。
-        // 删除键的显隐由 repaint() 重建行时统一处理（favRowView 里按 swipedSym 置位），
-        // 所以 armSwipe 不需要也不接收 del —— 收到一个从不用的形参只会误导下一个人。
-        // ⚠ 中文名来自 MktSuggest.favName(f.s)，**不是 FavItem.t**
-        //   （t 存的是「美股/币/韩股」这类市场标签，行情页要的是「美光」）。
-        //   取名口径与上面 :1052 那行完全一致，避免两处各算一套。
-        armSwipe(pick, f.s) { onPick(f.s, MktSuggest.favName(f.s)) }
-        capsules[f.s] = dc
-        ratios[f.s] = rc
-        metas[f.s] = m
-        return wrap
+        val stripCancel = TextView(act).apply {
+            text = "取消"
+            textSize = TS(R.dimen.fs_title)
+            setTextColor(act.attrColor("colorSub"))
+            setPadding(dp(12f).toInt(), dp(8f).toInt(), dp(4f).toInt(), dp(8f).toInt())
+        }
+        val stripDel = TextView(act).apply {
+            text = "删除"
+            textSize = TS(R.dimen.fs_title)
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(act.attrColor("colorRed"))
+            gravity = Gravity.CENTER
+            setPadding(dp(16f).toInt(), dp(7f).toInt(), dp(16f).toInt(), dp(7f).toInt())
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = dp(6f)
+                setStroke(dp(1f).toInt(), act.attrColor("colorRed"))
+                setColor(Color.TRANSPARENT)
+            }
+        }
+        val strip = LinearLayout(act).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(ph, dp(10f).toInt(), ph, dp(10f).toInt())
+            // ⚠ 2026-10-06 底线只画在 root 上（见下），这里不画 ——
+            //   否则确认条展开时一行变两条线。
+            //   默认隐藏（bind 里按 showConfirm 重算，这里只是初始值）。
+            visibility = View.GONE
+            // 条体本身吞掉点击(别冒泡到整行跳行情),两个按钮各自接管。
+            isClickable = true
+            setOnClickListener { }
+            addView(stripTxt)
+            addView(stripCancel)
+            addView(stripDel)
+        }
+        // itemView 根:纵向 = 行内容 + 确认条。
+        // ⚠ 2026-10-06 borderBottom 通栏线挂在这里（稿 L384:每一行下面都有一条）。
+        //   线必须跟着**有内边距**的容器走 —— 之前挂在无内边距的 content 底边，
+        //   字下面几乎贴线、线下面却是下一行的整段 pv，上下两把尺子。
+        //   现在线的上下都是同一套 pv，对称。
+        val root = LinearLayout(act).apply {
+            orientation = LinearLayout.VERTICAL
+            background = act.getDrawable(R.drawable.fav_row_line)
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT)
+            isClickable = true
+            isFocusable = true
+            addView(content)
+            addView(strip)
+        }
+        // 兜底:内容区所有后代都不接管点击与焦点(上面逐个设过,这里再扫一遍,
+        // 以后加新格子也不会漏)。确认条的两个按钮除外 —— 它们就是要点的。
+        stripClickable(content)
+        return RowShell(root, fname, bd, codeTv, fsub, dc, gc, rc,
+            strip, stripTxt, stripCancel, stripDel)
     }
 
+    /** 递归剥掉一棵子树里所有 View 的点击与焦点接管(不含根自己)。 */
+    private fun stripClickable(root: View) {
+        if (root is ViewGroup) {
+            for (i in 0 until root.childCount) {
+                val c = root.getChildAt(i)
+                c.isClickable = false
+                c.isFocusable = false
+                c.isFocusableInTouchMode = false
+                stripClickable(c)
+            }
+        }
+    }
+
+    /** 绑数据:原来 favRowView 里所有与 f/d/m 有关的赋值,原样搬到这里。 */
+    private fun bindRowShell(sh: RowShell, r: FavRow, pending: Boolean, showConfirm: Boolean) {
+        sh.boundSym = r.it.s
+        // 行高:flag 判据与 flagTv 同源 ⟹ 「flag 画出来了」与「行高跟着变了」不可能脱节。
+        val flagged = flagOf(r.d, pending).isNotEmpty()
+        val pv = dp(if (flagged) 11f else 16f).toInt()
+        val ph = dp(15.3f).toInt()
+        sh.root.setPadding(ph, pv, ph, pv)
+        // 标题:有中文名用中文名,没有(币类 shortSym 即代码)才回落代码本身。
+        val cnName = MktSuggest.favName(r.it.s)
+        sh.fname.text = if (cnName.isNotEmpty() && cnName != r.it.s) cnName else r.it.s
+        // ⚠ 2026-10-07 同上：标题恒墨，不再按stale置灰（时效只看flag行）。
+        sh.fname.setTextColor(act.attrColor("colorInk"))
+        sh.fname.textSize = TS(R.dimen.fs_title)
+        sh.fname.setTypeface(sh.fname.typeface, Typeface.BOLD)
+        // 第二行:徽标 + 代码(标题已是代码时不重复显示)。
+        val cn = MktSuggest.favName(r.it.s)
+        sh.bd.text = favSubLine(r.it.t, cn)
+        val titleIsCode = (cn.isEmpty() || cn == r.it.s)
+        sh.codeTv.visibility = if (titleIsCode) View.GONE else View.VISIBLE
+        if (!titleIsCode) sh.codeTv.text = FavStore.displaySym(r.it.s)
+        // 距支撑:paintDist 写值(含 flag),再按长度分档降字号防 '%' 被列宽裁掉。
+        // ⚠ 2026-10-05 真机裁字教训:autosize 在这台真机上闪退,已永久弃用;
+        //   改用确定性写法,纯算术不可能崩。
+        // ⚠ 2026-10-06 教训2:第一版只按 7 字符算 86%,NFLX 的 `+1138.58%`(9 字符)
+        //   照样被裁 —— 分档必须覆盖最长情形。列宽约 219px(见 create 处注释)：
+        //   7 字≈224px→86%≈193px ✔；9 字≈288px→需≤219px即≤76%，取 72% 留余量；
+        //   ≥10 字（如 `-12345.67%`）取 60%，再长就不是正常数值了。
+        paintDist(sh.dc, r.d, pending)
+        paintFlag(sh.dc, r.d, pending)
+        // ⚠ 2026-10-07 用户裁定「统一把字都缩小，不要再剪掉单位」：整体先×0.88，再按长度分档，
+        //   9字以上保证%不被列宽裁掉；宁可全小，不许单个%被吃掉。
+        sh.dc.textSize = TS(R.dimen.fs_data).let { base ->
+            val small = base * 0.88f
+            when ((sh.dc.text?.length ?: 0)) {
+                in 0..6 -> small
+                7, 8 -> small * 0.86f
+                9 -> small * 0.72f
+                else -> small * 0.60f
+            }
+        }
+        sh.dc.letterSpacing = -0.02f
+        sh.dc.gravity = Gravity.CENTER
+        sh.dc.maxLines = 1
+        sh.dc.setPadding(0, dp(8.6f).toInt(), 0, dp(8.6f).toInt())
+        sh.dc.background = null
+        // ⚠ 2026-10-07 用户裁定「我需要紫色」—— 距支撑语义色落到**最后一次写入**。
+        //   原先语义色只在 paintDist 里设一次，而 paintDist 位于本函数**开头**；
+        //   实测那一次不生效（埋点：want=#FF6749B6 → after=#B3FFFFFF，被主题默认压过）。
+        //   这里在对 sh.dc 的全部操作之后重新落色，保证它是最终写者。
+        //   口径照稿 v2.html:964：正=紫 colorPrimary / 负=灰白 colorFaint / 零=墨 colorInk。
+        r.d?.takeIf { it.ok }?.let { dd ->
+            sh.dc.setTextColor(
+                when {
+                    dd.pct > 0 -> act.attrColor("colorPrimary")
+                    dd.pct < 0 -> act.attrColor("colorFaint")
+                    else -> act.attrColor("colorInk")
+                })
+        }
+        // 收益率:⚠ 2026-10-03 用户裁定恒定绿色,不再按正负分色(距支撑列仍按正负分色)。
+        // 无值/过期仍弱化 —— 「没有数据」与「有数据但恒绿」是两回事。
+        val roi = r.m.gain
+        sh.gc.text = roi?.let { fmtPct(it) } ?: "—"
+        // ⚠ 2026-10-07 同上：收益率恒绿（有值即绿），不再按stale置灰；无值才灰。
+        sh.gc.setTextColor(
+            when {
+                roi == null -> act.attrColor("colorFaint")
+                else -> act.attrColor("colorTeal")
+            })
+        gainTip(r.m)?.let { sh.gc.tooltipText = it } // 悬浮:收益率·净收益USD·保存时间
+        // ⚠ 2026-10-07 与距支撑同幅缩小（统一小一号，避免% / ×被裁）。
+        sh.gc.textSize = TS(R.dimen.fs_title) * 0.88f
+        sh.rc.textSize = TS(R.dimen.fs_title) * 0.88f
+        // 收益比。
+        paintRatioCell(sh.rc, r.d, r.m)
+        // C 版行内确认条:展开时显示「删除 {代码} {中文名}? [取消] [删除]」。
+        sh.strip.visibility = if (showConfirm) View.VISIBLE else View.GONE
+        if (showConfirm) {
+            val cn2 = MktSuggest.favName(r.it.s)
+            val disp2 = if (cn2.isNotEmpty() && cn2 != r.it.s) cn2 else r.it.s
+            sh.stripTxt.text = "删除 ${FavStore.displaySym(r.it.s)} $disp2？"
+            sh.stripCancel.setOnClickListener { setConfirm(null) }
+            sh.stripDel.setOnClickListener {
+                setConfirm(null)
+                FavStore.remove(act, r.it.s)
+                repaint()
+            }
+        }
+    }
+
+
     fun repaint() {
-        favList.removeAllViews()
-        capsules.clear()
-        ratios.clear()
-        metas.clear()
         val a = FavStore.get(act)
         // ⚠ 副标**故意不接线**（t8 2026-10-02 captain 裁定）：稿 v2.html:1600-1607 的墓碑说这条
         //   副标已被用户删掉、「要不要补等用户拍板」，与本次「完全照稿子改」指向相反 ⟹ 只有用户能定。
@@ -1390,7 +1430,12 @@ class FavPanel(
         // 记录侧取该品种最新一条(latestRecOf,追加语义下读取取最新)
         val rows = a.map { f ->
         // t128:存一份给汇总条(与列表同源)
-            val d = FavDist.display(f.s, tf, n, FavDist.cached(f.s, tf, n))
+        // ⚠ 2026-10-09 改走 FavDist.shown()：原先与 onShow 判「缺不缺值」的 FavDist.hasValue()
+        //   **同一份判据**（cached 的 ok/soft → 落盘 lastOk 旧值），结构上保证
+        //   「屏上显示什么」与「判它缺不缺值」不会再分叉（缺陷 A 的根因就是这两处分叉）。
+        //   ⚠ 2026-10-10：onShow 那条判据（连同 hasValue 的唯一调用点）已随"切页不刷"删掉，
+        //     这里继续走 shown() 的理由不变——它就是"屏上显示什么"的定义，与取数策略无关。
+            val d = FavDist.shown(f.s, tf, n)
             val rec = act.latestRecOf(f.s)
             val roe0 = rec?.optDouble("roe", Double.NaN) ?: Double.NaN
             val net0 = rec?.optDouble("net", Double.NaN) ?: Double.NaN
@@ -1439,9 +1484,9 @@ class FavPanel(
             !pendingSyms.contains(it.it.s) && (it.d == null || !it.d.ok)
         }
         paintCountLine(live = liveCnt, noneN = noneCnt, wait = pendCnt)
-        // 稿 L384: 行**自带** borderBottom(见 favRowView 里的 background), 每一行下面都有。
-        // 改前是在这里往行与行之间插 t102Hairline(): 末行下面没有线, 那正是 #32 说的那一处。
-        for (r in sorted) favList.addView(favRowView(r.it, r.d, r.m))
+        // RecyclerView 化:整单换数据,不再逐行 addView(也不再有 capsules 反查表)。
+        // 稿 L384 行自带 borderBottom 的规则不变 —— 它在行壳里,见 createRowShell。
+        submitRows(sorted.map { FavRow(it.it, it.d, it.m, it.ratio) })
     }
 
     // 距离刷新(照稿 refreshFavDist):读 distWin 窗;到一个补一个(行内逐条补数)。
@@ -1453,13 +1498,43 @@ class FavPanel(
     // 每次必然失败——"明知不通还猛打"与"串行命中即停"是同一个原则问题。用户已拍板按稿删。
     //
     // 保留的刷新入口(删了环也不能变成"再也不刷新"):
-    //   onShow()      切回自选页/冷启动/回前台 → refreshFavDist()  (稿 :411 distMissing→refreshFavDist)
-    //   add 成功后    新加的行若仍无值就刷一次
-    //   MainActivity  回前台时 onShow()
+    //   onShow()       切回自选页 → 见 onShow：**只在进程内首次进入**真抓一轮(net=true，全量)；
+    //                  之后切页**不发任何取数请求**（2026-10-10 用户裁定：切页不刷，
+    //                  原"按缺值补刷 only=缺失集合"那条路径已删）
+    //   cycleSort / MainActivity.onDistCommitted → 全量(用户显式动作，那几处本来就该全刷)
+    //   add 成功后     只 repaint（新行没有值就顶着空/留底，等用户下一次显式动作）
+    //   MainActivity  回前台**不**调 onShow（onResume 只 ensure 汇率）⟹ 回前台不刷，无定时轮询
     // bg=后台补抓轮(本会话已成功的 key 直接复用现值、不再发请求,幂等)
-    fun refreshFavDist(bg: Boolean = false) {
+    // net=真抓轮(冷启动首次进自选的那一轮,**绕过全部复用层真的发网络请求**,见 FavDist.forceFetch)
+    // ⚠ 2026-10-10 起 onShow 不再传 only；only 参数仍被保留（语义未变），供日后显式入口按需使用。
+    fun refreshFavDist(bg: Boolean = false, only: Set<String>? = null, net: Boolean = false) {
         val (tf, n) = mkt.distWin()
-        val syms = FavStore.get(act).map { it.s }.distinct()
+        // ⚠⚠⚠ 2026-10-08 用户真机 **28 个品种**（截图 `实时 28 / 无源 1`）——**请求量爆炸的真正源头**。
+        //   ⚠ 2026-10-10 补记：下面【修法】里那句「onShow → 传缺失集合」**已作废** ——
+        //     用户当天裁定切页不刷，onShow 那条调用整个删了（见 onShow ③ 的墓碑注释）。
+        //     only 参数本身与下面这段修法对**其它调用点**仍然成立，故保留原文不改。
+        //
+        // 【症状】用户报「大宗商品老是无源」「那我只能慢慢刷新了」。
+        // 【机制】onShow 的判据是「**有没有任何一行**缺值」(anyMissing)，而只要有任何一行缺失
+        //   （哪怕只有那条一直失败的商品），就调 refreshFavDist() ⟹ **刷全部 28 个**。
+        //   28 品种 × 1~2 腿 ≈ **40~50 条请求**一次性打出去 ⟹ 必撞东财限流
+        //   ⟹ 又制造出新的失败行 ⟹ 下次切页又是全量 ⟹ **自激死循环**。
+        //   用户看到的「慢慢刷新」其实是这个环在反复打。
+        //
+        // 【为什么这是实现偏离裁定，不是设计】用户 2026-10-05 的原话是
+        //   「有数据的行切页不刷，**但一个值都没有的行要补**」——**补的是那一行**。
+        //   实现把"要不要刷"正确接到了 anyMissing，却把"**刷谁**"落成了全量。
+        //   一句话：判据对了，作用域错了。
+        //
+        // 【修法】加 only 参数：只补真正缺的那些行。
+        //   · onShow         → 传缺失集合（通常只有 1~2 行 ⟹ 1~2 条请求，而不是 40~50 条）
+        //   · 排序变化/窗口提交/加自选后 → 仍传 null（保持原有全量语义，那几处本来就该全刷）
+        //     ⚠ 2026-10-10：onShow 不再调用本函数，only 参数已无在用的调用点，但**保留**——
+        //       它是这个函数唯一"只刷某几行"的能力，删掉就等于把选择权也删了。
+        //   ⚠ 错峰索引用**过滤后**的 syms（下方 staggerIdx），这样只补 1 行时不会白等
+        //     "它在全集里排第 7" 的那 4 秒。
+        val all = FavStore.get(act).map { it.s }.distinct()
+        val syms = if (only == null) all else all.filter { it in only }
         if (syms.isEmpty()) return
         val seq = ++distSeq
         val total = syms.size
@@ -1480,7 +1555,19 @@ class FavPanel(
             //   ⚠ 300ms 是**实测限流窗口的保守取值**，不是精确值（45s 冷却对应的是密集连打）。
             //   ⚠ 只错峰**开始**，不限并发上限 —— 品种极多时总时长会线性变长。
             //     自选通常十几条以内可接受；上百条得换成真正的令牌桶。
-            val staggerMs = 300L
+            //
+            // ⚠⚠ 2026-10-08 **按品种数自适应**（用户真机自选 **28 个品种**，截图实测
+            //   `实时 28 / 无源 1`）。原值恒 300ms 是按"十几条以内"估的，28 条时：
+            //   · 错峰总窗口只有 28×300ms ≈ 8.4s，而请求总量 28 品种 × 1~2 腿 ≈ 40~50 条
+            //     ⟹ 平均仍达 ~5 条/秒，**正是东财限流窗口的密集区**
+            //     （MktData 侧实测记录：连打第 1 次就空响应、要等 45s 才恢复）；
+            //   · 撞上的那条显示「—无源」，而**从没成功过的品种**没有任何留底可兜
+            //     ⟹ 这才是用户那条布伦特原油 `B00Y` 的处境。
+            //   超过 20 条就把间隔加倍：牺牲的是总时长（用户已接受"慢慢刷新"），
+            //   换来的是**单位时间请求量减半**，直接降低撞限流的概率。
+            //   ⚠ 这不是把 300ms 调大这么简单 —— 十几条以内**必须保持原 300ms**，
+            //     否则就是拿常见场景的体验去补极端场景的坑。
+            val staggerMs = if (syms.size > 20) 600L else 300L
             val staggerIdx = syms.indexOf(s).coerceAtLeast(0)
             pendingSyms.add(s)
             Thread {
@@ -1490,12 +1577,21 @@ class FavPanel(
                 var r: DistR? = null
                 val k = FavDist.key(s, tf, n)
                 val shown = FavDist.cached(s, tf, n) ?: FavDist.lastOk(s, tf, n)
-                if (bg && FavDist.doneOk(k) && shown != null) {
+                if (!net && bg && FavDist.doneOk(k) && shown != null) {
                     r = shown
                 } else {
                     try {
                         // 稿§5 两条取数路径:后台环=fullSup重抓支撑;首帧=lightPx轻量刷价
-                        r = if (bg) FavDist.fullSup(s, tf, n) else FavDist.lightPx(s, tf, n)
+                        // ⚠ 2026-10-09 **第三条:真抓轮(net)** —— 用户裁定「冷启动首次那轮选
+                        //   留底先上屏 + 后台错峰真抓一轮覆盖」。forceFetch 绕过
+                        //   LastChart/MktCache/MktSave 与本文件 5 分钟新鲜缓存，对每个品种
+                        //   **真的发请求**（改前这三级一命中就直接返回，一个请求都不发）。
+                        //   失败时下面的 display() 会回落 lastOk() 留底旧值，屏上不会空。
+                        r = when {
+                            net -> FavDist.forceFetch(s, tf, n)
+                            bg -> FavDist.fullSup(s, tf, n)
+                            else -> FavDist.lightPx(s, tf, n)
+                        }
                     } catch (_: Exception) {
                     }
                 }
@@ -1508,10 +1604,9 @@ class FavPanel(
                     pendingSyms.remove(s)
                     if (seq != distSeq || hidden) return@runOnUiThread
                     val disp = FavDist.display(s, tf, n, r)
-                    capsules[s]?.let { paintDist(it, disp, false) }
+                    // 按符号找到行,只重绑该行(不碰其他行、不重建列表)。
+                    updateDist(s, disp)
         t112CallSrcRow()
-                    // 距支撑到达后收益比随新值重画(稿:说明行+三列同步)
-                    ratios[s]?.let { rc -> metas[s]?.let { m -> paintRatioCell(rc, disp, m) } }
                     if (done.incrementAndGet() == total) finishRefresh(bad.get())
                 }
             }.start()
@@ -1536,11 +1631,66 @@ class FavPanel(
         repaint()
     }
 
-    // 进自选页(稿showTab('fav')→refreshFavDist):重绘+重刷距离
+    // 进自选页(稿showTab('fav')→refreshFavDist):重绘;取数**只在进程内首次进入**那一次。
+    // ⚠⚠⚠ 2026-10-10 **用户裁定：切页不刷**。原话：「每次到自选页面就要自动刷新数据，
+    //   明明只是随便切一下页面而已。」⟹ 只有进程内首次进入才真抓一轮（下面 ②）；
+    //   此后切回本页**一个取数请求都不发**（下面 ③ 的位置原本是"按缺值补刷"那条路径，已删）。
+    //   这是对 2026-10-05「没有获取到的，可以在限流措施内继续刷，但是只刷新他」的**取代**，
+    //   不是回退到更早的全量刷：两条都不再要了。
+    //   ① 与 ② 保持原样；刷新入口只剩 cycleSort / MainActivity.onDistCommitted 两处用户显式动作。
     fun onShow() {
         hidden = false
+        // ① **留底先上屏**：repaint 走 FavDist.shown()（cached 的 ok/soft → 落盘 lastOk 旧值），
+        //    不等网络 ⟹ 冷启动/断网也不会先画一屏空行。
         repaint()
-        refreshFavDist()
+        // ⚠ 2026-10-10：这里原有 `val (tf, n) = mkt.distWin()`，只为下面 ③ 的
+        //   `FavDist.hasValue(s, tf, n)` 提供窗口参数；③ 删掉后 tf/n 再无读者
+        //   （编译器报 "Variable 'tf' is never used"），一并删。distWin() 是纯 getter
+        //   （读窗设置，不取数、无副作用），不再调用它**不改变任何行为**。
+        val syms = FavStore.get(act).map { it.s }.distinct()
+        if (syms.isEmpty()) return
+
+        // ② ⚠⚠⚠ 2026-10-09 **进程内首次进入自选：真抓一轮**。两句裁定拼起来才是这一段的语义：
+        //    ①「只在进程内首次进入自选刷新一次」⟹ 只有"首次"这一次；
+        //    ②「冷启动首次那轮选留底先上屏 + 后台错峰真抓一轮覆盖」⟹ 这一轮是**真抓**。
+        //    （2026-10-05 那句「没有获取到的，可以在限流措施内继续刷，但是只刷新他」
+        //      已被 2026-10-10 裁定取代，**不再是本段的依据**，见 ③。）
+        //    · 一轮 = **全量**（这是唯一允许全量的一处）；
+        //    · 真抓 = net=true ⟹ FavDist.forceFetch，绕过 LastChart/MktCache/MktSave
+        //      与 5 分钟新鲜缓存，对每个品种真的发网络请求（改前复用层一命中就返回，
+        //      所谓"刷新"只是拿缓存重算一遍）；
+        //    · 失败的行由回调里的 display() 回落 lastOk() 留底旧值顶屏。
+        //    ⚠ 本分支**语义未变**（2026-10-10 只删了下面 ③）：仍是"首次、全量、真抓"。
+        //      唯一少掉的是原来在这里顺手写的一次 `lastMissFetchAt[s] = now` —— 那是给
+        //      已删的 ③ 限流闸用的记账，首轮自身的行为与它无关，删掉不改变首轮。
+        if (!firstRoundDone) {
+            firstRoundDone = true
+            refreshFavDist(net = true)
+            return
+        }
+
+        // ③ 【原"按缺值补刷"路径，2026-10-10 已删】——切页到此为止，不发任何请求。
+        //
+        // 删掉的是什么：原先这里按 `!FavDist.hasValue(s, tf, n) &&
+        //   now - lastMissFetchAt[s] >= MISS_REFETCH_GAP_MS` 求出 missing 集合，
+        //   再 `refreshFavDist(only = missing)` 去补那 1~2 行。
+        //
+        // 【为什么删】它挂着 60s 限流闸，**看着**不像"每次切页都刷"，但自选里只要有
+        //   1~2 个**永远取不到数**的品种（韩股、布伦特原油 B00Y 这类从没成功过的），
+        //   它们的 `hasValue` 恒为 false ⟹ 过了 60s 再切页必然命中 missing 又打一轮。
+        //   用户看到的就是「每次到自选页面就要自动刷新数据」——他 2026-10-10 的裁定
+        //   正是针对这个观感：**随便切一下页面不该触发任何取数**。
+        //   限流闸能压低请求量，但压不掉"切页会发请求"这件事本身。
+        //
+        // 【连带的死代码】`lastMissFetchAt` 与 `MISS_REFETCH_GAP_MS` 只服务这条路径，
+        //   已随它一起删（companion 里留了墓碑注释）。原来在 ② 之前声明的
+        //   `val now = System.currentTimeMillis()` 与 `val (tf, n) = mkt.distWin()`
+        //   也只剩这条路径在用，一并删（见上面两处 ⚠）。
+        //
+        // 【还活着的刷新入口】cycleSort（用户点列头）、MainActivity.onDistCommitted
+        //   （用户提交距离窗口）→ 两处都调 refreshFavDist()，全量，**未动**；
+        //   加自选后走 mktPanel.onFavChanged → 只 repaint（本来就不取数），**未动**。
+        //   ⚠ 别再往 onShow 里加取数：那正是 2026-10-10 裁定要拿掉的东西。
     }
 
     // 离开自选页(稿else clearTimeout(FAVRetry)):停表清计时器,在途旧结果作废
@@ -1682,11 +1832,8 @@ class FavPanel(
         //
         // ⚠ 无值/过期仍走 colorFaint：「没有数据」与「有数据但恒绿」是两回事。
         // ⚠ 距支撑那一列**仍按正负分色**，未受影响（用户只点名了收益率与收益比）。
-        rc.setTextColor(
-            when {
-                isStale(d) -> act.attrColor("colorFaint")
-                else -> act.attrColor("colorTeal")
-            })
+        // ⚠ 2026-10-07 同上：收益比恒绿（有值即绿），不再按stale置灰。
+        rc.setTextColor(act.attrColor("colorTeal"))
         // D6:距支撑取绝对值——跌破支撑时 distPct 为负,公式本身用 |距支撑|,
         // 提示里若写「÷ 距支撑 -2.50%」会与「收益比 = 收益率 ÷ |距支撑|%」自相矛盾
         val distTxt = String.format(Locale.US, "%.2f", Math.abs(distPct!!))
@@ -1700,11 +1847,10 @@ class FavPanel(
     }
 
     private fun hideResults() {
-        // 世代+1:浮层关闭后旧异步回包一律丢弃(对标稿子FSGen++)
+        // 世代+1:关闭后旧异步回包一律丢弃(对标稿子FSGen++)
         fsGen++
         fsRunnable?.let { handler.removeCallbacks(it) }
-        resPopup?.dismiss()
-        resPopup = null
+        sugBox.visibility = View.GONE
     }
 
     private fun showResults(items: List<SugItem>, q: String) {
@@ -1730,33 +1876,25 @@ class FavPanel(
             }, "")
             resultsBox.addView(row)
         }
-        // 浮层锚定搜索框,高按内容量最高260dp(对标稿子max-height)
-        resPopup?.dismiss()
-        (resultsBox.parent as? ViewGroup)?.removeView(resultsBox)
-        val scroll = ScrollView(act).apply {
-            isVerticalScrollBarEnabled = false
-            addView(resultsBox)
-        }
+        // 内联展示:内容已在上面换好,直接量高度(最高 248dp,沿用原来浮层的口径),
+        // 超了内部滚动。⚠ 2026-10-06 起不再建 PopupWindow ——
+        // 可获焦浮层 show/dismiss 会抢窗口焦点、收软键盘,复用与延后恢复都只是事后补救,
+        // 真机上照样掉。内联容器与输入框同属一个窗口,不产生新的窗口焦点,
+        // 键盘没有被收的理由;无障碍树里也天然可达。
         val w = searchInp.width
         if (w <= 0) return
-        scroll.measure(
+        sugScroll.measure(
             View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.EXACTLY),
             View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
-        val h = minOf(scroll.measuredHeight, dp(248f).toInt())
+        val h = minOf(sugScroll.measuredHeight, dp(248f).toInt())
         if (h <= 0) return
-        /* ♿ 无障碍修复（**非测试专用**）：第四参 focusable 由 false 改 true。
-           原来 false ⟹ **整个浮层（含每行的「＋」）不进入无障碍树** ——
-           data-audit 实测 dump 里只有 fav_sort_dist / fav_sort_gain / fav_sort_ratio 三个 Button，
-           联想卡片与 ＋ 一个节点都没有。对 TalkBack 用户是**死路**：搜得到结果却加不进自选。
-           ⚠️ **必须与下面 :1448 的判据一起改**，单改这里会让浮层「一出现就消失」——
-           focusable=true 的 PopupWindow 在 show 那一刻会抢走输入焦点。 */
-        val pw = PopupWindow(scroll, w, h, true)
-        pw.setBackgroundDrawable(
-            act.resources.getDrawable(R.drawable.card_bg, act.theme))
-        pw.elevation = dp(7.6f)
-        pw.isOutsideTouchable = true
-        resPopup = pw
-        pw.showAsDropDown(searchInp, 0, dp(3.8f).toInt())
+        val lp = sugScroll.layoutParams as? LinearLayout.LayoutParams
+            ?: LinearLayout.LayoutParams(w, h)
+        lp.width = w
+        lp.height = h
+        sugScroll.layoutParams = lp
+        if (sugScroll.parent == null) sugBox.addView(sugScroll)
+        sugBox.visibility = View.VISIBLE
     }
 
     private fun scheduleSearch() {
@@ -1819,17 +1957,14 @@ class FavPanel(
             override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
             override fun afterTextChanged(s: Editable?) = scheduleSearch()
         })
-        // 失焦150ms后收浮层(对标稿子blur,让位于＋/点选)
-        // ⚠️ 判据在 :1375 改成 focusable=true **之后必须同步改**：
-        //    浮层 show 时会自己拿到焦点 ⟹ searchInp 失焦是**正常状态**，不是「用户离开了」。
-        //    原来只看 searchInp ⟹ 浮层刚出现就被 150ms 后的 hideResults 收掉
-        //    （把「不可达但能用」换成「一用就消失」，那是拿一个缺陷换另一个）。
-        //    所以这里改成「**输入框没焦点、且浮层自己也没焦点**」才收。
-        //    **问题不在延时，在判据** —— 不靠加长延时去压那个副作用，那只是把竞态变慢。
+        // 失焦150ms后收候选(对标稿子blur,让位于＋/点选)。
+        // ⚠ 2026-10-06 内联化之后判据回到最简:输入框没焦点才收。
+        //   PopupWindow 时代需要同时看「浮层自己有没有焦点」,是因为浮层 show 会抢焦点、
+        //   输入框失焦是正常状态;内联容器不产生新的窗口焦点,不存在这个问题。
         searchInp.setOnFocusChangeListener { _, hasFocus ->
             if (!hasFocus) {
                 handler.postDelayed({
-                    if (!searchInp.hasFocus() && resPopup?.contentView?.hasFocus() != true) hideResults()
+                    if (!searchInp.hasFocus()) hideResults()
                 }, 150)
             }
         }
@@ -1844,6 +1979,27 @@ class FavPanel(
             } else false
         }
         repaint()
-        refreshFavDist()
+        // ⚠ 2026-10-09 **这里不再发起刷新**。本面板在 MainActivity.onCreate 里就被构造
+        //   （早于 showTab），若在此刷一轮，则**进程一启动就打一轮** —— 而用户裁定的是
+        //   「只在**进程内首次进入自选**刷新一次」。首轮真抓已收进 onShow()（见那里的注释②）：
+        //   起在自选页时 showTab(startTab) 立刻就会调 onShow()，不会漏刷；
+        //   起在别的页时那一轮**本来就不该打**（28 品种 × 1~2 腿，白撞东财限流）。
+    }
+
+    companion object {
+        // ⚠ 2026-10-10 这里原有两个成员，**已删**（用户当天裁定「切页不刷」的连带清理）：
+        //   · `MISS_REFETCH_GAP_MS`（60s 限流闸）—— 只被 onShow ③「按缺值补刷」那条路径读；
+        //   · `lastMissFetchAt`（每品种最近一次补刷尝试时刻）—— 只被那条路径读写。
+        //   路径删了，两者都没有任何引用点 ⟹ 按"不留死代码"清掉。删它们**不影响**首轮真抓
+        //   （onShow ②）与其它刷新入口：那两个成员从没参与过那些路径。
+        //   ⚠ 别因为"看着像限流保护"就加回来 —— 切页已经不发请求，没有需要限流的对象了。
+        //   裁定原文与完整理由见 onShow() ③ 的墓碑注释。
+
+        /**
+         * **进程内**是否已经刷过冷启动首轮（见 onShow ②）。
+         * ⚠ 必须是**进程级**（companion）而不是实例字段：转屏/主题变化会重建 Activity，
+         *   实例字段会把「每进程一次」变成「每次重建一次」。
+         */
+        @Volatile private var firstRoundDone = false
     }
 }

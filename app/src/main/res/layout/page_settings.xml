@@ -13,6 +13,12 @@
      ④Switch 删掉 scaleX/Y 0.72 —— 稿 L268 的字面尺寸就是 44x26
      ⑤免责: marginTop 16dp + paddingBottom 24dp + 行高 1.7(稿 L797)
      ⑥关于段应用名去掉多余的 8dp 上边距(稿 L795 没有 margin)
+     ⚠⚠ 2026-10-08 本轮**删除了 view**（与上面历次「没有删除任何 view」的记录相反，特此注明）：
+      ①顶部 AppBar（id=set_title + 其下 1px 通栏线）整块删除；
+      ②空壳的「费率」分组标题 + 它后面那条 1px 线删除。
+      两处都是**零引用的死 markup**（Kotlin 侧无 findViewById），删除依据见文件内对应注释；
+      本次是**用户裁定**（「下方导航栏已经标注了，我不想要再在上面显示了」+「一起删掉」），
+      不是照稿 —— 稿 L232-239 的 AppBar 被用户推翻。
      -->
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
@@ -26,25 +32,18 @@
         android:layout_height="wrap_content"
         android:orientation="vertical">
 
-        <!-- t201 ⑤ AppBar —— 稿 L232-239。此前设置屏整块缺失(无标题、也无比边那条通栏底线)。
-             稿: padding 14/16/12 + borderBottom 1px + 标题 T.title(16)/fontWeight 600/colorInk -->
-        <TextView
-            android:id="@+id/set_title"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:paddingLeft="@dimen/space_4"
-            android:paddingRight="@dimen/space_4"
-            android:paddingTop="13.4dp"
-            android:paddingBottom="11.4dp"
-            android:text="设置"
-            android:textColor="?attr/colorInk"
-            android:textSize="@dimen/fs_title"
-            android:textStyle="bold"
-            android:letterSpacing="-0.01" />
-        <View
-            android:layout_width="match_parent"
-            android:layout_height="1dp"
-            android:background="?attr/colorBorder" />
+        <!-- ⚠⚠ 2026-10-08 用户裁定：**设置页顶部 AppBar 整块删除** ——
+             标题「设置」与它下面那条 1px 通栏线，两个节点一起从本布局移除。
+             原话：「下方导航栏已经标注了，我不想要再在上面显示了」：
+             底部 tabbar 第四项本来就写着「设置」，顶部再来一个同名大标题是重复的噪音。
+             ⚠ 这里是**真删节点**，不是 visibility="gone"：id=set_title 全仓 grep **零引用**
+               （Kotlin 侧没有任何 findViewById），删掉不会像 t108 那样把绑定删断；
+               同批的自选页 fav_title 当年留 gone，是因为它下面还挂着副标、要复用 AppBar 几何，
+               本页没有这层牵挂，留着只会是一段永远不会点亮的死 markup。
+             ⚠ 删后本页第一屏直接从「外观」分组标题开始（它自带 sec_top 21dp 上边距），
+               与自选页（fav_title=gone）现在呈现的形态同形。
+             ⚠ t201 ⑤ 当初补这块是照稿 L232-239 的 <AppBar title="设置"/>；
+               本次是**用户裁定推翻稿**，稿若日后重出，这块不要按稿自动补回来。 -->
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -199,18 +198,15 @@
              B-29: 上一条把「费率」标题写成 marginTop 24dp 是拿两段间距硬凑的;
              真正的修法是让每一行按稿 L759/L773 带 padding 15dp + 行后紧跟 1px 线,
              标题自己回到稿 L767 的 sec_top/sec_bot(22/2dp), 那 24dp 一并作废。 -->
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/sec_top"
-            android:layout_marginBottom="@dimen/sec_bot"
-            android:text="费率"
-            android:textColor="?attr/colorFaint"
-            android:textSize="@dimen/fs_note" />
-
-        <!-- ⑤ 费率:标签 + 右对齐值,无输入框外观。
-             控件仍是 EditText(MainActivity 对它 getText/setText),但去掉了 input_bg 边框、
-             改为右对齐,点进去仍可改 —— 只改外观,不断绑定。 -->
+        <!-- ⚠⚠ 2026-10-08 用户裁定：**「费率」分组标题一并删除**（问「空壳标题要不要一起删」，
+             用户答「一起删掉」）。它是一个**空壳**：下面的手续费率 / 维持保证金率两行
+             2026-10-03 就已彻底删除，只剩标题挂在屏上，用户看到的是一个没有内容的「费率」。
+             ⟹ 同时删掉它后面那条 1px 线（那原本是最后一行费率的 borderBottom）——
+               两条线紧挨着会变成双线；留下的那条（「启动时刷新一次」行的底线）
+               正好充当「关于」组之前的组间线，与「外观」组的收尾同形。
+             ⚠ 若日后费率重回界面：标题按 sec_top/sec_bot 补回，行后照旧紧跟 1px 线。
+             ⚠ 原「⑤ 费率:标签 + 右对齐值…控件仍是 EditText」那段注释一并删除：
+               它描述的是已被删掉的那两行，留着就是过期文档。 -->
         <!-- ⚠⚠ 2026-10-03 用户**第二次推翻**：手续费率 / 维持保证金率 这两行**彻底删除**。
                原话：「维持保证金率和手续费率可以不要，感觉没啥作用」。
                ⟹ 上一轮刚把它们从计算屏搬来这里可编辑，这一轮连这里也删了。
@@ -222,11 +218,6 @@
                   维持率由杠杆反推，令 `杠杆 × 维持率 ≡ 0.9 < 1` 恒成立，
                   杠杆因此能填到 150 而不被爆仓门拒掉。 -->
 
-        <View
-            android:layout_width="match_parent"
-            android:layout_height="1dp"
-            android:background="?attr/colorBorder" />
-
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -237,10 +228,17 @@
             android:textSize="@dimen/fs_note" />
 
         <!-- t117 ③:层级按稿纠正 —— **应用名在主位**,「等比网格」是小字副标 -->
+        <!-- ⚠⚠ 2026-10-05 **版本号不再写死**。
+             这里原来写死 "网格交易收益计算器 v4.1.1"，而真实版本在 build.gradle.kts 的
+             versionName —— 两份真相，改了后者前者不跟着变，用户在「关于」里看到的是
+             三四个版本以前的号（真机截图：App 已是 v4.5，这里还写着 v4.1.1）。
+             ⟹ 改成运行时从 PackageInfo 取 versionName，**单一真相**，
+                 以后再发版这一行不用动，也不可能再对不上。 -->
         <TextView
+            android:id="@+id/about_version"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="网格交易收益计算器 v4.1.1"
+            android:text="网格交易收益计算器"
             android:textColor="?attr/colorInk"
             android:textSize="@dimen/fs_title" />
         <TextView

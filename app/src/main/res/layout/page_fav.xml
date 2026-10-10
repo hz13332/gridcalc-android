@@ -264,6 +264,30 @@
 
                 android:fontFeatureSettings="tnum" />
 
+            <!-- ⚠ 2026-10-06 搜索候选内联容器(取代 PopupWindow 浮层)。
+                 背景:PopupWindow 是另一个窗口,可获焦版本 show 的一刻抢走输入焦点、
+                 软键盘随即收起;复用/延后恢复都只是事后补救,真机上照样掉。
+                 内联容器与输入框在同一窗口里,不产生新的窗口焦点,键盘没有被收的理由。
+                 高度由代码按内容量定(最高 248dp,超了内部滚动,沿用原来浮层的口径)。
+                 默认 GONE,不占位;无障碍树里天然可达(比浮层更好)。 -->
+            <LinearLayout
+
+                android:id="@+id/fav_sug_box"
+
+                android:layout_width="match_parent"
+
+                android:layout_height="wrap_content"
+
+                android:layout_marginStart="@dimen/space_4"
+
+                android:layout_marginEnd="@dimen/space_4"
+
+                android:background="@drawable/card_bg"
+
+                android:orientation="vertical"
+
+                android:visibility="gone" />
+
             <!-- t111 (1) 源状态行:复用行情页同一套机制(MktData.lastLegs),不另发请求。
 
                  形状编码不变 —— 实心点●=正常 / 空心环○=异常;颜色 colorSub 灰圈,**不变紫**。 -->
@@ -564,6 +588,11 @@
                行(FavPanel ph)      → paddingLeft/Right=16dp
              ⟹ 分隔线与所有行线自动通栏，文字仍内缩 16px，与稿一致。 -->
 
+        <!-- ⚠ 2026-10-06 RecyclerView 回退为 LinearLayout。
+             实测：12 个品种进存储，只画出 6 个，RV 高度正好一屏——嵌在 ScrollView
+             里的 RecyclerView 只量出一屏的高度，剩下的行根本不创建、滑也滑不出来。
+             RecyclerView 不能这么用（标准反模式）。点击保证从来靠的是监听挂法
+             （行根监听 + 子控件不接管），不在容器，换回 LinearLayout 全部保留。 -->
         <LinearLayout
 
             android:id="@+id/fav_list"

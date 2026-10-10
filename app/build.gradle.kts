@@ -50,13 +50,25 @@ android {
         //          收益率/收益比恒绿（用户裁定）；竞速改替补；手续费吃单0.04%/挂单0% 拆分
         //          维持保证金率改按杠杆查表八档阶梯取值（用户提供的币安实测值）
         // CI 传入 -PciBuildNumber 后 versionCode = 30000+run，保证单调递增可覆盖安装
-        // ⚠ 2026-10-05 本地默认值跟到 40400（对齐 versionName 4.4）。发版正式包走 CI，
+        // ⚠ 2026-10-05 本地默认值跟到 40500（对齐 versionName 4.5）。发版正式包走 CI，
         //   那里 versionCode = 30000+run，本地这个值只在手工 assembleRelease 时生效。
+        // ⚠ 2026-10-06 手工包 versionCode 每次递增（40501/40502…），versionName 保持用户裁定的 4.5。
+        //   之前几个手工包 versionCode 全是 40500，装没装上、装的是哪个根本分不清 ——
+        //   好几次"没变化"其实是装了旧包。versionCode 用户不可见，不违反 4.5 裁定。
         val ciRun = (findProperty("ciBuildNumber") as String?)?.toIntOrNull()
-        versionCode = if (ciRun != null) 30000 + ciRun else 40400
+        versionCode = if (ciRun != null) 30000 + ciRun else 40505
         // ⚠ **版本号唯一来源**：Release 名与 tag 都是 v{versionName}（见 .github/workflows/build-apk.yml）。
-        //   最近一次已发布是 v4.1；此后累计 4.2.1 / 4.3 / 4.3.1 / 4.3.2 / 4.3.3 / 4.4 ⟹ 本次发 4.4。
-        versionName = "4.4"
+        //   已发布序列：4.1 → 4.2.1 → 4.3 → 4.3.1 / 4.3.2 / 4.3.3 → 4.4 ⟹ 本次发 **4.5**。
+        //   2026-10-05 用户裁定升到 4.5（4.4 与已发布的包重号，同版本名下两个不同包难追溯）。
+        //   V4.5   = 本轮：
+        //          自选页**取消骨架屏**（fav_skel 恒隐藏、列表恒可见），冷启动首帧即出行（实测 +927ms）
+        //          步长阈值**旧值先上、后台再刷**：当天取不到就退回最近一次成功的值，不再显示「无」
+        //          自选搜索候选表弹出时**把输入焦点与软键盘请回来**（focusable PopupWindow 会抢焦点）
+        //          换品种清屏补漏：步长阈值行 / 「品种·盘口·时间」两行小字（曾残留上一品种的数据）
+        //          符号表纠正：迈威尔 MVIS→**MRVL**；太空探索 SPAC→**SPCX**（无 SPAX 这个股票）
+        //          CXMT 降为**搜索别名**指向 sh688825，不再作为代码显示
+        //          清空数据的提示改写到清空按钮自己身上；回填记录后不再显示「● 未保存」
+        versionName = "4.5"
     }
 
     // ⚠⚠⚠ 2026-10-03 **签名口令移出源码，改走环境变量**（用户裁定，从仓库移除密钥）。
@@ -89,7 +101,8 @@ android {
             storeFile = file(
                 System.getenv("GC_KEYSTORE_PATH") ?: "../keystore/gridcalc.jks"
             )
-            storePassword = gcStorePw
+            storeType = System.getenv("GC_KEYSTORE_TYPE") ?: "jks"
+        storePassword = gcStorePw
             keyAlias = gcKeyAlias
             keyPassword = gcKeyPw
         }
