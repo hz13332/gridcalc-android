@@ -39,3 +39,13 @@ keystore/
 gc.storePassword=
 gc.keyPassword=
 
+
+
+# AgentTeams 运行状态与验证证据快照（过程产物，可再生，不入库）
+.agent-teams/
+_verify_shots/
+
+# OpenViking -> Hindsight 记忆迁移的过程快照（2026-10-09 工作区级任务；
+# 正主在 D:\deepseek工作区\tools\，这批是误落到本仓库的 dryrun/scan 输出）
+tools/_ov-*
+tools/ov-migration-inventory-20261009.md
