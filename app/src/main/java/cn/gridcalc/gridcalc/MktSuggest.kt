@@ -35,7 +35,75 @@ object MktSuggest {
         //     · XOM=埃克森美孚 · GE=通用电气
         "MRVL", "SPCX", "XOM", "GE",
         // A 股：sh688825 长鑫存储（科创板，用户 2026-10-03 给出；2026-10-05 更正为「长鑫存储」）
-        "sh688825")
+        "sh688825",
+        // ⚠⚠ 2026-10-11 **补 8 只美股**（用户 2026-10-11 原话：「没有闪迪、arm、戴尔、ibm、
+        //   阿斯麦尔、应用材料、泛林材料，科磊」）。本表是「能被搜出来的股票代码」表，
+        //   而大陆出口下 yahooSearch() 是 **403**（见 [KRNAME] 上方注释，2026-10-10 实测）
+        //   ⟹ **本地表是唯一来源**，表里没有 = 实机搜「无匹配」。
+        //
+        // 【核对方法：三个独立源逐条交叉验证】沿用 2026-10-10 韩股名称表的核对方法，
+        //   但美股这条多加一个「法定名」源，因为中文名在中文源之间**存在分歧**（见 [CNNAME]）：
+        //   · 东财 `f14`：`push2.eastmoney.com/api/qt/ulist.np/get`，一次请求拿全 8 条，
+        //     实测 HTTP 200，`data.total=8`，`f13` 给交易所段（105=纳斯达克 / 106=纽交所，
+        //     与 [MktData.emSecid] 的探测段一致）：
+        //       SNDK=闪迪 · ARM=Arm Holdings plc ADR · DELL=戴尔科技 · IBM=IBM国际商业机器
+        //       ASML=阿斯麦 · AMAT=应用材料 · LRCX=拉姆研究 · KLAC=科磊
+        //   · 腾讯 `qt`（与 [MktData] 美股腿同族接口，`qt.gtimg.cn/q=us<CODE>`，实测 200，
+        //     响应里的符号是 `<CODE>.OQ/.N`，直接印证「代码 ↔ 交易所」）：
+        //       SNDK=闪迪 · ARM=安谋 · DELL=戴尔科技 · IBM=IBM · ASML=阿斯麦
+        //       AMAT=应用材料 · LRCX=泛林集团 · KLAC=科磊
+        //   · 新浪 `hq.sinajs.cn/list=gb_<code>`（第三个独立源，实测 200）：
+        //       SNDK=闪迪 · ARM=ARM · DELL=戴尔 · IBM=IBM · ASML=阿斯麦
+        //       AMAT=应用材料 · LRCX=泛林集团 · KLAC=科磊
+        //   · Nasdaq 官方 `api.nasdaq.com/api/quote/<CODE>/info`（**法定名**，英文源，与上面
+        //     三个中文源互不隶属）—— 8/8 命中，逐条对上：
+        //       SNDK=Sandisk Corporation / NASDAQ-GS · ARM=Arm Holdings plc ADS / NASDAQ-GS
+        //       DELL=Dell Technologies Inc. / NYSE · IBM=International Business Machines / NYSE
+        //       ASML=ASML Holding N.V. / NASDAQ-GS · AMAT=Applied Materials, Inc. / NASDAQ-GS
+        //       LRCX=Lam Research Corporation / NASDAQ-GS · KLAC=KLA Corporation / NASDAQ-GS
+        //   · ✅ **2026-10-12 交接复核：上列四源是本机现场重跑的真实请求，不是转抄** ——
+        //     东财 f14 `data.total=8`、8 条名字逐条对上；新浪 `gb_` 8/8 带实时价
+        //     （SNDK=闪迪 … KLAC=科磊）；腾讯 `qt` 8/8，符号后缀 `.OQ/.N` 与东财 `f13` 吻合
+        //     （DELL.N / IBM.N = 纽交所 106，其余 6 只 `.OQ` = 纳斯达克 105）；
+        //     Nasdaq `SNDK/info` 复核 When-Issued 标签仍在、且 `isNasdaqListed=true`、
+        //     `volume=5,607,231`、52 周 `116.17 - 2,354.39`，与下面那条注释完全一致。
+        //   · ⚠ SNDK 在 Nasdaq 的 `stockType` 写着 `Common Stock When-Issued` —— 我特地查了
+        //     是不是「还没正式挂牌」：同一响应里 `isNasdaqListed=true`、`isNasdaq100=true`、
+        //     `lastSalePrice=$1,581.82`、`volume=5,607,231`、52 周区间 `116.17 - 2,354.39`
+        //     ⟹ **是正常挂牌的活跃品种**，「When-Issued」只是闪迪 2025-02 从西部数据拆分时
+        //     留下的标签，不影响可交易性（新浪/腾讯/东财三源也都给实时价）。
+        //
+        // 【为什么交易所段是 105/106 混合，而不是全 105】东财 `f13` 实测：DELL 与 IBM 在 **106
+        //   （纽交所）**，其余 6 只在 105（纳斯达克）。这正好对上 [MktData.emSecid] 的注释
+        //   「不写死 105（纽交所 ORCL/IBM/VISA 等 105 查不到 → 整路无源）」——
+        //   本表只存代码，取数时由 emSecid() 自己探测，所以这里**不写死**交易所段是对的。
+        //
+        // 【与 [ENALIAS] 的撞车检查（任务点名：ARM 会不会与别的条目撞车）】实测无撞车：
+        //   8 个代码与 ENALIAS 的 18 个键**互不为子串**（`ARM` vs `SAMSUNG`/`MEITUAN` 等
+        //   都只在中间出现，不构成前缀/包含关系）；与 TOPS 既有 20 条也无重复。
+        //   ⚠ 唯一需要注意的**不是撞车而是顺序**：搜 `ARM` 时 Yahoo 还可能给出
+        //   `AACI/AACIU/AACIW`（Armada Acquisition）与 `ARMH` —— 2026-10-12 东财 suggest 实测
+        //   `ARMH` = `Arm Holdings PLC ADRhedged`（**Arm 的对冲 ADR**，AMEX/107，不是 ASML），
+        //   本地腿只出 ARM 一条，Yahoo 腿在用户网络里 403 ⟹ 不会出现歧义条目。
+        //   ⚠ 另一处**不是错、只是要留意**：既有 `ENALIAS` 里有一条 `"MEITUAN" to "03690"`，
+        //   子串是 `MEITUAN`——搜 `MT`/`MEI` 会命中它，与新加的 `AMAT`/`ARM` **无任何关系**
+        //   （`MT` 不在 `AMAT` 里，`MEI` 不在任何新代码里），实测无相互污染。
+        //   ⚠ **副作用（已量过；下面的显示串是 2026-10-12 由 tools/verify_mkt_suggest_20261011.mjs
+        //     实跑打出来的，不是推演）**：新代码里 6 条以 `A` 开头（ARM/ASML/AMAT 是新增，
+        //     AAPL/AMZN/AMD 是既有），而 [CNNAME] 的键 `ARM控股` 也含 `A`
+        //     ⟹ **去重前**搜 `A` 出 `ARM/ARM控股, AAPL, AMZN, AMD, ARM, ASML`：
+        //     `ARM` 占**两行**（CNNAME 腿 + TOPS 腿，`[local]` 的 CNNAME 首循环没有去重守卫）、
+        //     `AMAT` 被挤出 6 格 —— 同一机制造成的重复还有搜 `戴尔`→DELL×2、`阿斯麦`→ASML×2、
+        //     `泛林`→LRCX×2，以及既有的 `长鑫`（两键同码）、`GE`（CNNAME 与 TOPS 撞码）。
+        //     ⟹ **已修**：在 [local] 的 return 上补一行 `distinctBy { it.s }`（同码只留首行，
+        //       详见那里的注释；[favLocal] 本来就有同款守卫，所以自选搜索框一直是干净的）。
+        //     补后**实测**：搜 `A` → `ARM/ARM控股, AAPL/美股, AMZN/美股, AMD/美股, ASML/美股,
+        //     AMAT/美股`（6 格装下全部 6 个 A 段代码，无重复、不丢条目）；搜 `ARM` → 只剩一行。
+        //     ⚠ 顺序上 `ARM` 排在 `AAPL` 前：CNNAME 腿先跑、且 contains 命中也标 `pre=true`
+        //       —— 这与既有 `GE Vernova` 键在搜 `E` 时的表现同源，不是本批新引入的规则。
+        //   ⚠ 真要更进一步（contains 命中不该与前缀命中同级）就得改 [local] 的匹配/排序规则，
+        //     那是既有逻辑，按本次约定（只加条目、既有问题单列）不擅改。
+        "SNDK", "ARM", "DELL", "IBM", "ASML", "AMAT", "LRCX", "KLAC")
 
     // 稿子CNNAME原样照搬(中文名→代码),v3.7 增补 17 种大宗商品 *00Y
     private val CNNAME = listOf(
@@ -58,6 +126,79 @@ object MktSuggest {
         // ⚠ 同日用户裁定：外汇别名**全删**；美债别名收敛到 TLT。
         //   原「十年期美债」「十年美债」指向 US10Y，而 US10Y 已随美债支持一并退役，故删除。
         "美债" to "TLT", "长期美债" to "TLT",
+        // ⚠⚠ 2026-10-11 **补 8 只美股的中文名**（与 [TOPS] 同一批，用户 2026-10-11 原话见那里）。
+        //   ⚠ **光有代码搜不到中文名**（同 2026-10-05 那次教训）：`TOPS` 只按 `s.startsWith(q)`
+        //     命中代码，而中文名入口是**本表**（`k.contains(q)`）—— 不写这一块，
+        //     用户搜「闪迪」「戴尔」照样「无匹配」。
+        //
+        // 【核对方法：三中文源 + 一个法定名源，逐条交叉验证】
+        //   · 源①东财 `f14`、源②腾讯 `qt`、源③新浪 `gb_` 的取值见 [TOPS] 上方注释（含实测 URL）。
+        //   · 源④腾讯 smartbox（`smartbox.gtimg.cn/s3/?v=2&q=<中文名>&t=us`）与
+        //     百度下拉（`suggestion.baidu.com/su?wd=<中文名>`）用来判「哪个写法是**通行**写法」
+        //     —— 这两个是**中文名检索入口**，正好回答「用户打这个中文词，源里认不认」。
+        //
+        // 【逐条依据（★ = 源里三源一致，直接照抄；☆ = 源之间有分歧，两个写法都留）】
+        //   ★ 闪迪 → SNDK：东财/腾讯/新浪**三源同写「闪迪」**，smartbox/百度都认。
+        //   ★ 戴尔科技 → DELL：东财/腾讯同写「戴尔科技」；新浪写「戴尔」。
+        //       两个都留 —— 用户 2026-10-11 原话用的就是「戴尔」，而源里的全名是「戴尔科技」。
+        //   ★ 阿斯麦 → ASML：东财/腾讯/新浪**三源同写「阿斯麦」**。
+        //   ☆ 阿斯麦尔 → ASML：**三个行情源里一个都没有**这个写法（东财/腾讯/新浪全写「阿斯麦」），
+        //       但**用户 2026-10-11 原话就是「阿斯麦尔」**，且百度下拉有「阿斯麦尔」词条
+        //       （搜「阿斯麦」时百度也会带出「阿斯麦尔」）⟹ 判定为**通行的口语变体**，两个都留。
+        //   ★ 应用材料 → AMAT：东财/腾讯/新浪**三源同写「应用材料」**。
+        //   ★ 科磊 → KLAC：东财/腾讯/新浪**三源同写「科磊」**。
+        //   ☆ 拉姆研究 / 泛林集团 / 泛林材料 → LRCX：**中文源之间分歧最大的一条**，三个都留：
+        //       · 「拉姆研究」= 东财 `f14` 的写法，也是百度下拉里的常用问法
+        //         （「泛林集团为什么叫拉姆研究」），东财 suggest 实测命中 `LRCX/拉姆研究`；
+        //       · 「泛林集团」= 腾讯 `qt` 与新浪 `gb_lrcx` 的写法，百度下拉以它为主词；
+        //       · 「泛林材料」= **用户 2026-10-11 原话**。⚠ 它**不是任何行情源里的写法**
+        //         （东财 suggest 对「泛林材料」返回空、smartbox 也返回 `v_hint="N"`），
+        //         但百度下拉确实有「泛林材料股票」「泛林材料股票代码」⟹ 用户侧的通行叫法，
+        //         留着才能让用户按原话搜到；三条都指向同一个代码 LRCX，不会歧义。
+        //   ☆ 安谋 / ARM控股 → ARM：中文源分歧，两个都留：
+        //       · 「安谋」= 腾讯 `qt` 的写法，smartbox 实测命中 `us~arm.oq~安谋`，
+        //         百度下拉是「安谋科技/安谋中国」；zh.wikipedia 条目名即**安謀控股公司**
+        //         （ARM Holdings plc.，NASDAQ: ARM）⟹ **有可靠通行中文名**，不是"没有中文名"。
+        //       · 「ARM控股」= 东财 `f14` 的写法是 `Arm Holdings plc ADR`（**中文源里唯一没给中文名的一条**），
+        //         所以这里给一个中文写法 + 让代码 `ARM` 自己也能搜（见 [TOPS]）。
+        //   ☆ 国际商业机器 → IBM：东财 `f14` 写「IBM国际商业机器」，新浪/腾讯写「IBM」。
+        //       ⚠ 这里**故意不写** `"IBM" to "IBM"` 这条 —— 它会让搜 `IBM` 时出现
+        //       **两条一模一样的行**（`TOPS` 前缀腿已经出一条 `IBM / 美股`，本表再来一条 `IBM / IBM`）。
+        //       代码 `IBM` 由 [TOPS] 保证可搜，中文名由本条保证，正好互补且不重复。
+        //       「IBM」是英文缩写不是中文名，故不单列。
+        //   ⚠ 本块**只新增**，一个字都没改上面既有条目（含 2026-10-05/10-07 的裁定与纠正）。
+        //   ⚠ 冲突检查（实测）：这 13 个键与既有 CNNAME 键**互不为子串**（13 = 闪迪/戴尔/
+        //     戴尔科技/阿斯麦/阿斯麦尔/应用材料/拉姆研究/泛林集团/泛林材料/科磊/安谋/ARM控股/
+        //     国际商业机器；脚本 [5] 段断言 CNNAME 总数 68 = 55 既有 + 13 新增），
+        //     搜任何既有中文名都不会多出这几条，搜这些新名字也不会串到既有品种。
+        //     （新键**彼此**是子串的只有 `戴尔`⊂`戴尔科技`、`阿斯麦`⊂`阿斯麦尔`、`泛林` 组，
+        //     三条都指向同一个代码，且已由 [local] 的 `distinctBy` 并成一行，不出重复。）
+        //
+        // 【2026-10-12 交接复核：三个 ☆ 写法都打了真实请求，不是转抄】
+        //   · 东财 suggest `searchapi.eastmoney.com/api/suggest/get`（HTTP 200）：
+        //       「拉姆研究」→ `105.LRCX`（Name=拉姆研究）命中 ⟹ ☆① 成立；
+        //       「国际商业机器」→ `106.IBM`（Name=`IBM国际商业机器`，JYS=NYSE）⟹ ☆④ 成立；
+        //       「泛林材料」→ `TotalCount:0`、「阿斯麦尔」→ `TotalCount:0`
+        //         ⟹ 这两个写法**行情源确实不认**，留它们纯粹因为那是用户原话 + 百度通行问法；
+        //       ⚠「ARM控股」→ 返的是 **`107.ARMH`（Arm Holdings PLC ADRhedged，AMEX 对冲 ADR），
+        //         不是 ARM** ⟹ 别拿 suggest 的这条当映射依据；本地把 `ARM控股` 映射到 `ARM`
+        //         （用户点名的那只，NASDAQ: ARM）才是对的，ARMH 是另一个品种。
+        //   · 百度下拉 `suggestion.baidu.com/su`（GBK，HTTP 200）：
+        //       「泛林材料」→ `泛林材料股票 / 泛林材料股票代码`；
+        //       「阿斯麦尔」→ `阿斯麦尔公司 / 阿斯麦尔股票实时行情 / …`；
+        //       「ARM控股」→ `arm控股公司 / Arm 控股有限公司 / …`
+        //         ⟹ 三个口语写法在中文检索侧都是**通行问法**，照用户原话留是对的。
+        //   · 「安谋」的双源：腾讯 `qt=usARM` 给 `安谋` + 中文维基条目名「安謀控股公司」
+        //       （ARM Holdings plc）⟹ **ARM 有可靠通行中文名**，不是"没有中文名"；
+        //       「国际商业机器」的双源：东财 f14 `IBM国际商业机器` + 东财 suggest 同名命中（上）。
+        "闪迪" to "SNDK",
+        "戴尔" to "DELL", "戴尔科技" to "DELL",
+        "阿斯麦" to "ASML", "阿斯麦尔" to "ASML",
+        "应用材料" to "AMAT",
+        "拉姆研究" to "LRCX", "泛林集团" to "LRCX", "泛林材料" to "LRCX",
+        "科磊" to "KLAC",
+        "安谋" to "ARM", "ARM控股" to "ARM",
+        "国际商业机器" to "IBM",
         "原油" to "CL00Y", "布伦特原油" to "B00Y", "天然气" to "NG00Y",
         "燃油" to "HO00Y", "汽油" to "RB00Y", "铜" to "HG00Y", "铂金" to "PL00Y",
         "钯金" to "PA00Y", "玉米" to "ZC00Y", "小麦" to "ZW00Y", "大豆" to "ZS00Y",
@@ -212,7 +353,19 @@ object MktSuggest {
         for (it in marketLocal(q)) {
             if (items.none { x -> x.s == it.s }) items.add(it)
         }
-        return sortTop(items)
+        // ⚠ 2026-10-12 **同码去重（一行）**：上面每条腿都可能对**同一个代码**各出一行 ——
+        //   ① CNNAME 多写法并存：`戴尔/戴尔科技`、`阿斯麦/阿斯麦尔`、`泛林集团/泛林材料`、
+        //      既有 `长鑫存储/长鑫科技`，搜短的那个词两条都 contains 命中；
+        //   ② CNNAME 与 TOPS/TOPM 撞码：`GE Vernova`↔`GEV`、`黄金`↔`XAUUSD`；
+        //   ③ 本批新键 `ARM控股` 与 TOPS 的 `ARM`：搜 `A`/`ARM` 时两条腿各出一条。
+        //   重复行白白吃掉 `sortTop` 的 6 格（搜 `A` 时 AMAT 就是这么被挤掉的），
+        //   实机还会看到同一个符号连着出现两行。**[favLocal] 的 CNNAME 循环本来就有同款
+        //   `items.none{it.s==v}` 守卫，自选搜索框因此从不重复** —— 这里补的是 [local] 缺的那道。
+        //   ⚠ 只去重：不改顺序、不删条目，每个代码/中文名照样命中（脚本 [3][5] 段有回归断言，
+        //     [6] 段实测 local/favLocal 两框重复数均为 0）。连带效果（都是同码并一行，算修不算改）：
+        //     搜 `长鑫` 由两行并为 `sh688825/长鑫存储`、搜 `GE` 并为 `GEV/GE Vernova` ——
+        //     想看另一个名字，把词打全即可（`长鑫科技`/`GE Vernova` 仍各自命中）。
+        return sortTop(items.distinctBy { it.s })
     }
 
     fun sortTop(items: List<SugItem>): List<SugItem> =

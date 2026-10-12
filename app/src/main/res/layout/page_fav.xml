@@ -269,7 +269,15 @@
                  软键盘随即收起;复用/延后恢复都只是事后补救,真机上照样掉。
                  内联容器与输入框在同一窗口里,不产生新的窗口焦点,键盘没有被收的理由。
                  高度由代码按内容量定(最高 248dp,超了内部滚动,沿用原来浮层的口径)。
-                 默认 GONE,不占位;无障碍树里天然可达(比浮层更好)。 -->
+                 默认 GONE,不占位;无障碍树里天然可达(比浮层更好)。
+                 ⚠⚠ 2026-10-11 **用户报「候选列表无法滑动」**：滚动体是 FavPanel 里 new 出来的
+                 sugScroll(ScrollView)，而**本页根布局也是 ScrollView**(本文件第 3 行)，
+                 同方向嵌套 ⟹ 外层越过 touchSlop 就把手势截走，内层收不到 MOVE。
+                 修法**在 Kotlin 侧**(FavPanel.sugScroll)：内层拿到 ACTION_DOWN 时对父链调
+                 requestDisallowInterceptTouchEvent(true)，UP/CANCEL 还回去。
+                 ⟹ 本容器与下面那层 LinearLayout 都**不要**加 android:descendantFocusability
+                 或任何 touch/clickable 属性去「帮忙」，那会与那处标记打架。
+                 ⚠ 高度 248dp 封顶的口径**不变**（超出仍靠 sugScroll 内部滚动，不是截断条数）。 -->
             <LinearLayout
 
                 android:id="@+id/fav_sug_box"
@@ -288,7 +296,8 @@
 
                 android:visibility="gone" />
 
-            <!-- t111 (1) 源状态行:复用行情页同一套机制(MktData.lastLegs),不另发请求。
+            <!-- t111 (1) 源状态行:复用行情页同一套机制(2026-10-12 起为 MktData.legsOf(行情页当前品种);
+             ⚠ 旧注释写的 MktData.lastLegs 已在同日删除 —— 它全局不分品种,曾导致「TSLA 显示 Naver」),不另发请求。
 
                  形状编码不变 —— 实心点●=正常 / 空心环○=异常;颜色 colorSub 灰圈,**不变紫**。 -->
 

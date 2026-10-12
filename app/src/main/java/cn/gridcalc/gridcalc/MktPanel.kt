@@ -91,7 +91,10 @@ class MktPanel(private val act: MainActivity, page: View) {
     @Volatile var stepTv: Double = 0.0
     @Volatile private var stepSym: String = ""
     // t108 (2) 日期范围独占行已删(稿里没有),srcNote 视图随之移除
-    private val winBtn: Button = page.findViewById(R.id.mkt_win)  // t107 (3) gone on screen, logic kept
+    private val winBtn: Button = page.findViewById(R.id.mkt_win)  // 「确认」按钮。
+    // ⚠ 墓碑 · 2026-10-12：旧注释写「t107 (3) gone on screen」，**已过期** —— 该按钮现在是
+    //   **可见的「确认」**（page_mkt.xml:394-407，无 visibility=gone）。t107 时代它是「▾ 下拉」、
+    //   被外层容器挤成 0 高静默消失，那份历史见 page_mkt.xml 的墓碑段。
 
     // ⚠⚠⚠ 2026-10-04 **手动拆股 · 前复权**（用户裁定：行情界面里给开关，他自己录日期和比例）。
     //   为什么只能手动：未复权 OHLC 里**没有**「哪天、几拆几」这条信息 ——
@@ -364,8 +367,23 @@ fun setSym(s: String) {
         paintStar()
         // ④ 「启动时刷新一次」要有个对象才能刷: 记住上次看的品种, 下次冷启动才有东西可刷。
         // 不记的话每次冷启动 symInp 都是空的, 开关就几乎永不触发 —— 那还是骗人。
-        // 值必须与 MainActivity 的 prefs()(字面量 "gridcalc") 及 PREF_LASTM 逐字相等,
-        // 由 fix_auto_refresh_repair.py 的断言守着 —— 改一边另一边会被拦下。
+        persistLastSym(s)
+    }
+
+    /**
+     * ④ 记住「行情屏最后看过的品种」= SP `"gridcalc"` 里的键 `"mkt_last_sym"`。
+     *
+     * 这两个字面量必须与 MainActivity 的 `prefs()` 及 `PREF_LASTM` **逐字相等**
+     * (由归档的 fix_auto_refresh_repair.py 断言守着)—— 改一边另一边就会对不上。
+     * ⚠ 2026-10-12 起确认时也会补记一次(见 [toggleWinPop])：确认那一刻正在看的就是这个品种，
+     *   「启动时刷新」与按品种取的步长阈值都该记住它。
+     * ⚠⚠ 2026-10-12(t4) **它不再是冷启动恢复的查表 key** —— 那条改认「最后**确认过**的
+     *   品种」([persistConfirmedSym])。理由：「看过」≠「确认过」—— 确认 TSLA 后再点开
+     *   005930（不确认）就会把它覆盖成 005930，恢复于是去查一条不存在的记录、静默回落 20
+     *   （t3 验证员报的 F1，详见 [restoreDistWinOnce] 的注释）。
+     */
+    private fun persistLastSym(s: String) {
+        if (s.isEmpty()) return
         try { act.getSharedPreferences("gridcalc", android.content.Context.MODE_PRIVATE)
             .edit().putString("mkt_last_sym", s).apply() } catch (_: Exception) {}
     }
@@ -374,6 +392,34 @@ fun setSym(s: String) {
     fun lastSymPersisted(): String = try {
         act.getSharedPreferences("gridcalc", android.content.Context.MODE_PRIVATE)
             .getString("mkt_last_sym", "") ?: ""
+    } catch (_: Exception) { "" }
+
+    // ── 「最后**确认过**的品种」指针（2026-10-12 t4，修 t3 报的 F1） ──
+    //
+    // 与 mkt_last_sym 的分工（两者都写在 "gridcalc" 这个 SP 里，但**语义不同**）：
+    //   · `mkt_last_sym` = 最近「**看过**」的品种（setSym / 确认时各记一次）
+    //     —— 服务「启动时刷新」与步长阈值；
+    //   · `gridcalc_win_confirmed_sym` = 最近「**确认过**」的品种（**只在确认时写**）
+    //     —— 只服务一个用途：冷启动恢复已确认窗口时，**去 gridcalc_win_v1 查谁**。
+    // ⚠ 它**只存品种名，不存窗口值**：窗口的唯一真源仍是 `gridcalc_win_v1[该品种]`，
+    //   指针只回答「重启后该去查谁」。复制窗口值会造出第二份真源，两边迟早打架。
+    private val winConfirmedSymKey = "gridcalc_win_confirmed_sym"
+
+    /**
+     * 写「最后确认过的品种」。**唯一调用点 = 确认按钮 [toggleWinPop]**（确认制语义：
+     * 只有点了确认才配留下痕迹）；`lastSym` 空（行情页没载入品种）时不写 ——
+     * 与 `saveWin()` 的早退同界：**不给一条不存在的记录立指针**。
+     */
+    private fun persistConfirmedSym(s: String) {
+        if (s.isEmpty()) return
+        try { act.getSharedPreferences("gridcalc", android.content.Context.MODE_PRIVATE)
+            .edit().putString(winConfirmedSymKey, s).apply() } catch (_: Exception) {}
+    }
+
+    /** 冷启动时取回「最后确认过的品种」；从没确认过 → 空串（不猜、不回落成最近看过的）。 */
+    private fun confirmedSymOnDisk(): String = try {
+        act.getSharedPreferences("gridcalc", android.content.Context.MODE_PRIVATE)
+            .getString(winConfirmedSymKey, "") ?: ""
     } catch (_: Exception) { "" }
 
     // 自选距离键用(对标稿子favKey读tfSeg/kcount)
@@ -392,8 +438,13 @@ fun setSym(s: String) {
     private fun confirmedN(): Int = loadWin().second
 
     // 自选距离窗口(照稿distWin):已提交返回冻结值,未提交跟随周期控件+当前根数
-    fun distWin(): Pair<String, Int> =
-        DistWin.tf?.let { it to DistWin.n } ?: (tf to curN())
+    //
+    // ⚠ 2026-10-12:入口处多了一次 [restoreDistWinOnce] —— 它是**一次性**的,
+    //   跑过之后这里只剩一个布尔读,不会给这条高频路径(自选页每次重绘都调)加活。
+    fun distWin(): Pair<String, Int> {
+        restoreDistWinOnce()
+        return DistWin.tf?.let { it to DistWin.n } ?: (tf to curN())
+    }
 
     // 点▾确认(照稿commitDistWin):按当前周期控件+根数冻结窗口
     fun commitDistWin() {
@@ -407,9 +458,18 @@ fun setSym(s: String) {
         get() = act.getSharedPreferences("gridcalc_win_v1",
             android.content.Context.MODE_PRIVATE)
 
-    private fun loadWin(): Pair<String, Int> {
+    /**
+     * 读 `gridcalc_win_v1[sym]` 里该品种**已确认**的窗口。
+     *
+     * @return 合法记录 → `周期 to 根数`(根数已夹到 KMIN..KMAX);
+     *   **无记录 / 周期不是 W·M·Q / 根数不是整数 → null**(不猜、不造,交给调用方决定回落值)。
+     *   2026-10-12 从 loadWin() 拆出来:冷启动恢复要能区分「确认过 20」和「从没确认过」——
+     *   后者绝不能被当成合法值去冻结,否则等于凭空造了一次确认。
+     */
+    private fun loadWinOrNull(sym: String): Pair<String, Int>? {
+        if (sym.isEmpty()) return null
         try {
-            val s = winPref.getString(lastSym, null)
+            val s = winPref.getString(sym, null)
             if (!s.isNullOrEmpty()) {
                 val p = s.split("|")
                 val wtf = p[0]
@@ -420,8 +480,11 @@ fun setSym(s: String) {
             }
         } catch (_: Exception) {
         }
-        return "M" to 20 // 未确认过:初始默认20(稿§4示例)
+        return null
     }
+
+    private fun loadWin(): Pair<String, Int> =
+        loadWinOrNull(lastSym) ?: ("M" to 20) // 未确认过:初始默认20(稿§4示例)
 
     private fun saveWin() {
         if (lastSym.isEmpty()) return
@@ -438,6 +501,71 @@ fun setSym(s: String) {
         paintTf()
         val typed = kcountInp.text.toString().trim()
         if (typed != wn.toString()) kcountInp.setText(wn.toString())
+    }
+
+    // ══════ 2026-10-12 冷启动恢复「已确认窗口」(修自选页距离窗口回退到 20) ══════
+    //
+    // 【用户原话(2026-10-12)】「我点了特斯拉的确认周期……我点了确认之后就变成 60% 多了。
+    //   只不过为什么，过了一段时间又变回来了，像是被覆盖了式的」「每次待取数的时候就会出现
+    //   这种问题」——「待取数」就是冷启动那一轮刷新。
+    //
+    // 【机制链条】(逐环都在本文件,不是猜的)
+    //   ① DistWin(文件顶部)是**进程内存态** object 单例,不落盘 → 进程被杀即归零;
+    //   ② distWin() 未冻结时读「行情页周期控件 tf + 根数输入框 curN()」;
+    //   ③ 输入框初值 = page_mkt.xml `android:text="20"` 写死的**布局默认 20**;
+    //   ④ 把 gridcalc_win_v1[lastSym] 回填进控件的 applyWinDefaults() **只在**
+    //      mkLoad() 的 `if (symChanged)` 处调用,即**只有行情页真的载入了品种才跑**;
+    //   ⟹ 冷启动后用户**直接看自选页**(行情页没载入品种)时:DistWin 空、输入框停在 20
+    //      ⟹ distWin()=(M,20) ⟹ 自选页按 20 根查距离,读到 key `stock|TSLA|M|20` 下的
+    //      旧值 10.23%。31 根那次的 60% 多**仍在** key `stock|TSLA|M|31` 下没丢 ——
+    //      **不是值被覆盖,是窗口换了把钥匙**(key 里的 n 从 31 变 20),用户看到"变回去了"。
+    //
+    // 【本次修法】首次 distWin()(自选页 repaint/refresh 都会走到)时做**一次性**恢复:
+    //   条件三道,缺一不恢复 ——
+    //     ① DistWin 还没冻结(本进程没人确认过);
+    //     ② 本进程行情页还没载入过品种(lastSym 空,applyWinDefaults() 还没接管过控件);
+    //     ③ 磁盘 gridcalc_win_v1[**最后确认过的品种**] 里**确有合法值**(loadWinOrNull != null)。
+    //   恢复动作 = DistWin.commit() 冻结它 + 把行情页周期按钮/根数输入框一并回填:
+    //   后者是防「真覆盖」—— 不回填的话屏上仍是 20,用户此时点「确认」就把 20 存回
+    //   gridcalc_win_v1,那才是把 31 真的抹掉(用户说的"像是被覆盖了式")。
+    //   无记录 / 周期或根数非法 → 什么都不做,回落现有语义 ("M" to 20),不崩、不写脏值。
+    //
+    // ⚠⚠ 2026-10-12(t4) **修 t3 验证员报的 F1 残留路径**（用户原始症状的另一半）：
+    //   【F1 最小复现（t3 实测 6 帧恒定）】行情页确认 TSLA(月线31) → 点开另一品种 005930
+    //     （**不确认**）→ `am force-stop` → 冷启动直看自选 → **TSLA 距支撑回退成 20 根口径
+    //     +30.07%**（31 根口径应是 +46.09%）。
+    //   【机制】t1 的查表 key 用的是 [lastSymPersisted] = `mkt_last_sym` = 最近「**看过**」
+    //     的品种，而用户的语义是「最后**确认过**的窗口」。点开 005930 就把 mkt_last_sym
+    //     覆盖成 005930 ⟹ 重启后拿 005930 去查 gridcalc_win_v1，那键不存在（005930 没确认过）
+    //     ⟹ loadWinOrNull 返回 null ⟹ 不恢复 ⟹ 静默回落到输入框默认 20。
+    //   【修法】查表 key 换成「最后确认过的品种」指针（[persistConfirmedSym]/[confirmedSymOnDisk]）：
+    //     · **何时写**：只在确认按钮 [toggleWinPop] 里、saveWin() 之后写一次（与确认制同生，
+    //       没点确认就不写 —— 与 saveWin/commitDistWin/onLeave 的语义一致）；
+    //     · **写什么**：只写品种名（"gridcalc" SP 的 `gridcalc_win_confirmed_sym`）——
+    //       窗口值的唯一真源仍是 gridcalc_win_v1[该品种]，指针只回答「重启后该去查谁」；
+    //     · **在哪读**：本函数的 [confirmedSymOnDisk]（全工程仅此一处读）。
+    //     ⟹ 中途点开/看过别的品种一律不影响它；从没确认过（或本版本之前确认的、指针尚不存在）
+    //        → 空串 → 不恢复 → 回落 ("M" to 20)，不猜、不造、不写盘。
+    //
+    // ⚠ 只读本地 SharedPreferences,**不新增任何网络请求**;
+    // ⚠ 不碰 onLeave() 的「不确认就不存」,不动 saveWin()/commitDistWin() 的写语义;
+    // ⚠ 不改 onLeave 里那行 applyWinDefaults()(2026-10-03 三次裁定的净结论)。
+    @Volatile private var winRestoreTried = false
+
+    private fun restoreDistWinOnce() {
+        if (winRestoreTried) return
+        winRestoreTried = true // 本进程只试一次:之后这条高频路径上只剩一个布尔读
+        if (DistWin.tf != null) return                 // 本进程已确认过 → 冻结值优先
+        if (lastSym.isNotEmpty()) return               // 行情页已载入 → applyWinDefaults() 已回填过控件
+        // ← t4：查表 key = 「最后**确认过**的品种」，**不再是最近看过的**（F1 的病根，见上方 ⚠⚠）。
+        val sym = confirmedSymOnDisk()
+        if (sym.isEmpty()) return                      // 从没确认过 → 维持 ("M" to 20)
+        val (wtf, wn) = loadWinOrNull(sym) ?: return   // 指针在但记录非法/缺失 → 不猜、不造、不写
+        DistWin.commit(wtf, wn)                        // ← 恢复点:已确认窗口跨重启存活
+        // 与 applyWinDefaults() 同源地回填行情页控件(理由见上方注释末段)。
+        tf = wtf
+        paintTf()
+        if (kcountInp.text.toString().trim() != wn.toString()) kcountInp.setText(wn.toString())
     }
 
     // 离开行情页(返回键/‹返回/切Tab,由showTab统一钩)。
@@ -481,6 +609,15 @@ fun setSym(s: String) {
         kcountInp.setText(n.toString())
         commitDistWin()
         saveWin()
+        // ④ 2026-10-12(t1)：确认那一刻正在看的就是这个品种，「上次看的品种」补记一次
+        //   （服务「启动时刷新」/按品种的步长阈值，**不再**是恢复查表 key）。
+        persistLastSym(lastSym)
+        // ⚠⚠ 2026-10-12(t4)：**再记一条「最后确认过的品种」** —— 冷启动恢复
+        //   (restoreDistWinOnce) 只认这条、不认 mkt_last_sym：「看过」≠「确认过」，
+        //   确认 TSLA 后点开 005930（不确认）就会把 mkt_last_sym 覆盖掉，恢复于是去查
+        //   一条不存在的记录、静默回落 20（t3 报的 F1；复现路径与机制见 restoreDistWinOnce）。
+        //   ⚠ 只在确认时写、只写品种名；窗口值仍只由上面的 saveWin() 写 gridcalc_win_v1。
+        persistConfirmedSym(lastSym)
         onDistCommitted?.invoke()
         android.widget.Toast.makeText(act, "已保存：$tfName · $n 根",
             android.widget.Toast.LENGTH_SHORT).show()
@@ -671,13 +808,17 @@ fun setSym(s: String) {
             // t44【F-2c③】**这行「N 根」= 画出来的根数,不是取到的根数**,语义与改动前一致:
             //   ⚠⚠ 2026-10-10 **口径更正（t1 改了语义，此处当时未同步）**：
             //   info.count 现在 = **MktView 真正画出来的根数** = `vp.ks.size`
-            //   （MktView.kt:233 `val ks = vp.ks` → :395 `val n = ks.size` → onInfo 的 `count = n`），
-            //   而 `vp.ks` 是 MktData.profileOf **过滤后**的那一份（干净柱 + 尺度带 [cur/3, cur*3]）。
-            //   改前这里写的是「setData() 收到的列表长度」—— 那是**未过滤**的 `show`；
-            //   t1 之后两者可能不等：跨尺度的拆股柱**不上屏**，也就不计入这个 N（这正是 t1 要的）。
-            //   ⟹ 口径仍是"画出来的根数"（用户看到几根就报几根），只是"画出来的"这一侧
-            //     从「收到的」收紧成「真的画上屏的」；取数档位(FETCH_N=240)照样不会出现在这一行里。
+            //   （MktView 里 `val ks = vp.ks` → `val n = ks.size` → onInfo 的 `count = n`），
+            //   而 `vp.ks` 是 MktData.profileOf **过滤后**的那一份 ——
+            //   2026-10-12 起只剩 clean 非法柱过滤（尺度带已按用户裁定选 A 删除，
+            //   见 MktData.profileOf 的墓碑注释），**一根合法柱子都不剔**。
+            //   ⟹ 口径仍是"画出来的根数"（用户看到几根就报几根）；
+            //     取数档位(FETCH_N=240)照样不会出现在这一行里。
             //   用户填 100 但源只回 20 根时,这里**照实写「20 根」**,不谎报 100。
+            // ⚠ 墓碑 · 2026-10-12（t3 当日加入、当日作废）：这里原在 hidden > 0 时给
+            //   本行拼一句「·N 根中 M 根跨尺度已隐藏」，配套的 Profile.hidden → MktInfo.hidden
+            //   透传链随尺度带一并删除（用户裁定选 A：删尺度带、不加任何自动判定）。
+            //   现在没有「被隐藏的根」这个概念 —— 干净柱一根不剔，也就无话可拼。
             stateline.text = "${info.count} 根${MktData.tfName(curTf())}已更新"
             stateline.setTextColor(act.attrColor("colorFaint"))
             if (info.legRow.isNotEmpty()) {
@@ -844,7 +985,8 @@ fun setSym(s: String) {
         mkLoad()
     }
 
-    // t102 第3步:源状态行。**只读 MktData.lastLegs,不改任何取数逻辑、不新增定时器。**
+    // t102 第3步:源状态行。**只读 MktData.legsOf(curSym())(2026-10-12 t2 起按品种取),
+    // 不改任何取数逻辑、不新增定时器。**
     // handoff §0.2:红线只表示跌,所以异常用**空心环**、正常用**实心点**——形状编码,色盲与暗光都可用。
     /** t118:由值实际产生的时刻算相对时间(秒/分/时),不用硬编码。 */
     private fun t118Ago(at: Long): String {
@@ -955,7 +1097,17 @@ private fun clearForNewSymbol() {
 
 
     private fun t102PaintSourceRow(count: Int) {
-        val legs = MktData.lastLegs
+        // ⚠⚠ 2026-10-12 t2：**按当前品种取腿**（`MktData.legsOf(curSym())`），
+        //   不再读原来那个**全局不分品种**的 lastLegs。完整病根见 MktData.legsBySym
+        //   上方那段墓碑（原全局 lastLegs 的现象/机制/修法）：
+        //   全局 lastLegs **不分品种**、每次取数整体覆盖 —— 走**缓存命中**（不调 fetchStocks、
+        //   不发布新腿）或**取数未回**时，这里读到的是**上一个品种**的腿。
+        //   用户实测：先看韩股（Naver 兜底命中）→ 切 TSLA → 源名行显示「实时 · Naver」，
+        //   而 fetchNaver 全仓只在 kr 腿上、TSLA 根本没投过它。
+        //   ⟹ 品种不匹配时 legs 为空 → 走下方 t123PaintNoData() 显示「未取到」，
+        //      **不显示别人的腿**；韩股自身发布时品种一致，显示逐字不变。
+        val legs = MktData.legsOf(curSym())
+        val legsAt = MktData.legsAtOf(curSym())   // 同批记账：不是当前品种的时刻一律 0
         // t123 不变量 —— 一根都没有时,不许打实心点,也不许留空文案。
         // 真因:t102PaintSourceRow 原来**只在成功路径被调**,无数据时整行根本不重画,
         // 圆点停在**布局默认的实心态**、文案停在**布局默认值空** —— 最坏的情况被打成"正常"。
@@ -983,11 +1135,11 @@ private fun clearForNewSymbol() {
         if (hitName != null) {
             srcDot.setBackgroundResource(R.drawable.srcdot_on)
             srcMain.text = MktData.vendorName(hitName) + " · " + count + " 根 · " +
-                t118Ago(MktData.lastLegsAt)
-        } else if (MktData.lastLegsAt > 0L) {
+                t118Ago(legsAt)
+        } else if (legsAt > 0L) {
             // 没取到但有留底 —— 如实说"这是上次的",不点任何源名
             srcDot.setBackgroundResource(R.drawable.srcdot_off)
-            srcMain.text = "显示上次的数据 · " + count + " 根 · " + t118Ago(MktData.lastLegsAt)
+            srcMain.text = "显示上次的数据 · " + count + " 根 · " + t118Ago(legsAt)
         } else {
             srcDot.setBackgroundResource(R.drawable.srcdot_off)
             srcMain.text = "暂无可用源"
@@ -1119,7 +1271,7 @@ private fun clearForNewSymbol() {
      *  MktData.fetchMetals L905-L908 早就分好了两类, 这里只做翻译, 不重新判断:
      *      win.anyNoData = true   → 源有响应但没有这个代码  → 稿 L514 none
      *      否则                   → 各源都连不上            → 稿 L516 down
-     *  down 那句带缓存时刻, 与自选页 L447 的缓存横幅同源(MktData.lastLegsAt + t118Ago),
+     *  down 那句带缓存时刻, 与自选页 L447 的缓存横幅同源(MktData.legsAtOf(本品种) + t118Ago),
      *  没有缓存时照实只说前半句 —— 稿那句的"展示…缓存数据"在无缓存时不成立, 不能照抄。
      *  ⛔ 认不出来的 message 一律走【原样透传】, 不硬套任何一个稿文案 ——
      *     把一条"诚实但不精确"的信息说成"精确但可能不实", 比前者坏。
@@ -1176,7 +1328,10 @@ private fun clearForNewSymbol() {
             msg == null -> "行情拉取失败(网络或品种名不对)"
             msg.contains("都没有该品种数据") -> "无此品种 · 源正常但没有这个代码，请检查拼写"
             msg.contains("都不可达") -> {
-                val at = MktData.lastLegsAt
+                // ⚠ 2026-10-12 t2：缓存时刻按**本品种**取（legsAtOf）——
+                //   别的品种那批腿的产生时刻对本品种毫无意义，报出去就是编时间；
+                //   不匹配 → at=0 → 只说「均不可达」，不带时刻（宁可少说，不说错）。
+                val at = MktData.legsAtOf(sym ?: curSym())
                 if (at > 0L) "各行情源均不可达 · 展示 " + hhmm(at) + " 缓存数据（" + t118Ago(at) + "）"
                 else "各行情源均不可达"
             }
@@ -1322,11 +1477,13 @@ private fun clearForNewSymbol() {
         // 贵金属/商品东财单源(稿ysym:gold→GC=F、silver→SI=F、cmdty→原码*00Y,
         // 经EMID映射到101.GC00Y/101.SI00Y与17种商品*00Y),Yahoo贵金属线已删;
         // K线用当前控件值加载,不受距离窗口冻结影响
-        val ysym = when (type) {
-            "gold" -> "GC=F"
-            "silver" -> "SI=F"
-            else -> su
-        }
+        // ⚠ 2026-10-12 t2：这条映射**收敛到 MktData.fetchKeyOf**（原来这里是同一个 when 的副本）。
+        //   值逐字等价：`symType` 内部先 trim+uppercase ⟹ symType(s)==symType(su)；
+        //   gold/silver 两支与原 when 相同，其余支返回规范化原码（su 本就已规范化）。
+        //   为什么必须收敛：MktData.legsOf 比对腿批次品种时要用**同一张**映射
+        //   （屏上 XAUUSD ↔ 投出去的 GC=F）—— 两处各写一份 when 迟早漂移，
+        //   漂移的后果是黄金自己的源名行被自己的别名判成「不是当前品种」。
+        val ysym = MktData.fetchKeyOf(su)
         mkStatus("百度股市通 / 腾讯 竞速中 · 失败腿不回退重试", false)
         t123PaintNoData()   // t123:取数中不先打实心点
         // ⚠⚠⚠ 2026-10-03 **贵金属补上缓存回底**（用户裁定「补」）。
@@ -1832,13 +1989,11 @@ private fun clearForNewSymbol() {
                     MktData.MktCache.put(ck, listOf(v))
                     MktData.MktSave.store(ck, listOf(v))
                     MktData.publishFavLegs(
+                        s,
                         listOf(MktData.LegInfo(legName, hit = true, failed = false, skipped = false)))
-                    // t324 稿 L318 的「· 42 根」: 这个闭包里只有 legName/v,
-                    // info 是 onInfo 的参数、在别的作用域, 这里用 loadCryptoParallel 的 **取数档位**。
-                    // t44:本值语义是「**取到**的根数」,故用 fetchN(240),不是用户填的显示数。
-                    // ⚠️ 跨屏提示:它被 **FavPanel** 读去拼自选屏源行的「· N 根」(FavPanel.kt:450-451),
-                    //   所以改根数后**自选屏那一行的 N 会跟着变成取数档位**。
-                    MktData.lastLegsCount = fetchN
+                    // ⚠ 墓碑 · 2026-10-12：这里曾写 `MktData.lastLegsCount = fetchN`（t324 为稿 L318 的「· 42 根」），
+                    //   已随 t2 删除 —— 该字段**零读取点**（屏上「· N 根」t45 就去掉了），而旧注释还声称
+                    //   「被 FavPanel 读去拼「· N 根」」，注释与代码矛盾。需要根数时的正确来源是 legsOf 那批的 info.count。
                     renderCrypto(listOf(v), mkt, seq, null) // 命中即停
                 } else {
                     // 全灭：与改前同款收尾（留底顶着 / 泛化失败文案）

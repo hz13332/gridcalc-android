@@ -45,16 +45,18 @@ data class KLine(
      *   而 [SplitBook.apply] **不是幂等的**（它按比例除价、乘量，再来一次就再除一次），
      *   于是同一品种同一周期，走 LastChart 与走网络/缓存会算出**不同的支撑位**。
      *
-     * 【为什么支撑真的会变 —— 尺度带把差异放大了，不是被约掉】
-     *   若拆股日在窗口**之前**，整窗被同一个比例均匀缩放 ⟹ 尺度带 `[cur/3, cur*3]` 的
-     *   带内集合不变 ⟹ sup 不变（离线实测：差 0.000000 个百分点）。
-     *   但拆股日落在窗口**之内**时只有一部分柱子被除，序列成了两段尺度；再除一次会把
-     *   第一段推出带外 ⟹ **带内集合变小** ⟹ sup 变。离线实测（22 根拆股前 + 18 根拆股后、
-     *   窗口取最后 20 根）：
-     *     r=3  → 复权 1 次 带内 20 根 sup=0.606250%，复权 2 次 带内 19 根 sup=2.554861%
-     *     r=4  → 20 根 sup=0.752083% vs 18 根 sup=1.289583%
-     *     r=5  → 20 根 sup=0.897917% vs 18 根 sup=1.289583%
-     *     r=10 → 20 根 sup=1.435417% vs 18 根 sup=1.289583%
+     * 【为什么复权两次数值真的会跳 —— 差异不会被"自动判定"约掉】
+     *   ⚠ 墓碑 · 2026-10-12 用户裁定选 A：profileOf 里的尺度带 [现价/3, 现价×3] 已整段
+     *   删除（裁定原文见 [profileOf] 的墓碑注释）。下面这组 2026-10-10 的离线数值是
+     *   **尺度带还在时**量到的，保留作历史记录；「带内集合」指的已是一个**不存在的**
+     *   过滤器，别拿它推导当前行为。
+     *   拆股日落在窗口**之内**时只有一部分柱子被除，序列成了两段尺度；再除一次会把
+     *   前一段再除一次 ⟹ 数值就跳。离线实测（22 根拆股前 + 18 根拆股后、窗口取最后
+     *   20 根，**当时尺度带在场**）：
+     *     r=3  → 复权 1 次 sup=0.606250%，复权 2 次 sup=2.554861%
+     *     r=4  → 0.752083% vs 1.289583%
+     *     r=5  → 0.897917% vs 1.289583%
+     *     r=10 → 1.435417% vs 1.289583%
      *   ⟹ 这就是「复用一次、真抓一次，数值就跳一下」。
      *
      * 【修法：判重标记，而不是改调用方】[SplitBook.apply] 出口给每根打上本标记；
@@ -87,20 +89,22 @@ data class Profile(
      *   用户原话：「k线会掉出行情图显示的范围之外」「行情的上下没有变价」。
      *
      * 【根因 · 绘制集合与量程集合**不同源**】
-     *   · `profileOf()` 先两级过滤（clean 非法柱 → 尺度带 `[cur/3, cur*3]`），
+     *   · `profileOf()` 先做一级过滤（clean 非法柱；2026-10-12 起**只剩这一级**，见下），
      *     然后**只拿过滤后的 ks** 算 lo/hi（见本文件 profileOf 里的 lo/hi 循环）；
      *   · 而 MktView.onDraw 画的是 `setData()` 收到的**未过滤**列表，`y()` 又按
-     *     `vp.lo/vp.hi` 线性映射且**不做钳位** ⟹ 被尺度带整根剔除的跨尺度柱
-     *     （拆股前后的柱子，如 NFLX 10:1）照样被画，y 坐标直接落到绘图区之外。
+     *     `vp.lo/vp.hi` 线性映射且**不做钳位** ⟹ 混进来的脏柱（l≤0 那种）照样被画，
+     *     y 坐标直接落到绘图区之外。
      *
      * 【方案 (a)：把过滤后的集合随 Profile 一起交出去，绘制侧画这一份】
-     *   理由：① 尺度带过滤逻辑**只存在一处**（就在 profileOf 里），绘制层不复制、不重算，
+     *   理由：① 过滤逻辑**只存在一处**（就在 profileOf 里），绘制层不复制、不重算，
      *     本文件已有 `onFill()` 两份拷贝的血泪注释，不允许再出现第二份；
-     *   ② 跨尺度柱**本来就该剔除** —— 它与现价不在同一个价格尺度上，
-     *     同一根 Y 轴里要么把整屏压成一条线、要么被画到框外，两种都读不出东西，
-     *     这正是 profileOf 当初加尺度带的原因；
+     *   ② ⚠ 墓碑 · 2026-10-12 用户裁定选 A：本条原写「跨尺度柱本来就该剔除 ——
+     *     它与现价不在同一个价格尺度上……这正是 profileOf 当初加尺度带的原因」，
+     *     该理由随尺度带**一并作废**：按绝对价格猜「这根是不是拆股前的」就是自动判定
+     *     拆股，用户已裁定不做（裁定原文见 [profileOf]）。现在 ks = clean，只挡脏数据，
+     *     **一根合法柱子都不剔**；
      *   ③ 未采用「保留全部柱子 + y() 钳位」：钳位只是把越界柱**贴在边界上画**，
-     *     既没消除「这根不属于这个尺度」，又会把「两侧又不同源了」这个 bug 藏起来
+     *     既没消除「两侧又不同源了」这个 bug，又会把它藏起来
      *     （下次再犯就查不出来），而同源是**结构性**保证：lo = min(l)、hi = max(h)
      *     就是这一份的极值 ⟹ y() 对画出来的每一根恒有 y ∈ [绘图区上沿, 下沿]。
      *
@@ -109,6 +113,13 @@ data class Profile(
      * ⚠ 退化分支（有效柱 < 3）也遵守同一条：`ks` 与 lo/hi 必须来自**同一份** clean。
      */
     val ks: List<KLine> = emptyList()
+    /*
+     * ⚠ 墓碑 · 2026-10-12 —— 这里原是 `hidden: Int`（「被尺度带整根剔除、没上屏的根数」，
+     *   t3 于 2026-10-12 为统计剔除数而加，同日随用户裁定选 A 作废）。
+     *   它经 MktView 透传成 MktInfo.hidden、再在 MktPanel 拼成「·N 根中 M 根跨尺度已隐藏」；
+     *   尺度带一删，被藏的根数恒为 0，整条 Profile.hidden → MktInfo.hidden → MktPanel
+     *   拼接链**全部删除**，不留死代码。裁定原文见 [profileOf] 的墓碑注释。
+     */
 ) {
     val pocRow: Int get() {
         var bi = 0
@@ -1301,27 +1312,93 @@ object MktData {
     )
 
     /**
-     * t102 第3步:最近一次竞速的逐腿结果,供源状态行渲染。
+     * t102 第3步:**每个品种**最近一次竞速的逐腿结果,供源状态行渲染。
      * handoff §5.4 的病根是"机制有了、界面没有"——用户不知道是哪个源挂了。
      * 这里只**透传** SRCBAD/raceOk 已经算出来的东西,不新增任何取数逻辑、不新增任何定时器。
+     *
+     * ⚠⚠⚠ 2026-10-12 **跨品种串显示**（用户当天实测截图，t2 修）：
+     *   【现象】行情页切到美股 TSLA，价格块右上显示「实时 · **Naver**」——
+     *     Naver 只在 **kr 腿**上（stockLegs 的 kr 分支 = [东财|kr, Naver|kr]，
+     *     `fetchNaver` 全仓只有那一处调用），TSLA 这一轮根本没投过它。
+     *   【机制】改前这里是**全局一个** `lastLegs`（**不分品种**），`publishLegs` 每次取数
+     *     **整体覆盖**。用户先看韩股（Naver 兜底命中）→ 切到 TSLA → TSLA 走的是
+     *     loadStockParallel 的**内存/落盘缓存命中**分支（MktCache.get / MktSave.saved 早退，
+     *     **不调 fetchStocks** ⟹ 这一轮**不发布新腿**）→ onInfo 照常调 t102PaintSourceRow
+     *     读腿，读到的却是**上一个品种**那批 → 串显示。TSLA 取数**还没回**时同理：
+     *     旧腿一直挂在全局上。
+     *   【修法】**按品种记账**：批次按品种 key 存进 [legsBySym]，读取一律走 [legsOf] /
+     *     [legsAtOf] —— 只会拿到**该品种自己**最近那批；本进程没为它发过布 ⟹ 空 ⟹
+     *     行情页走 t123PaintNoData 显示「未取到」，**不显示别人的腿**。
+     *     ⚠ **不改取数 / 竞速 / 熔断**：publishLegs/publishFavLegs 只是各多一个 sym 形参
+     *       （由它写进 map），raceOk 的替补顺序与 srcBad/软熔断一行未动。
+     *     ⚠ 不留公开的「全局最新一批」出口：留了就一定有人绕过品种直接读 —— 那正是本次的入口。
+     *
+     * 【规模】键 = 本进程看过的品种数（进程内存态，杀进程即清）；每条只是几个 LegInfo 的
+     *   小列表，自选页一轮刷新按自选数写入，无失控增长。
      */
-    @Volatile var lastLegs: List<LegInfo> = emptyList()
-    /** t114:这批腿信息**实际产生**的时刻(毫秒)。t113 发现 ago 曾硬编码「刚刚」——
-     *  那是拿"我刚查过"冒充"数据产生的时刻"。时间必须来自这里。 */
-    @Volatile var lastLegsAt: Long = 0L
+    /** 一批腿的载体：腿 + 产生时刻（t114 时间诚实性：`at` 是**值实际产生**的时刻，非当前时刻）。 */
+    private class LegBatch(val legs: List<LegInfo>, val at: Long)
 
     /**
-     * t324 稿 L318 的 `{win} · 42 根` 需要根数。改前**没有**任何地方存它
-     * (lastCount / lastBars 全零命中, LegInfo 也只有 name/hit/failed/skipped),
-     * 由 MktPanel 在 publishFavLegs 旁边写入 —— 那边手里有 info.count, 是真实来源。
+     * 按品种存的腿批次（键的口径见 [batchOf]）。
+     * 取数线程写、UI 线程读 ⟹ 必须是并发容器：`get` 原子，不存在"读到一半"。
      */
-    @Volatile var lastLegsCount: Int = 0
+    private val legsBySym =
+        java.util.concurrent.ConcurrentHashMap<String, LegBatch>()
+
+    /** 品种规范化：与 mkLoad 写 lastSym 的口径一致（trim + 大写），两侧都过它才可比。 */
+    private fun normSym(s: String): String = s.trim().uppercase(Locale.US)
+
+    /**
+     * 屏幕品种 → **实际投出去的取数键**（gold→`GC=F`、silver→`SI=F`，其余 = 规范化原码）。
+     *
+     * 【为什么腿的品种记账需要它】贵金属链投的是**映射后的码**：用户屏上是 `XAUUSD`，
+     * `mkLoad` 传给 `fetchMetals` 的是 `ysym = GC=F` ⟹ 发布出来的腿批次挂在 `GC=F` 名下；
+     * 只按屏幕名查会查不到 ⟹ **黄金自己的源名行反而变成「未取到」**（那样修就是新造回归）。
+     * ⟹ 查询时屏幕名与取数键**两者任一命中**即算本品种（见 [batchOf]）。
+     *
+     * ⚠ **唯一定义处**：MktPanel.mkLoad 的 `ysym` 也调它 —— 两处各写一份 `when` 必然漂移。
+     *   （等价性：`symType` 内部先 trim+uppercase ⟹ `symType(s) == symType(normSym(s))`，
+     *     所以拿 `su` 算与原先 mkLoad 拿 `type` 算逐字相同。）
+     */
+    fun fetchKeyOf(sym: String): String {
+        val u = normSym(sym)
+        return when (symType(u)) {
+            "gold" -> "GC=F"
+            "silver" -> "SI=F"
+            else -> u
+        }
+    }
+
+    /** 该品种批次的读取：先试规范化屏幕名，再试取数键（贵金属别名，见 [fetchKeyOf]）。 */
+    private fun batchOf(sym: String): LegBatch? {
+        val u = normSym(sym)
+        return legsBySym[u] ?: legsBySym[fetchKeyOf(sym)]
+    }
+
+    /**
+     * 读**指定品种**最近一次竞速的腿。
+     * @return 该品种自己的批次；**本进程没为它发过布 → emptyList()**
+     *   （调用方据此走「无腿 / 未取到」，绝不显示上一个品种的腿）。
+     */
+    fun legsOf(sym: String): List<LegInfo> = batchOf(sym)?.legs ?: emptyList()
+
+    /** 同 [legsOf]：本品种没有批次 → 0L（读取侧据此不报别人的产生时刻）。 */
+    fun legsAtOf(sym: String): Long = batchOf(sym)?.at ?: 0L
+
+    /**
+     * ⚠ 墓碑 · 2026-10-12 **`lastLegsCount` 已删除**（修「TSLA 显示 Naver」那轮随 t2 清理）。
+     *   它曾是 t324 为稿 L318 的 `{win} · 42 根` 存的根数，由 MktPanel 在 publishFavLegs 旁写入。
+     *   删除理由：**全工程零读取点**（屏上「· N 根」早在 t45 就已去掉，见 FavPanel 那段注释），
+     *   而 MktPanel 侧的旧注释还声称「被 FavPanel 读去拼「· N 根」」—— 注释与代码互相矛盾，留着只会误导。
+     *   需要根数时的正确来源是 [legsOf] 那批的 `info.count`。
+     */
 
     /**
      * t132:竞速进行中。
      *
-     * 为什么需要它:`lastLegs` 的语义是「**上一次已完成**竞速的结果」(`publishLegs`
-     * 只在竞速**结束后**调用),所以**取数途中 `lastLegs` 里挂的仍是上一次的结果**。
+     * 为什么需要它:腿账本([legsBySym],2026-10-12 起按品种存)的语义是「**上一次已完成**竞速的
+     * 结果」(`publishLegs` 只在竞速**结束后**调用),所以**取数途中该品种名下挂的仍是上一次的结果**。
      * t131 我用 `legs.isNotEmpty() && !hit` 判 `err`,于是**取数中途把上一次失败
      * 误报成"刚刚全挂了"**。这个标志把「正在取」和「取完了且全挂」彻底分开。
      *
@@ -1434,28 +1511,38 @@ private fun raceOk(
     }
 
     /**
+     * t112:自选页取数链(FavDist)也发布腿信息。
+     * 原来 publishLegs 是 private 且只在行情页那条链上调用,导致冷启动直接进自选页时
+     * 腿表是空的、源状态行整行隐藏 —— **用户打开 App 第一眼没有源信息**。
+     * 这里给出公开入口,让自选页**不依赖行情页**也能显示源状态行。**同一套机制,不是第二套。**
+     *
+     * ⚠ 2026-10-12 t2 起多一个 [sym]：这批腿**记到该品种名下**（写进 [legsBySym]）。
+     *   没有它就等于又造一个"无主"的批次 —— 那正是「TSLA 显示 Naver」的病根。
+     */
+    fun publishFavLegs(sym: String, rows: List<LegInfo>) {
+        legsBySym[normSym(sym)] = LegBatch(rows, System.currentTimeMillis())
+        fetching = false
+    }
+
+    /**
      * t102 第3步:把逐腿状态发布给 UI。
      * `all` 是这一品种**本可以投的全部腿**,`pool` 是实际投出去的(被 SRCBAD 记忆排除的算 skipped)。
      * 只透传,不改变竞速行为。
+     *
+     * ⚠ 2026-10-12 t2：多一个 [sym]（这批腿记到谁名下，见 [legsBySym]）。
+     *   **取数 / 竞速 / 熔断一行未动** —— 这里只是把结果落进按品种的账本。
      */
-    /**
-     * t112:自选页取数链(FavDist)也发布腿信息。
-     * 原来 publishLegs 是 private 且只在行情页那条链上调用,导致冷启动直接进自选页时
-     * lastLegs 为空、源状态行整行隐藏 —— **用户打开 App 第一眼没有源信息**。
-     * 这里给出公开入口,让自选页**不依赖行情页**也能显示源状态行。**同一套机制,不是第二套。**
-     */
-    fun publishFavLegs(rows: List<LegInfo>) { lastLegs = rows; lastLegsAt = System.currentTimeMillis(); fetching = false }
-
     private fun publishLegs(
+        sym: String,
         all: List<Pair<String, () -> List<VendorKs>>>,
         pool: List<Pair<String, () -> List<VendorKs>>>,
         r: Race
     ) {
         val byName = r.legs.associateBy { it.name }
-        lastLegs = all.map { (nm, _) ->
+        val rows = all.map { (nm, _) ->
             byName[nm] ?: LegInfo(nm, hit = false, failed = false, skipped = true)
         }
-        lastLegsAt = System.currentTimeMillis()
+        legsBySym[normSym(sym)] = LegBatch(rows, System.currentTimeMillis())
     }
     // 稿:1027-1034 stockLegs:美股/港股→[百度,腾讯];韩股→[东财, Naver];商品不走这里
     // ⚠ 韩股那半句**已不是稿的原文**：稿是 [腾讯, 东财]；本仓先改成 [东财, 腾讯]（2026-10-07），
@@ -1525,7 +1612,7 @@ private fun raceOk(
         val win: Race
         try {
             win = raceOk(pool, prep, EM_TIMEOUT_MS + 8000L)
-            publishLegs(legs, pool, win)
+            publishLegs(sym, legs, pool, win)
         } finally {
             fetching = false
         }
@@ -1788,7 +1875,7 @@ private fun raceOk(
         val win: Race
         try {
             win = raceOk(pool, prep, timeoutMs.toLong() + 8000L)
-            publishLegs(legs, pool, win)
+            publishLegs(sym, legs, pool, win)
         } finally {
             fetching = false
         }
@@ -3266,29 +3353,45 @@ class StepR(val v: Double?, val why: String) {
                 0, 0, if (has) lo0 else 0.0, if (has) hi0 else 1.0,
                 0.0, 0.0, 0.0, emptyList(), clean)
         }
-        // ⚠⚠⚠ 2026-10-07 **尺度带过滤（真机实证 + 离线逐位复现：NFLX月线窗 65→1341，距支撑 1117.12%）**。
+        // ⚠⚠⚠ 2026-10-12 **尺度带过滤已删除（用户裁定选 A：删、不加任何自动判定）**。
+        //   本函数现在只剩上面那一道 clean 脏柱过滤：下面的 `ks` 就是 clean 本身，
+        //   lo/hi/rv/ru/rd/sup 全部由它算 —— **20 根合法 K 线一根都不剔**。
         //
-        // 【病根】百度与腾讯的**美股月线都不做拆股复权**（实测两源逐位相同：2025-10-31 收 1118.86
-        //   → 2025-11-28 收 107.58 记成 −90.38%，那是 NFLX 的 10:1 拆股，不是暴跌）。
-        //   窗口于是横跨 65→1341（20 倍落差），体积剖面的支撑全落在拆股前的千元档，
-        //   而现价在 68.69 ⟹ 「距支撑」被算成 1117%。同尺度窗口（AVGO/00700 月线）**逐位不受影响**。
+        // 【删掉的是什么（墓碑，不要抄回来）】2026-10-07 为修「NFLX 月线距支撑 +1117%」
+        //   引入的尺度带 [现价/3, 现价×3]：以最后一根收盘价为锚，要求每根 K 线**整根**落带内，
+        //   带外的整根剔除；配套还有「被剔了几根」的计数字段（Profile.hidden → MktInfo.hidden
+        //   → MktPanel 状态行拼接），同日一并删除。它自称「不是猜拆股比」（2026-10-07 注释原话），
+        //   但按绝对价格猜的正是「这一根是不是拆股前的」—— 那就是自动判定拆股。
+        //
+        // 【用户裁定（两条，原文都在本文件里）】
+        //   ① 2026-10-05：「你不要自己判定了，我说了我手动输入数据。把自动复权填写数据的
+        //      功能取消。」（见 [aggregate] 的注释；「拆股比只来自用户录入」见 [SplitBook] 的注释）
+        //   ② 2026-10-12：选 **A** —— 删尺度带、**不加任何自动判定**。连「跳变检测」
+        //      （按相邻比值判拆股）也被当场否决：那同样是自己判定。
         //
         // 【为什么在 profileOf 而不是 FavDist】这是自选与行情**唯一**的支撑生产者。
         //   放在这里，两屏的支撑必然同源同值 —— 用户此前实报过「屏上看着没破、背地里算成破了」，
         //   那次就是两条取数路径各算一份。此处改一处，两屏一起收敛。
         //
-        // 【规则】以最后一根收盘价为锚，**整根**必须落在 [cur/3, cur*3] 内：
-        //   整根入带 ⟹ 跨尺度的拆股柱（l=103 / h=1167 那根）会被整根剔除，
-        //   否则它一根就能把 lo/hi 拉到两个尺度上（这正是 1117% 的直接来源）。
-        //   ⚠ **不是猜拆股比**：不估算、不写盘、不碰用户录入的拆股表（用户 2026-10-05 裁定
-        //     「不要自己判定」，比只来自用户录入）。这里只是「只用与现价同一尺度的K线分析」。
-        //   ⚠ 带内不足 3 根就退回全量：宁可沿用旧行为，也不要因为带太窄而凭空造出「无支撑」。
-        val cur0 = clean.last().c
-        val inBand = if (cur0 > 0) clean.filter { it.l >= cur0 / 3.0 && it.h <= cur0 * 3.0 } else clean
-        val ks = if (inBand.size >= 3) inBand else clean
-        // ⚠⚠ 2026-10-10 下面这一行 `val ks` 就是**全项目唯一的「上屏集合」**：
+        // 【为什么数据上可分也不做自动判定 · 两个真实样本】
+        //   · MU 月线 20 根（2025-03 ~ 2026-10，20/20 有成交量）连续 84 → 1255（15 倍），
+        //     **最大相邻收盘比值仅 1.88x** —— 无拆股的连续大涨，尺度带却把它剔得只剩 7 根
+        //     （用户 2026-10-11 实测质问「数量 20，屏幕上怎么只画 7 根」）；
+        //   · NFLX 月线 2025-10-31 收 1118.86 → 2025-11-28 收 107.58 = **10.40x**，
+        //     那是真正的 10:1 拆股断崖（源不做复权，记成 −90.38%）。
+        //   1.88x 与 10.40x 在数据上确实可分 —— 但「判据由谁定、判错了算谁的」正是裁定本身：
+        //   用户要的是「拆股比只来自用户录入」，所以这里不做任何判定，哪怕代价明确。
+        //
+        // 【已知代价（2026-10-12 随选 A 一并接受）】未填拆股表的拆股票，拆股前的柱子
+        //   会按原始价位参与剖面 ⟹ 支撑可能落在拆股前的价位上、距支撑百分比可能很夸张。
+        //   · 自选页有兜底：FavDist.sane() 把 >200% 的残值判为坏数据丢弃重算（防线在 FavDist.kt）；
+        //   · **行情页没有兜底** —— 屏上就照算出来的画，这是用户接受的；
+        //   · 填了拆股表的品种不受影响：[SplitBook.apply] 前复权后 20 根自然同尺度（本次一行未动）。
+        //
+        // ⚠⚠ 下面这一行 `val ks` 就是**全项目唯一的「上屏集合」**：
         //   lo/hi、rv/ru/rd、sup 由它算，末尾又把它原样装进 Profile.ks 交给绘制侧。
-        //   ⟹ 尺度带过滤**只此一处**（绘制层 MktView 一个字都不复制，见 Profile.ks 的注释）。
+        //   ⟹ 过滤（只剩脏柱这一级）**只此一处**（绘制层 MktView 一个字都不复制，见 Profile.ks 的注释）。
+        val ks = clean
         val rows = 24
         var lo = Double.POSITIVE_INFINITY
         var hi = Double.NEGATIVE_INFINITY

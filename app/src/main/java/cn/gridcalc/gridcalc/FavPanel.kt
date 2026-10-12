@@ -16,6 +16,7 @@ import android.text.style.StyleSpan
 import android.text.style.SuperscriptSpan
 import android.view.Gravity
 import android.view.KeyEvent
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
@@ -259,7 +260,44 @@ class FavPanel(
         val p = dp(9.5f).toInt()
         setPadding(p, dp(3.8f).toInt(), p, dp(3.8f).toInt())
     }
-    private val sugScroll: ScrollView = ScrollView(act).apply {
+    // ⚠⚠ 2026-10-11 **用户报「自选搜索界面的候选列表无法滑动」**，根因就在下面这个手势拦截。
+    //   候选列表本身一直是能滚的（高度 248dp 封顶，见 showResults），问题是**手势到不了它**：
+    //   整页根布局是 ScrollView（page_fav.xml:3），本 ScrollView 与它**同方向**嵌在里面，
+    //   外层在 ACTION_MOVE 越过 touchSlop 时由 onInterceptTouchEvent 把整串手势抢走
+    //   ⟹ 内层收不到 MOVE，候选列表一动不动，滚的却是整页。
+    //   修法：本 ScrollView 在 ACTION_DOWN 时对**父链**调
+    //   `requestDisallowInterceptTouchEvent(true)`（沿父链上抛，根 ScrollView 的
+    //   onInterceptTouchEvent 会先看这个标记 ⟹ 它让路），UP/CANCEL 时还回去。
+    //   ⚠ 挂在 dispatchTouchEvent 而**不是** onTouchEvent：候选行（rowView）的 pick/＋
+    //     是 clickable，ACTION_DOWN 会被子 View 吃掉，onTouchEvent 根本收不到 DOWN，
+    //     标记就永远设不上（这正是「看着像没修」的坑）。dispatchTouchEvent 是每个手势
+    //     必经的入口；本重写 super 一回来就设标记，**早于任何 MOVE** —— 而父链的拦截判定
+    //     只在 MOVE 上才看这个标记（DOWN 一进来 ViewGroup 就把标记清了，DOWN 之后设依然有效）。
+    //     且只动标记、不改任何子 View 的点击/选择路径。
+    //   ✅ 2026-10-12 实机复验（emulator-5554，本 APK 由工作树现装）：
+    //     · query=A（候选多于 4 行：AAPL/AMZN/AMD/ARM/ASML/AMAT/XAU*，末行被框底裁掉；
+    //       框高被 248dp 封顶 = 682px @440dpi）框内上拖 ⟹ 内层滚动（ARM→首行、
+    //       露出 ASML/AMAT），fav_search/fav_sug_box 坐标一动不动 = 整页没滚；
+    //       下拖可回顶。框外（自选列表区）上拖 ⟹ 整页滚，框随页上移，整页滚动不回归。
+    //     · query=AAPL（只 1 行，框高 204px < 248dp）框内上拖 ⟹ canScrollVertically 为假、
+    //       不设标记，整页照常滚 —— 「装得下就不抢手势」成立。
+    //     · 点候选行左半 ⟹ 照常直达行情页；点＋ ⟹ 照常加进自选（测完已删，未留残留）。
+    //   ⚠ 只在**内容真的超了 248dp**（canScrollVertically 为真）时才抢手势：
+    //     候选本来就装得下时没有可滚的东西，那时让外层照常滚整页，不制造「拖了没反应」。
+    //   ⚠ 与 MktView.onTouchEvent(:169) 是同一套写法，不是新发明。
+    private val sugScroll: ScrollView = object : ScrollView(act) {
+        override fun dispatchTouchEvent(e: MotionEvent): Boolean {
+            val handled = super.dispatchTouchEvent(e)
+            when (e.actionMasked) {
+                MotionEvent.ACTION_DOWN -> if (canScrollVertically(1) || canScrollVertically(-1)) {
+                    parent?.requestDisallowInterceptTouchEvent(true)
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL ->
+                    parent?.requestDisallowInterceptTouchEvent(false)
+            }
+            return handled
+        }
+    }.apply {
         isVerticalScrollBarEnabled = false
         addView(resultsBox)
     }
@@ -369,7 +407,7 @@ class FavPanel(
 
     // 稿.favrow .fb-* 徽标配色(固定hex,不随主题)
     /**
-     * t111 (1) 自选页源状态行。**复用行情页同一套数据**(MktData.lastLegs / srcBadAt),
+     * t111 (1) 自选页源状态行。**复用行情页同一套数据**(MktData.legsOf(行情页当前品种) / srcBadAt),
      * 不另写一份取数、**不新增任何请求** —— 只是把最近一次行情页的取数结果也显示在自选页。
      * 形状编码不变:实心点=正常,空心环=异常;颜色是 colorSub 灰圈,**不变紫**。
      */
@@ -411,7 +449,7 @@ class FavPanel(
      * | st | 依据 |
      * |---|---|
      * | `empty` | 自选列表为空(一个品种都没有) |
-     * | `err`   | 自选非空 **且** `MktData.lastLegs` 非空 **且** 无一条 `hit`(源全挂/本次全失败) |
+     * | `err`   | 自选非空 **且** `MktData.legsOf(行情页当前品种)` 非空 **且** 无一条 `hit`(源全挂/本次全失败) |
      * | `load`  | 自选非空 **且** 正在取数(legs 为空 = 还没取到) |
      * | `ok`    | 其余 |
      *
@@ -419,12 +457,17 @@ class FavPanel(
      * 「某个品种没有距支撑/收益比」属于**数据缺失**,在 `ok` 下**用「—」表示**;
      * 只有**整条取数链路一条都没成功**才进 `err`。两者依据不同,不互相触发。
      *
-     * **时间诚实性**:`HH:MM:SS` 与「N 小时前」都取 `MktData.lastLegsAt`
-     * —— **该值实际产生的时刻**,不是当前时刻。
+     * **时间诚实性**:`HH:MM:SS` 与「N 小时前」都取 `MktData.legsAtOf(行情页当前品种)`
+     * —— **该值实际产生的时刻**(且必须是本品种那批的时刻),不是当前时刻。
      */
     private fun t131PaintState(loading: Boolean) {
         val n = try { FavStore.get(act).map { it.s }.distinct().size } catch (_: Exception) { 0 }
-        val legs = MktData.lastLegs
+        // ⚠ 2026-10-12 t2：**按品种取腿**（MktData.legsOf），不再直接读全局 lastLegs。
+        //   自选页没有自己的「当前品种」，它的源状态本就**复用行情页最近一次取数**
+        //   （t111 注释原话），所以口径取行情页当前品种 `mkt.curSym()`；
+        //   品种不匹配 → 空 → 状态机视同「这批腿不存在」，**不拿别的品种的腿定 err/ok**。
+        //   病根（原全局 lastLegs 不分品种、整体覆盖）与修法详见 MktData.legsBySym 的注释。
+        val legs = MktData.legsOf(mkt.curSym())
         val hit = legs.any { it.hit }
         // t132:按队长裁定重写。关键是 `MktData.fetching` ——
         // lastLegs 是「上一次**已完成**竞速的结果」,取数途中它挂的仍是上一次的,
@@ -522,7 +565,8 @@ class FavPanel(
             else -> "拉取中 · 同一源不重试"
         }
         if (isErr) {
-            val at = MktData.lastLegsAt
+            // ⚠ 2026-10-12 t2：缓存时刻同样按品种取（不是当前品种的批次 → 0 → 不报别人的时刻）。
+            val at = MktData.legsAtOf(mkt.curSym())
             val hh = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US).format(java.util.Date(at))
             // t173:同上,三档而不是整小时。稿 L447 的括号里是年龄,不是「0 小时」。
             val ago = t114Ago(at)
@@ -614,7 +658,11 @@ class FavPanel(
         val detail = favSrcDetailV
         // t121:任一缺失就不画这行(而不是画一半然后在点击时崩)
         if (row == null || dot == null || main == null || more == null || detail == null) return
-        val legs = MktData.lastLegs
+        // ⚠ 2026-10-12 t2：按品种取腿（口径同 t131PaintState：行情页当前品种）。
+        //   不匹配 → 空 → 下一行整行 GONE，**绝不把上一个品种的腿画进聚合行**。
+        //   （本函数当前在上方 `return` 之后属不可达代码，改它是为：源状态行一旦按
+        //     注释恢复，读取口径从第一天起就是对的，不再复刻「TSLA 显示 Naver」。）
+        val legs = MktData.legsOf(mkt.curSym())
         if (legs.isEmpty()) { row.visibility = View.GONE; return }
         if (t131State != "ok") row.visibility = View.VISIBLE
         // t114 A:形状编码必须诚实。raceOk 里 hit=true 只在**本次真实取到**时置位
