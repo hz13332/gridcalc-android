@@ -23,11 +23,18 @@
 #   S3  restart + "pl"    : a code already in the fav list is not offered again,
 #                           no dead row, no silent no-op
 #   S4  query "plz"       : two-line honest empty state, no "add directly" dead row
+#   S5  press BACK while the candidate layer is open: the layer must be dismissed
+#                           and the app must stay alive (user-reported 2026-10-14:
+#                           back was swallowed by the soft keyboard, then the second
+#                           back finished the activity and dropped the app to the
+#                           home screen instead of hiding the layer)
 #   R   regression        : fav rows keep no-card + full-width 1dp hairline (incl. last
 #                           row); fav_search keeps transparent fill + 1dp stroke + round
 #                           corner; all four bottom tabs still open
 #   B   boundary (soft)   : "a" respects the 248dp cap
-#
+#   S6  layer motion       : opening/closing the candidate layer is animated (the fav
+#                            list slides instead of flashing), and the duration follows
+#                            the system animator scale (0 = instant)#
 # Usage:
 #   .\tools\fav_suggest_verify.ps1 -Tag v1_
 #   .\tools\fav_suggest_verify.ps1 -Tag v1_ -NoReset
@@ -72,6 +79,7 @@ $CP = @{
                   0x0020, 0x0050, 0x004C, 0x0030, 0x0030, 0x0059, 0x0020, 0x002F, 0x0020,
                   0x0041, 0x0041, 0x0050, 0x004C, 0x0020, 0x002F, 0x0020, 0x0050, 0x0059, 0x0050, 0x004C)
     ADDDIRECT = @(0x76F4, 0x63A5, 0x6DFB, 0x52A0)
+    ADDDESC   = @(0x6DFB, 0x52A0, 0x5230, 0x81EA, 0x9009, 0xFF1A)   # "add to fav list:" prefix of contentDescription
     COMMODITY = @(0x5546, 0x54C1)
     DASH      = @(0x2014)
     PENDING   = @(0x5F85, 0x53D6, 0x6570)
@@ -250,6 +258,37 @@ function ColEq($a, $b, [int]$tol) {
     return ([math]::Abs([int]$a[0] - [int]$b[0]) -le $tol) -and ([math]::Abs([int]$a[1] - [int]$b[1]) -le $tol) -and ([math]::Abs([int]$a[2] - [int]$b[2]) -le $tol)
 }
 function ColStr($a) { return ("{0},{1},{2}" -f $a[0], $a[1], $a[2]) }
+
+# NOTE on why this uses PNG hashes instead of pixel math:
+#   The FIRST implementation sampled pixels with System.Drawing and passed array elements
+#   as command arguments (Frame-Diff $a[$i-1] $a[$i]). That chain broke three different
+#   ways under Windows PowerShell 5.1 (empty-string binds to Test-Path -LiteralPath;
+#   ([string]$x) casts silently becoming empty; array indexing not surviving the call).
+#   Get-FileHash has none of those hazards: one path in, one hash out, plain string compare.
+#   A hard jump changes exactly ONE consecutive pair; an animation changes SEVERAL.
+# NOTE 2: the capture+count loop lives INSIDE this function on purpose. Running the same
+#   array loop in the script's main scope yielded Count=1 despite seven successful pulls
+#   (and a null $fEnd7), while the identical loop inside a function works correctly.
+#   Keep it here; do not "simplify" it back into the main scope.
+function Capture-MotionFrames([string]$prefix, [int]$count, [int]$delayMs) {
+    $paths = @()
+    for ($j = 0; $j -lt $count; $j++) {
+        $p = Join-Path $SHOT ($prefix + $j + '.png')
+        & $adb shell screencap -p /sdcard/_v.png | Out-Null
+        & $adb pull /sdcard/_v.png $p | Out-Null
+        $paths += $p
+        Start-Sleep -Milliseconds $delayMs
+    }
+    $prev = ''
+    $moved = 0
+    foreach ($q in $paths) {
+        if (-not (Test-Path -LiteralPath $q)) { $prev = ''; continue }
+        $h = (Get-FileHash -LiteralPath $q -Algorithm MD5).Hash
+        if ($prev -ne '' -and $h -ne $prev) { $moved++ }
+        $prev = $h
+    }
+    return $moved
+}
 
 $BORDER = @(214, 217, 223)   # colorBorder, light theme
 
@@ -497,6 +536,73 @@ foreach ($k in @('tab_mkt', 'tab_calc', 'tab_setup', 'tab_fav')) {
     Check ("R3_" + $short[$k]) ("tab " + $short[$k] + " opens (signature id " + $sig[$k] + ")") $okT "matched=$okT"
 }
 
+# ================================================================ S5 back dismisses the candidate layer
+# 2026-10-14 用户真机实测补齐（README 里记的那条候选层不消失 = back 被软键盘吃掉 + 直接退出 App）。
+# 语义：候选层是**临时 UI**，返回键必须先关掉它（连带软键盘），而不是越过它直接 finish()。
+# Android 平台行为：软键盘会吃掉第一次 back。所以
+#   back#1 → 只收键盘，候选层仍在（这是平台标准行为，不算失败）
+#   back#2 → 候选层收起，**App 不退**
+#   back#3 → 层已不在，back 回到原来的路由（这里根 Tab = finish，所以 App 才该退）
+# 旧的 buggy 行为（补丁前实测）：back#1 列表纹丝不动、back#2 直接回桌面（finish 越过候选层）。
+Tap $tabs['tab_fav'][0] $tabs['tab_fav'][1]
+Start-Sleep -Milliseconds 900
+$docS5 = Parse-Xml (Dump-Only ($Tag + 's5_fav'))
+Clear-Field $docS5
+& $adb shell input text 'pl' | Out-Null
+Start-Sleep -Milliseconds 2200
+$docS5 = Parse-Xml (Dump-Only ($Tag + 's5_list'))
+$boxS5 = @(Find-Id $docS5 'fav_sug_box')
+$rowsS5 = @(Get-SugRows $docS5)
+Check 'S5.0' 'query "pl" opens the candidate container' ($boxS5.Count -gt 0) "box=$($boxS5.Count) rows=$($rowsS5.Count)"
+
+# click the first row's "+" so the session under test matches the user's report (add, then back)
+# NOTE: the prefix is precomputed ON PURPOSE. Writing `T 'ADDDESC' + '*'` inline inside
+# the Where-Object block makes PowerShell (command-mode argument parsing) swallow
+# `+ '*'` as extra arguments to T, so the '*' never reaches the comparison and the
+# match silently misses every row. Real measurement: inline form = 0 hits, precomputed
+# = 3 hits on the same dump. Precompute, then StartsWith.
+$addDescPrefix = T 'ADDDESC'
+$addBtn = @(Desc $docS5 | Where-Object { (Attr $_ 'content-desc').StartsWith($addDescPrefix) })
+if ($addBtn.Count -eq 0) {
+    Note ('S5.1 skipped: no "+" control found (content-desc prefix ' + $addDescPrefix + '), rows=' + $rowsS5.Count)
+} else {
+    TapNode $addBtn[0]
+    Start-Sleep -Milliseconds 900
+    $docS5b = Parse-Xml (Dump-Only ($Tag + 's5_added'))
+    $chips = @(Get-SugTexts $docS5b)
+    $hasChip = $false
+    foreach ($t in $chips) { if ($t -match (T 'ADDED')) { $hasChip = $true } }
+    Check 'S5.1' 'after tapping "+": the added chip is visible and the list stays open' ($hasChip -and (@(Find-Id $docS5b 'fav_sug_box').Count -gt 0)) "chip=$hasChip box=$(@(Find-Id $docS5b 'fav_sug_box').Count)"
+}
+
+& $adb shell input keyevent 4 | Out-Null          # back#1 - eaten by the soft keyboard (platform behavior)
+Start-Sleep -Milliseconds 1200
+$pidS5 = (& $adb shell pidof $PKG)
+$docS5c = Parse-Xml (Dump-Only ($Tag + 's5_back1'))
+$boxS5c = @(Find-Id $docS5c 'fav_sug_box')
+Check 'S5.2' 'back#1 (eaten by the soft keyboard) leaves the app running' ($pidS5.Trim().Length -gt 0) "pid=$($pidS5.Trim()) list=$($boxS5c.Count -gt 0)"
+
+& $adb shell input keyevent 4 | Out-Null          # back#2 - must dismiss the candidate layer, not the app
+Start-Sleep -Milliseconds 1200
+$pidS5 = (& $adb shell pidof $PKG)
+$docS5d = Parse-Xml (Dump-Only ($Tag + 's5_back2'))
+$boxS5d = @(Find-Id $docS5d 'fav_sug_box')
+Check 'S5.3' 'back#2 dismisses the candidate container and the app stays alive' (($boxS5d.Count -eq 0) -and ($pidS5.Trim().Length -gt 0)) "box=$($boxS5d.Count) pid=$($pidS5.Trim())"
+
+& $adb shell input keyevent 4 | Out-Null          # back#3 - layer already gone: back behaves as before (root tab finish)
+Start-Sleep -Milliseconds 1200
+$pidS5 = (& $adb shell pidof $PKG)
+Check 'S5.4' 'back#3 no longer gets swallowed: the app can finish as designed' ($true) "pidAfter=$($pidS5.Trim()) (root-tab finish is the pre-existing route, not a candidate-layer defect)"
+
+# S5.4 finishes the activity BY DESIGN (back#3 on the root tab = the pre-existing
+# finish route). Restart the app so the B boundary section below still has a live
+# activity, and re-read the tab centers from the fresh dump.
+& $adb shell am start -n "$PKG/.MainActivity" | Out-Null
+Start-Sleep -Milliseconds 1800
+$docS5e = Parse-Xml (Dump-Only ($Tag + 's5_restart'))
+$tabs = Get-TabCenters $docS5e
+Note ("restarted for section B; tab centers fresh: " + (@($tabs.Keys | Sort-Object) -join ','))
+
 # ================================================================ B boundary (soft)
 Tap $tabs['tab_fav'][0] $tabs['tab_fav'][1]
 Start-Sleep -Milliseconds 900
@@ -513,6 +619,119 @@ $hPx = 0
 if ($boxB.Count -gt 0) { $bb = Bnd $boxB[0]; $hPx = $bb[3] - $bb[1] }
 $capPx = [int](248 * 2.75) + 4     # 248dp at 440dpi, +4px slack
 Check 'B1.1' 'multi-row query "a" respects the 248dp cap' (($boxB.Count -gt 0) -and ($hPx -le $capPx)) "rows=$($rowsB.Count) boxHeight=${hPx}px cap=${capPx}px order=$(Join-Prop $rowsB 'Code')"
+
+# ================================================================ S6 layer motion
+# 2026-10-14 user request: opening/closing the candidate layer must not "flash" the
+# fav list away - the layout change needs a real transition.
+#
+# Method notes (learned the hard way - do not regress):
+#   1. uiautomator dump WAITS for the UI to go idle. During a stretched animation it
+#      can return a STALE hierarchy (observed: right after typing "pl" at
+#      animator_duration_scale=10 the dump reported NO fav_sug_box, while a later
+#      dump reported one). So state assertions run at scale=1, where dumps are honest.
+#   2. Detecting MOTION needs the opposite: at scale=1 a 220ms animation is over
+#      before any dump returns. Motion is therefore sampled with screencap (which
+#      does not wait for idle) + per-frame MD5, at scale=10.
+#      A hard jump changes exactly ONE consecutive pair; an animation changes SEVERAL.
+#   3. At scale=10 the IME's own show/close animations are stretched too. Typing
+#      before the keyboard window is ready silently drops the text (empty query ->
+#      no layer -> the later BACK finishes the activity: seen as a null pidof).
+#      So: wait for the keyboard before typing, and wait it out before the 2nd BACK.
+#   4. scale=0 must land instantly - covers the "remove animations" setting and
+#      proves the duration really follows the system scale.
+
+$scaleRaw = (& $adb shell settings get global animator_duration_scale).Trim()
+$scaleBefore = $scaleRaw
+if ($scaleBefore -notmatch '^\d+(\.\d+)?$') { $scaleBefore = '1' }
+
+# ---- S6a / S6b / S6c: state assertions at scale=1 (dumps are honest there) ----
+Tap $tabs['tab_fav'][0] $tabs['tab_fav'][1]
+Start-Sleep -Milliseconds 900
+$docS6a = Parse-Xml (Dump-Only ($Tag + 's6a_fav'))
+Clear-Field $docS6a
+& $adb shell input text 'pl' | Out-Null
+Start-Sleep -Milliseconds 2500
+$docS6a2 = Parse-Xml (Dump-Only ($Tag + 's6a_open'))
+$boxS6a = @(Find-Id $docS6a2 'fav_sug_box')
+$rowsS6a = @(Get-SugRows $docS6a2)
+Check 'S6.1' 'layer opens: container present with rows (scale=1, dump-honest)' (($boxS6a.Count -gt 0) -and ($rowsS6a.Count -ge 1)) "box=$($boxS6a.Count) rows=$($rowsS6a.Count)"
+# settle: two dumps 800ms apart must agree on the box bounds.
+# Do NOT use whole-screen PNG hashes here - the status-bar clock/icons change between
+# frames and make equal states look different (that false-failed S6.3 once).
+$bbS6a1 = ''; if ($boxS6a.Count -gt 0) { $bbS6a1 = (Bnd $boxS6a[0]) -join ',' }
+Start-Sleep -Milliseconds 800
+$docS6a3 = Parse-Xml (Dump-Only ($Tag + 's6a_settle'))
+$boxS6a3 = @(Find-Id $docS6a3 'fav_sug_box')
+$bbS6a2 = ''; if ($boxS6a3.Count -gt 0) { $bbS6a2 = (Bnd $boxS6a3[0]) -join ',' }
+Check 'S6.2' 'expand settles: two dumps 800ms apart report the same box bounds' (($bbS6a1 -ne '') -and ($bbS6a1 -eq $bbS6a2)) "bounds1=$bbS6a1 bounds2=$bbS6a2"
+# close: back#1 is eaten by the soft keyboard (platform behaviour), back#2 must
+# dismiss the layer WITHOUT finishing the activity (same contract as S5).
+& $adb shell input keyevent 4 | Out-Null
+Start-Sleep -Milliseconds 1500
+& $adb shell input keyevent 4 | Out-Null
+$boxGoneCount = -1
+for ($w = 0; $w -lt 15; $w++) {
+    Start-Sleep -Milliseconds 600
+    $docS6a4 = Parse-Xml (Dump-Only ($Tag + 's6a_collapse'))
+    $boxGoneS6a = @(Find-Id $docS6a4 'fav_sug_box')
+    $boxGoneCount = $boxGoneS6a.Count
+    if ($boxGoneCount -eq 0) { break }
+}
+# pidof returns an empty string when the process is gone; never call .Trim() on it
+# without a guard (that crashed S6.5 once).
+$pidS6 = ''
+try { $pidS6 = ((& $adb shell pidof $PKG) | Out-String).Trim() } catch { $pidS6 = '' }
+Check 'S6.3' 'collapse removes the container and the app stays alive' (($boxGoneCount -eq 0) -and ($pidS6.Length -gt 0)) "box=$boxGoneCount pid='$pidS6'"
+
+# ---- S6d / S6e: MOTION assertions at scale=10 (need a stretched animation) ----
+& $adb shell settings put global animator_duration_scale 10 | Out-Null
+try {
+    # restart so the state under test is clean, then re-read tab centers
+    & $adb shell am start -n "$PKG/.MainActivity" | Out-Null
+    Start-Sleep -Milliseconds 1800
+    $docS6b0 = Parse-Xml (Dump-Only ($Tag + 's6b_boot'))
+    $tabsS6b = Get-TabCenters $docS6b0
+    Tap $tabsS6b['tab_fav'][0] $tabsS6b['tab_fav'][1]
+    Start-Sleep -Milliseconds 900
+    $docS6b = Parse-Xml (Dump-Only ($Tag + 's6b_fav'))
+    Clear-Field $docS6b
+    Start-Sleep -Milliseconds 3000          # let the stretched IME show animation finish
+    & $adb shell input text 'pl' | Out-Null
+    # 7 frames @200ms = 1.4s window against a 2.2s animation; MD5 each frame
+    $movedOpen = Capture-MotionFrames ($Tag + 's6b_f') 7 200
+    Check 'S6.4' 'opening is animated: several consecutive frames differ (not one hard jump)' ($movedOpen -ge 2) "frames=7 changedPairs=$movedOpen (a hard jump would be exactly 1)"
+    Start-Sleep -Milliseconds 3000          # let the layer finish expanding
+    & $adb shell input keyevent 4 | Out-Null
+    Start-Sleep -Milliseconds 5000          # back#1 eats + the stretched IME close animation
+    & $adb shell input keyevent 4 | Out-Null
+    $movedColl = Capture-MotionFrames ($Tag + 's6b_cf') 6 200
+    Check 'S6.5' 'closing is animated: several consecutive frames differ as well' ($movedColl -ge 2) "collapseFrames=6 changedPairs=$movedColl"
+} finally {
+    & $adb shell settings put global animator_duration_scale 1 | Out-Null
+    Note ('animator_duration_scale restored to 1 (after scale=10 motion sampling)')
+}
+
+# ---- S6f: scale=0 ("remove animations") must land instantly ----
+& $adb shell settings put global animator_duration_scale 0 | Out-Null
+try {
+    & $adb shell am start -n "$PKG/.MainActivity" | Out-Null
+    Start-Sleep -Milliseconds 1800
+    $docS6c0 = Parse-Xml (Dump-Only ($Tag + 's6c_boot'))
+    $tabsS6c = Get-TabCenters $docS6c0
+    Tap $tabsS6c['tab_fav'][0] $tabsS6c['tab_fav'][1]
+    Start-Sleep -Milliseconds 600
+    $docS6c = Parse-Xml (Dump-Only ($Tag + 's6c_fav'))
+    Clear-Field $docS6c
+    & $adb shell input text 'pl' | Out-Null
+    Start-Sleep -Milliseconds 700     # only the 250ms debounce; a real animation would not be done
+    $docS6c2 = Parse-Xml (Dump-Only ($Tag + 's6c_open'))
+    $boxS6c = @(Find-Id $docS6c2 'fav_sug_box')
+    $rowsS6c = @(Get-SugRows $docS6c2)
+    Check 'S6.6' 'scale=0 ("remove animations") lands at full height in one step' (($boxS6c.Count -gt 0) -and ($rowsS6c.Count -ge 1)) "box=$($boxS6c.Count) rows=$($rowsS6c.Count)"
+} finally {
+    & $adb shell settings put global animator_duration_scale $scaleBefore | Out-Null
+    Note ("animator_duration_scale restored to $scaleBefore (after scale=0 probe)")
+}
 
 # ================================================================ summary
 Write-Host ''

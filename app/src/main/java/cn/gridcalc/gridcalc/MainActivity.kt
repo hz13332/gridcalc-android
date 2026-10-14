@@ -2770,6 +2770,9 @@ private fun recLoad() {
         // 稿⑦返回键OnBackPressedDispatcher:仅行情详情可见时拦回自选列表,根Tab默认finish()
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
+                // 候选层是临时 UI，返回键先关它（连带软键盘），别越过它直接 finish()。
+                // 2026-10-14 用户真机实测:候选可见时 back#1 被软键盘吃掉、back#2 直接退出 App。
+                if (favPanel.onBackPressedSug()) return
                 if (body.indexOfChild(mktPage) >= 0) showTab("fav", ANIM_FROM_L)
                 else finish()
             }

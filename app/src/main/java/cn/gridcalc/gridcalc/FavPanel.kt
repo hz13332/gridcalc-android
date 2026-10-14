@@ -2150,11 +2150,134 @@ class FavPanel(
             " ÷ 距支撑 $distTxt%"
     }
 
+    // ---------- 候选层动效（2026-10-14 用户真机要求补） ----------
+    /**
+     * 候选层出现/消失时，自选列表不能「闪」下去 —— 用高度动画把布局变化摊平。
+     *
+     * 复用 App 既有动效语汇：插值器 `R.interpolator.pg_ease_out` + 220ms 时长，
+     * 与 MainActivity.playPageAnim 的 else 分支同款（那里是 private by lazy 持一份，
+     * 这里直接 loadInterpolator 同一份资源，不为一次动画去改 MainActivity 的可见性）。
+     *
+     * 动画对象选 `sugScroll` 而不是 `fav_sug_box`：box 是 wrap_content 的父容器，
+     * 子高度变化它自然跟着长；box 顶部那 1dp 主色发丝（fav_sug_accent）不受影响。
+     *
+     * ⚠ 与对照表 D11 的分界：D11 说的是「＋ ⇄ 已加入」**行内状态切换不做动画**（仍遵守），
+     *   本次只给**容器高度**加过渡，不碰行态切换本身。
+     */
+    private val sugEaseOut by lazy {
+        android.view.animation.AnimationUtils.loadInterpolator(act, R.interpolator.pg_ease_out)
+    }
+    private var sugAnim: android.animation.ValueAnimator? = null
+
+    /**
+     * 动效时长：跟随系统的「动画程序时长缩放」设置（`Settings.Global.ANIMATOR_DURATION_SCALE`）。
+     * 基准 220ms 与 MainActivity.playPageAnim 的 else 分支同款；用户把动画调慢/关掉时照办 ——
+     * scale=0（「移除动画」）→ 0L 直接落位不播，scale=0.5 → 110ms，scale=10 → 2200ms。
+     * 验证脚本正是靠临时把 scale 调到 10 来**确定性地**抓到展开中间帧（否则只能赌 dump 时序）。
+     */
+    private val sugDur: Long
+        get() = try {
+            val scale = android.provider.Settings.Global.getFloat(
+                act.contentResolver,
+                android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f)
+            if (scale <= 0f) 0L else (220f * scale).toLong()
+        } catch (_: Exception) { 220L }
+
+    /** 取消在飞的那段动画并把句柄清空 —— 必须**先清句柄再 cancel**，
+     *  否则旧动画的 onAnimationEnd 会看到 `sugAnim === 自己` 仍成立，把刚要展开的层又抽走。 */
+    private fun cancelSugAnim() {
+        val old = sugAnim
+        sugAnim = null
+        old?.cancel()
+    }
+
+    /** 落一帧高度（动画的每一帧与「零时长」路径都走这里）。 */
+    private fun applySugHeight(px: Int) {
+        val lp = sugScroll.layoutParams as? LinearLayout.LayoutParams
+            ?: LinearLayout.LayoutParams(sugScroll.width, px)
+        if (lp.height != px) {
+            lp.height = px
+            sugScroll.layoutParams = lp
+        } else {
+            sugScroll.requestLayout()
+        }
+    }
+
+    /**
+     * 把候选行容器高度从 [fromPx] 动到 [targetPx]；[fadeIn] 时内容一起淡入并带 8dp 上移位。
+     * 重复调用会取消上一段、从当前值续上 —— 打字连发的表现就是连续伸缩，不是反复重播。
+     */
+    private fun animateSugHeight(fromPx: Int, targetPx: Int, fadeIn: Boolean) {
+        cancelSugAnim()
+        val d = sugDur
+        if (d <= 0L || fromPx == targetPx) {
+            applySugHeight(targetPx)
+            if (fadeIn) { resultsBox.alpha = 1f; resultsBox.translationY = 0f }
+            return
+        }
+        if (fadeIn) {
+            resultsBox.animate().cancel()
+            resultsBox.alpha = 0f
+            resultsBox.translationY = dp(8f)
+            resultsBox.animate().alpha(1f).translationY(0f)
+                .setDuration(d).setInterpolator(sugEaseOut).start()
+        }
+        val a = android.animation.ValueAnimator.ofInt(fromPx, targetPx)
+        sugAnim = a
+        a.duration = d
+        a.interpolator = sugEaseOut
+        a.addUpdateListener { u -> applySugHeight(u.animatedValue as Int) }
+        a.start()
+    }
+
     private fun hideResults() {
         // 世代+1:关闭后旧异步回包一律丢弃(对标稿子FSGen++)
         fsGen++
         fsRunnable?.let { handler.removeCallbacks(it) }
-        sugBox.visibility = View.GONE
+        // 收起也摊平：自选列表滑回去，不是弹回去。动画**跑到尾**才置 GONE。
+        if (sugBox.visibility != View.VISIBLE) { sugBox.visibility = View.GONE; return }
+        val d = sugDur
+        if (d <= 0L) { sugBox.visibility = View.GONE; return }
+        resultsBox.animate().cancel()
+        resultsBox.animate().alpha(0f).setDuration((d * 0.7f).toLong()).start()
+        cancelSugAnim()
+        val a = android.animation.ValueAnimator.ofInt(sugScroll.height, 0)
+        sugAnim = a
+        a.duration = d
+        a.interpolator = sugEaseOut
+        a.addUpdateListener { u -> applySugHeight(u.animatedValue as Int) }
+        // 只有这一段自己跑到尾才置 GONE：中途被新一轮展示取消时句柄已换成新的，
+        // 藉 `sugAnim === 动画自身` 这个同一性判据，避免把正要展开的层又抽掉。
+        a.addListener(object : android.animation.AnimatorListenerAdapter() {
+            override fun onAnimationEnd(animation: android.animation.Animator) {
+                if (sugAnim === animation && sugBox.visibility == View.VISIBLE) {
+                    sugBox.visibility = View.GONE
+                }
+            }
+        })
+        a.start()
+    }
+
+    /**
+     * 返回键处理候选层（MainActivity 的 OnBackPressedDispatcher 先问这里）。
+     *
+     * 候选层是**临时 UI**，返回键本该先关掉它，而不是越过它。现状（2026-10-14 用户真机实测复现）：
+     * 候选可见时 back#1 被**软键盘**吃掉（只是收键盘，候选层纹丝不动），back#2 直接走
+     * MainActivity 的 finish() **退出整个 App** —— 因为这里根本没有候选层的返回键处理。
+     *
+     * 本轮改版把「加自选后自动 hideResults()」删掉（那正是「加成功没反馈」的根因），
+     * 于是「怎么收起」这条路径整体缺位，本函数就是把这条路补上。
+     *
+     * 语义（与 Esc 的区别只在不主动清文本，保留用户可继续补充的候选语境）：
+     *   收起候选层 + 收起软键盘 + 输入框去焦点
+     * 返回 true = 本次 back 已消费，上层不要再 finish()；false = 候选层不在，交回上层处理。
+     */
+    fun onBackPressedSug(): Boolean {
+        if (sugBox.visibility != View.VISIBLE) return false
+        hideResults()
+        searchInp.clearFocus()
+        act.hideKeyboard(searchInp)
+        return true
     }
 
     private fun showResults(items: List<SugItem>, q: String) {
@@ -2246,7 +2369,20 @@ class FavPanel(
         lp.height = h
         sugScroll.layoutParams = lp
         if (sugScroll.parent == null) sugBox.addView(sugScroll)
-        sugBox.visibility = View.VISIBLE
+        // 展开摊平：自选列表滑下去，不是闪下去（2026-10-14 用户真机要求补动效）。
+        // 首次出现走「高度 0→h + 内容淡入」；已在屏上（打字刷新 / 加自选后原位重绘）
+        // 只补高度差，内容保持不透明 —— 后者的高度通常不变，等价于原地刷新。
+        if (sugBox.visibility != View.VISIBLE) {
+            applySugHeight(0)
+            sugBox.visibility = View.VISIBLE
+            animateSugHeight(0, h, fadeIn = true)
+        } else {
+            sugBox.visibility = View.VISIBLE
+            resultsBox.animate().cancel()
+            resultsBox.alpha = 1f
+            resultsBox.translationY = 0f
+            animateSugHeight(sugScroll.height, h, fadeIn = false)
+        }
         // 原位重绘时把滚动位置还回去（点＋那一刻列表不该跳回顶部）。
         if (keepScroll > 0) sugScroll.post { sugScroll.scrollTo(0, keepScroll) }
     }
