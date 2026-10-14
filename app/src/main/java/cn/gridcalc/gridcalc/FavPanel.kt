@@ -984,7 +984,18 @@ class FavPanel(
             fontFeatureSettings = "tnum"                        // 对照表 §6-D9：上下行代码右缘对齐
         }
         val tg = TextView(act).apply {
-            text = it.tag
+            text = run {
+                // 2026-10-14 ⚠ 候选行是用户明确要求的“中文名”；tag 语义混杂
+                //   (CNNAME 本地腿给中文名、TOPS/TOPM 给市场标签)，因此行文案合为：
+                //   中文名 + 市场标签，CNNAME 本地腿本身 tag 已经是中文名时去重，只留一个。
+                val nm = MktSuggest.favName(it.s).trim()
+                val mk = it.tag?.trim().orEmpty()
+                when {
+                    nm.isNotEmpty() && mk.isNotEmpty() && nm != mk -> "$nm·$mk"
+                    nm.isNotEmpty() -> nm
+                    else -> mk
+                }
+            }
             textSize = TS(R.dimen.fs_note)
             setTextColor(act.attrColor("colorSub"))
             maxLines = 1
@@ -2331,10 +2342,9 @@ class FavPanel(
                 sugRow(it, st, last = i == show.lastIndex,
                     go = {
                         hideResults()
-                        // ⚠ 搜索结果这条路径**拿不到中文名**（MktSuggest 的项只有 s + tag，
-                        //   tag 是「美股/币/韩股」这类市场标签，不是品种名），故 disp 传空串，
-                        //   由行情页回退显示代码。收藏行那条才有真正的 f.t。
-                        onPick(it.s, "")
+                        // 2026-10-14 candidate list now exposes Chinese name + market tag,
+                        // pass repo-supported Chinese name to quote page; fallback to symbol.
+                        onPick(it.s, MktSuggest.favName(it.s).ifEmpty { it.s })
                     },
                     add = add@{
                         // ③ 加自选回调：**删掉**现状的 searchInp.setText("") + hideResults()。

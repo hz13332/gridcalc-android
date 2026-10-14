@@ -349,7 +349,8 @@ $tagDetail = @()
 foreach ($r in $rows) {
     $want = $null
     if ($r.Code -eq 'PL00Y') { $want = T 'PLATINUM' }
-    if ($r.Code -eq 'AAPL' -or $r.Code -eq 'PYPL') { $want = T 'US' }
+    if ($r.Code -eq 'AAPL') { $want = ([char[]]@(0x82F9,0x679C,0x00B7,0x7F8E,0x80A1)) -join '' }
+    if ($r.Code -eq 'PYPL') { $want = ([char[]]@(0x8D1D,0x5B9D,0x00B7,0x7F8E,0x80A1)) -join '' }
     if ($want) {
         $tagDetail += "$($r.Code)=$($r.Tag)"
         if ($r.Tag -ne $want) { $tagOk = $false }
