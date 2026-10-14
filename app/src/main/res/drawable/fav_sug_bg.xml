@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  候选容器底(移植对照表 §5.3)。规格逐值 = card_bg 的同规格:实色 colorCard + 1dp colorBorder + r10。
+  单开一个而不复用 card_bg, 理由与 fav_search_box 不复用 seg_frame 同款:
+  card_bg 是全 App 所有卡片的背景, 改它一次牵动全部卡片; 候选容器要独立演进(顶边发丝/描边态)时
+  只能改这里, 不许顺手改到别处。
+
+  ⚠ 顶边主色发丝**不写进本文件的 layer-list**: layer-list 里的直角条盖不住 r10 圆角, 会从两个上角
+    露出直角头(对照表 §6-D7)。改由 page_fav.xml 的 fav_sug_accent(1dp 子 View) + clipToOutline 实现。
+  ⚠ 不做 alpha 合成: 原型 card@0.90 与本实色的每通道差值 ≤2/255(对照表 §1.1 实测), 直接实色。
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="?attr/colorCard" />
+    <stroke android:width="1dp" android:color="?attr/colorBorder" />
+    <corners android:radius="10dp" />
+</shape>

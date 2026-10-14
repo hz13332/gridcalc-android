@@ -290,11 +290,34 @@
 
                 android:layout_marginEnd="@dimen/space_4"
 
-                android:background="@drawable/card_bg"
+                android:background="@drawable/fav_sug_bg"
+
+                android:clipToOutline="true"
 
                 android:orientation="vertical"
 
-                android:visibility="gone" />
+                android:visibility="gone">
+
+                <!-- 顶边 1dp 主色发丝（移植对照表 §5.1 / §5.3）：标记「这是查询结果层」，
+                     与自选区的 fav_row_line 同构（那边在底边，这边在顶边）。
+                     ⚠ 不写进 fav_sug_bg 的 layer-list：layer-list 的直角条盖不住 r10 圆角，
+                       会从两个上角露出直角头（对照表 §6-D7）⟹ 用 1dp 子 View + clipToOutline 实现。
+                     ⚠ 子 View 必须排在 sugScroll **之前**：sugScroll 是运行时 addView 进来的
+                       （FavPanel.showResults 末尾），排在后面，不会盖住这条发丝。
+                     ⚠ 本容器与下面那层 LinearLayout 仍**不加**任何 touch/clickable 属性
+                       （见上方 2026-10-11 手势修复的警告段）。 -->
+
+                <View
+
+                    android:id="@+id/fav_sug_accent"
+
+                    android:layout_width="match_parent"
+
+                    android:layout_height="1dp"
+
+                    android:background="?attr/colorPrimary" />
+
+            </LinearLayout>
 
             <!-- t111 (1) 源状态行:复用行情页同一套机制(2026-10-12 起为 MktData.legsOf(行情页当前品种);
              ⚠ 旧注释写的 MktData.lastLegs 已在同日删除 —— 它全局不分品种,曾导致「TSLA 显示 Naver」),不另发请求。

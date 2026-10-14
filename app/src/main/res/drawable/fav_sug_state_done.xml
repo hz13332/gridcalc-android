@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  候选行状态列「已加入自选」chip 的背景(移植对照表 §5.3):
+  colorCard 底 + 1dp colorPrimary 描边 + r8。**非可点**(不挂 selector, 不设 clickListener)。
+  ⚠ 底用实色 colorCard 而不是原型 chip 的 90% 层: 差值 ≤2/255(对照表 §1.1), 不做 alpha 合成。
+  ⚠ 这一行整体底已经转 colorInput(行态), chip 的 colorCard 底正是为了从行态上「浮起来」。
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="?attr/colorCard" />
+    <stroke android:width="1dp" android:color="?attr/colorPrimary" />
+    <corners android:radius="8dp" />
+</shape>

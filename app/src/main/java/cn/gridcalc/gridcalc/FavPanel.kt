@@ -255,10 +255,13 @@ class FavPanel(
     // 搜索候选内联容器(2026-10-06 起取代 PopupWindow 浮层,见 page_fav.xml fav_sug_box)。
     // 同一窗口、不抢焦点,键盘不会被收。内容超 248dp 时内部滚动(口径沿用原来浮层的)。
     private val sugBox: LinearLayout = page.findViewById(R.id.fav_sug_box)
+    // ⚠ 2026-10-14 候选列表改版(移植对照表 §5.2)：内边距**归零**。
+    //   现状 padding(9.5dp, 3.8dp, 9.5dp, 3.8dp) 与行自己的内边距会**双重内缩**，
+    //   候选行的横向基线对不上 fav_search 的文字基线（page_fav.xml 里那次「正解」教训同款：
+    //   容器 padding=0、各元素自己内缩）。内边距改由 sugRow 的行内左右各 space_3 承担。
     private val resultsBox: LinearLayout = LinearLayout(act).apply {
         orientation = LinearLayout.VERTICAL
-        val p = dp(9.5f).toInt()
-        setPadding(p, dp(3.8f).toInt(), p, dp(3.8f).toInt())
+        setPadding(0, 0, 0, 0)
     }
     // ⚠⚠ 2026-10-11 **用户报「自选搜索界面的候选列表无法滑动」**，根因就在下面这个手势拦截。
     //   候选列表本身一直是能滚的（高度 248dp 封顶，见 showResults），问题是**手势到不了它**：
@@ -404,6 +407,48 @@ class FavPanel(
     // 迁移前是「表头 XML 写死 96/66/58 + 行内 Kotlin 写死 96/66/58」两套值,注释还写着 104/76/62,
     // 已经漂过一次;现在两边都引 col_dist/col_roi/col_ratio,改一处全局生效。
     private val density: Float get() = act.resources.displayMetrics.density
+
+    // ---------- 候选列表改版(2026-10-14, 移植对照表 §5.2) ----------
+    // 只在 fav_sug_box 内部生效的常量与状态。**不新增任何色值/字号 token**:
+    // 色全走 ?attr/(act.attrColor), 字号全走 TS(R.dimen.fs_title / fs_note), 间距全走 SPACE_*。
+
+    /** 候选行三态。可加 / 本次展开期内刚加入 / 已在自选(不可点)。 */
+    private enum class SugState { ADDABLE, ADDED, IN_LIST }
+
+    /**
+     * 「本次候选展示周期内刚加入」的 code。只用于把**刚点过＋的那一行**强调成「已加入自选」。
+     * ⚠ 不持久化、不需要持久化: 收起候选再搜同一个 code 时，FavStore 已经含它，
+     *   走 IN_LIST 分支即可（对照表 §10-R5）。
+     */
+    private val addedSinceOpen = linkedSetOf<String>()
+
+    // 间距六档逐值取 dimen，不在 Kotlin 里抄数字（对照表 §3：禁止档外值 9.5 / 12.4 / 4.8 / 16）。
+    private fun dimenPx(id: Int): Int = act.resources.getDimensionPixelSize(id)
+
+    // 行高 45.8dp：与 fav_search 的框高对齐（对照表 §2/§5.2）。
+    // ⚠ 这个值 page_fav.xml 里是写死的 45.8dp（fav_search 的 layout_height），保持同风格，
+    //   不为了它新开一个 dimen（对照表 §5.4「唯一可选」项，默认不做）。
+    private val sugRowMinH: Int get() = dp(45.8f).toInt()
+
+    // 定列宽：代码列 7em@fs_title、第二列 6em@fs_note（对照表 §2 折算，§6-D8）。
+    // ⚠ 字号放大(无障碍 200%)时列宽不跟着放大，靠 ellipsize=END 保证不破版。
+    private val sugSymMaxW: Int get() = dp(95.8f).toInt()
+    private val sugTagMaxW: Int get() = dp(68.4f).toInt()
+
+    // chip / ＋按钮的高与最小宽（对照表 §3：高度借用 space_8 这一档）。
+    private val sugChipMin: Int get() = dimenPx(R.dimen.space_8)
+
+    // 空态块上下内边距（对照表 §5.2 骨架：左右 space_4、上 space_4、下 space_3）。
+    private val sugEmptyPadH: Int get() = dimenPx(R.dimen.space_4)
+    private val sugEmptyPadTop: Int get() = dimenPx(R.dimen.space_4)
+    private val sugEmptyPadBottom: Int get() = dimenPx(R.dimen.space_3)
+
+    /**
+     * 字重落地（对照表 §2 字重落地 + §10-R4）。
+     * `Typeface.create(base, 600, false)` 是 **API 28+**，本项目 `minSdk = 26`（app/build.gradle.kts:43）
+     * ⟹ 按对照表 §10-R4 的处置：统一退化为 `Typeface.BOLD`(700)，并已回写对照表 §2。
+     */
+    private val tfSemi: Typeface get() = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
 
     // 稿.favrow .fb-* 徽标配色(固定hex,不随主题)
     /**
@@ -875,6 +920,153 @@ class FavPanel(
             row.addView(ad)
         }
         pick.setOnClickListener { (go ?: { onPick(s, disp) }).invoke() }
+        return row
+    }
+
+    // ---------- 候选行(2026-10-14 新增, 移植对照表 §5.2「sugRow 骨架」) ----------
+    // 与上面 rowView 的关系：候选行**不再**走 rowView，改走本函数（定列三段 + 三态状态列）。
+    // ⚠ 上面 rowView 一字未动 —— 它的调用点仍在 showResults 原处（对照表 §5.2 要求：
+    //   「自选行走原 rowView（不动，避免误伤自选列表区）」）。自选列表区自己的行装配在 repaint() 里，
+    //   不经过 rowView；本次施工按对照表只做候选这条路径，不动 rowView 的函数体。
+    //
+    // 结构：行根(可点=去行情页) [ 左半区 pick(weight=1, 可点=去行情页) 代码列 + 第二列 ] [ 状态列 ]
+    // 状态列：ADDABLE=「＋」Button / ADDED=「已加入自选」chip / IN_LIST=「已在自选」chip（后两者非可点）
+    //
+    // ⚠ 代码列字体：**保留 monospace**（用户 2026-10-13 裁定，对照表 §0 与 §10-R2）——
+    //   与自选行一致、避免代码里 0/O 混淆（PL00Y 被读成 PLOOY）。
+    //   原型里的 Inter+tnum 方案**不进真机**；因此代码列**不**套 tfSemi(600/BOLD)，
+    //   等宽字体族没有 600 档，硬套只会拿到合成假粗体。
+    //   对照表 §5.2 骨架里那句 setTypeface(typeface, 600) 与用户裁定冲突，按裁定执行（见 task output 偏差项）。
+    private fun sugRow(
+        it: SugItem,
+        st: SugState,
+        last: Boolean,
+        go: () -> Unit,
+        add: () -> Unit
+    ): View {
+        val row = LinearLayout(act).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT)
+            minimumHeight = sugRowMinH
+            // 行内左右各 space_3；垂直 0 —— 文字/控件靠 gravity=CENTER_VERTICAL 居中。
+            val p = dimenPx(R.dimen.space_3)
+            setPadding(p, 0, p, 0)
+            // 行间 1dp 发丝；**末行不画线**（收口交给容器自己的 1dp 描边，见 fav_sug_row_line.xml 注释）。
+            if (!last) setBackgroundResource(R.drawable.fav_sug_row_line)
+            isClickable = true
+            isFocusable = true
+            // 行态：整行换层。⚠ 走 setBackgroundColor 而不是再开一个带线的 drawable ——
+            //   这是对照表 §5.2 骨架的写法；副作用（该行底边发丝被实色底覆盖）在「已加入」那一行上，
+            //   即整行换层时本来就不该再有一条分隔线，视觉无落差。
+            if (st == SugState.ADDED) setBackgroundColor(act.attrColor("colorInput"))
+        }
+        val pick = LinearLayout(act).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            isClickable = true
+            isFocusable = true
+        }
+        val sym = TextView(act).apply {
+            text = it.s
+            textSize = TS(R.dimen.fs_title)
+            setTextColor(act.attrColor("colorInk"))
+            typeface = Typeface.MONOSPACE                       // 用户裁定：保留等宽
+            letterSpacing = 0.03f                               // 对照表 §6-D10：Android 的 letterSpacing 单位也是 em
+            maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.END
+            maxWidth = sugSymMaxW
+            paint.isSubpixelText = true
+            fontFeatureSettings = "tnum"                        // 对照表 §6-D9：上下行代码右缘对齐
+        }
+        val tg = TextView(act).apply {
+            text = it.tag
+            textSize = TS(R.dimen.fs_note)
+            setTextColor(act.attrColor("colorSub"))
+            maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.END
+            maxWidth = sugTagMaxW
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT).apply { leftMargin = dimenPx(R.dimen.space_2) }
+        }
+        pick.addView(sym)
+        pick.addView(tg)
+        row.addView(pick)
+
+        val tail: View = when (st) {
+            SugState.ADDABLE -> TextView(act).apply {
+                /* ⚠⚠ 2026-10-14 t5 修复（t2 复验 F2）：**由 Button 改成 TextView**。
+                   原实现用 Button，显式 minWidth/minHeight=30.5dp + insets=0 **都不管用** ——
+                   设备实测仍是 242×132px（88×48dp）：Button 自己的测量把 48dp 最小高度钉死了
+                   （Row 的 45.8dp 被它顶到 132px，比「已加入自选」chip 的 84px 高出一截）。
+                   改成 TextView 是**合同给的备选方案**，也是这里唯一与 chip 同构的做法：
+                   三态尾巴因此都是「TextView + 自带背景 + minWidth/minHeight=30.5dp + space_3 内边距」，
+                   同高 84px，可加行回落到 45.8dp(=126px)。
+                   ⚠ 仍是可点控件：clickable/focusable 显式打开（TextView 默认都不开），
+                     contentDescription 与无障碍语义**逐字保留**（对照表 §4「保留不动」）。 */
+                text = "＋"
+                textSize = TS(R.dimen.fs_title)
+                setTypeface(tfSemi)
+                setTextColor(act.attrColor("colorPrimary"))
+                setBackgroundResource(R.drawable.fav_sug_add)
+                contentDescription = "添加到自选：" + it.s
+                val p = dimenPx(R.dimen.space_3)
+                setPadding(p, 0, p, 0)
+                gravity = Gravity.CENTER
+                minWidth = sugChipMin
+                minHeight = sugChipMin
+                isClickable = true
+                isFocusable = true
+                val lp = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT)
+                lp.leftMargin = dimenPx(R.dimen.space_3)
+                layoutParams = lp
+            }
+            SugState.ADDED -> TextView(act).apply {
+                text = "已加入自选"
+                textSize = TS(R.dimen.fs_note)
+                setTypeface(tfSemi)
+                setTextColor(act.attrColor("colorPrimary"))
+                setBackgroundResource(R.drawable.fav_sug_state_done)
+                val p = dimenPx(R.dimen.space_3)
+                setPadding(p, 0, p, 0)
+                gravity = Gravity.CENTER
+                minWidth = sugChipMin
+                minHeight = sugChipMin
+            }
+            SugState.IN_LIST -> TextView(act).apply {
+                text = "已在自选"
+                textSize = TS(R.dimen.fs_note)
+                setTextColor(act.attrColor("colorFaint"))
+                setBackgroundResource(R.drawable.fav_sug_state_exists)
+                val p = dimenPx(R.dimen.space_3)
+                setPadding(p, 0, p, 0)
+                gravity = Gravity.CENTER
+                minWidth = sugChipMin
+                minHeight = sugChipMin
+            }
+        }
+        if (tail.layoutParams == null) {
+            // ADDED / IN_LIST 两个 chip 没自带 LayoutParams，这里补上左距（与＋同一个 space_3）。
+            tail.layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT).apply { leftMargin = dimenPx(R.dimen.space_3) }
+        }
+        if (st == SugState.ADDABLE) {
+            // ＋自己先消费点击（「stopPropagation 等价物」：子 View 先消费，行根的 go 不会再跑）。
+            tail.setOnClickListener { add() }
+        }
+        // ⚠ 两个 chip 是**纯反馈**：不设 clickListener、不挂 selector（对照表 §4 状态列口径）。
+        row.addView(tail)
+
+        pick.setOnClickListener { go() }
+        row.setOnClickListener { go() }   // 点行右半（状态列之外）也去行情页
         return row
     }
 
@@ -1966,27 +2158,75 @@ class FavPanel(
     }
 
     private fun showResults(items: List<SugItem>, q: String) {
+        // ⚠ 2026-10-14 候选列表改版（移植对照表 §5.2）：本函数改三处 —— ① 无匹配空态、② 行按状态建、③ 加自选回调。
+        //   `addedSinceOpen` 里那几行要在**重绘后仍然留在列表里**（这正是「点＋后原地转已加入」的前提），
+        //   所以重绘前先把滚动位置记下来（重建 View 会丢掉 scrollY）。
+        val keepScroll = sugScroll.scrollY
         resultsBox.removeAllViews()
         val mine = FavStore.get(act).map { it.s }.toSet()
-        val show = MktSuggest.rankFav(items, q, mine)
+        // ⚠⚠ 2026-10-14 t5 修复（t2 复验 F1）：**排序必须走 rankFav，不能自己 items.filter**。
+        //   上一版写成 `items.filter { it.s in addedSinceOpen || show.any { ... } }` —— 那是以
+        //   **数据源原序**建行，把 rankFav 的「精确 > 前缀 > 包含」排序整个丢了：搜 `pl` 时
+        //   PL00Y（前缀命中，rank 1）被排到 AAPL/PYPL（包含命中，rank 2）之后，违反对照表 §7
+        //   ground truth。t2 实测 S1.2 就是被这个打掉的。
+        //   正解：把「本次刚加入的 code」从已收藏集合里**扣掉**再交给 rankFav ——
+        //   rankFav 末尾的 `it.s !in mine` 于是不再剔掉刚加入的那一行，排序与
+        //   「刚加入的行不消失」（S2.1）**同时**成立，且不需要第二套并回逻辑。
+        //   ⚠ mine 本身不扣：行态判定仍要用**真实**的已收藏集合（`it.s in mine` → IN_LIST）。
+        val mineForRank = mine - addedSinceOpen
+        val show = MktSuggest.rankFav(items, q, mineForRank)
+        // ⚠ 已在自选的行仍进不了 show（rankFav 的 `!in mine` 是既有口径，MktSuggest 在范围外）
+        //   ⟹ IN_LIST 态在本次改版的真机路径上**不可达**（已裁定，见 task output 偏差项）。
+        // ① 无匹配：现状是一行 note("无匹配")，改成两行诚实空态（不放「直接添加」死行）。
         if (show.isEmpty()) {
-            resultsBox.addView(note("无匹配"))
+            resultsBox.addView(LinearLayout(act).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(sugEmptyPadH, sugEmptyPadTop, sugEmptyPadH, sugEmptyPadBottom)
+                addView(TextView(act).apply {
+                    text = "无匹配"
+                    textSize = TS(R.dimen.fs_title)
+                    setTypeface(tfSemi)
+                    setTextColor(act.attrColor("colorSub"))
+                })
+                addView(TextView(act).apply {
+                    text = "检查代码或中文名，或试试 PL00Y / AAPL / PYPL"
+                    textSize = TS(R.dimen.fs_note)
+                    setTextColor(act.attrColor("colorFaint"))
+                    setPadding(0, dimenPx(R.dimen.space_1), 0, 0)
+                })
+            })
         }
-        for (it in show) {
-            val row = rowView(it.s, it.tag, {
-                if (FavStore.isFav(act, it.s)) return@rowView
-                FavStore.add(act, it.s, MktData.symType(it.s))
-                searchInp.setText("")
-                hideResults()
-                repaint()
-            }, {
-                hideResults()
-                // ⚠ 搜索结果这条路径**拿不到中文名**（MktSuggest 的项只有 s + tag，
-                //   tag 是「美股/币/韩股」这类市场标签，不是品种名），故 disp 传空串，
-                //   由行情页回退显示代码。收藏行那条(:1273)才有真正的 f.t。
-                onPick(it.s, "")
-            }, "")
-            resultsBox.addView(row)
+        // ② 行按状态建：候选行走新行型 sugRow（三态），自选行仍走原 rowView 调用点。
+        //   ⚠ 遍历的必须是 rankFav 的**结果**（已排序），不是 items 原序（t5 修复 F1）。
+        show.forEachIndexed { i, it ->
+            val st = when {
+                it.s in addedSinceOpen -> SugState.ADDED
+                it.s in mine -> SugState.IN_LIST
+                else -> SugState.ADDABLE
+            }
+            resultsBox.addView(
+                sugRow(it, st, last = i == show.lastIndex,
+                    go = {
+                        hideResults()
+                        // ⚠ 搜索结果这条路径**拿不到中文名**（MktSuggest 的项只有 s + tag，
+                        //   tag 是「美股/币/韩股」这类市场标签，不是品种名），故 disp 传空串，
+                        //   由行情页回退显示代码。收藏行那条才有真正的 f.t。
+                        onPick(it.s, "")
+                    },
+                    add = add@{
+                        // ③ 加自选回调：**删掉**现状的 searchInp.setText("") + hideResults()。
+                        //   那两句正是「加成功没有任何可见反馈」的根因（spec §2 痛点 2）。
+                        //   ⚠ 连点防护靠状态形变（下一次重绘该行已不是 Button），不是计数器。
+                        //   下面的守卫沿用现状那句 `if (FavStore.isFav(...)) return` 的语义：
+                        //   重复写入一律挡住（FavStore.add 自己也是幂等的）。
+                        if (st != SugState.ADDABLE) return@add
+                        if (FavStore.isFav(act, it.s)) return@add
+                        FavStore.add(act, it.s, MktData.symType(it.s))
+                        addedSinceOpen.add(it.s)
+                        repaint()                 // 自选列表出现新行
+                        showResults(items, q)     // 原位重绘：该行转「已加入」，输入与列表都保持
+                    })
+            )
         }
         // 内联展示:内容已在上面换好,直接量高度(最高 248dp,沿用原来浮层的口径),
         // 超了内部滚动。⚠ 2026-10-06 起不再建 PopupWindow ——
@@ -2007,6 +2247,8 @@ class FavPanel(
         sugScroll.layoutParams = lp
         if (sugScroll.parent == null) sugBox.addView(sugScroll)
         sugBox.visibility = View.VISIBLE
+        // 原位重绘时把滚动位置还回去（点＋那一刻列表不该跳回顶部）。
+        if (keepScroll > 0) sugScroll.post { sugScroll.scrollTo(0, keepScroll) }
     }
 
     private fun scheduleSearch() {
