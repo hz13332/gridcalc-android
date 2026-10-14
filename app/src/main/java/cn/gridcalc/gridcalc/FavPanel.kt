@@ -631,9 +631,14 @@ class FavPanel(
      *   （「实测出现过 实时4+无源1+计算中6 = 11 > 9 行」），所以 pending 必须先判、
      *   不能同时被算进 noneN。
      */
-    private fun paintCountLine(live: Int, noneN: Int, wait: Int) {
+    private fun paintCountLine(live: Int, noneN: Int, wait: Int, total: Int) {
         val tv = favCountV ?: return
-        tv.text = "距支撑 实时 $live / 无源 $noneN" + (if (wait > 0) " · 待算 $wait" else "")
+        // ⚠ 2026-10-13 用户要求数量行旁显示自选总品种数。第一版用三态求和当总数 —— **错**：
+        //   「旧 N 前」的 stale 行既不计实时、也不计无源/待算（三态判据里没有它的位置），
+        //   实测 9 行显示「共 8」。改为调用方传**真实行数 rows.size**，不再从三态推。
+        tv.text = "距支撑 实时 $live / 无源 $noneN" +
+            (if (wait > 0) " · 待算 $wait" else "") +
+            (if (total > 0) " · 共 $total 个品种" else "")
         // 空列表时也照常显示 0/0：稿把这一行**常驻**渲染（v2.html:1642 不在 st!=='ok' 条件里）。
         tv.visibility = View.VISIBLE
     }
@@ -1337,12 +1342,16 @@ class FavPanel(
             strip, stripTxt, stripCancel, stripDel)
     }
 
-    /** 递归剥掉一棵子树里所有 View 的点击与焦点接管(不含根自己)。 */
+    /** 递归剥掉一棵子树里所有 View 的点击/长按/焦点接管(不含根自己)。
+     *  ⚠ 2026-10-13 补 isLongClickable=false：tooltipText 会自动把格子置为长可点，
+     *    长可点即使 clickable=false 也吞整次触摸（判长按）⟹ 收益率/收益比格子点不动。
+     *    根自己的长按删除不受影响（stripClickable 从来不动根）。代价：tooltip 悬浮说明失效。 */
     private fun stripClickable(root: View) {
         if (root is ViewGroup) {
             for (i in 0 until root.childCount) {
                 val c = root.getChildAt(i)
                 c.isClickable = false
+                c.isLongClickable = false
                 c.isFocusable = false
                 c.isFocusableInTouchMode = false
                 stripClickable(c)
@@ -1363,14 +1372,24 @@ class FavPanel(
         sh.fname.text = if (cnName.isNotEmpty() && cnName != r.it.s) cnName else r.it.s
         // ⚠ 2026-10-07 同上：标题恒墨，不再按stale置灰（时效只看flag行）。
         sh.fname.setTextColor(act.attrColor("colorInk"))
-        sh.fname.textSize = TS(R.dimen.fs_title)
+        // ⚠ 2026-10-13 用户裁定「字太多就缩小字号」——名字过长**缩字号**，不截断、不缩名。
+        //   分档同「距支撑」列先例（确定性算术；autosize 在本真机闪退、已永久弃用）：
+        //   ≤5 字照常；6~7 字 ×0.85；≥8 字 ×0.75（太空探索技术公司 8 字完整显示）。
+        sh.fname.textSize = TS(R.dimen.fs_title).let { base ->
+            when ((sh.fname.text?.length ?: 0)) {
+                in 0..5 -> base
+                6, 7 -> base * 0.85f
+                else -> base * 0.60f   // 0.75 实测仍截（太空探索技术公司 8 字）；0.6×=9.6sp 装得下
+            }
+        }
         sh.fname.setTypeface(sh.fname.typeface, Typeface.BOLD)
-        // 第二行:徽标 + 代码(标题已是代码时不重复显示)。
+        // 第二行:徽标 + 代码。⚠ 2026-10-13 用户裁定「必须有，不允许省」——
+        //   原「标题已是代码就不重复显示」规则**废除**（BTC/ARM/IBM 这类标题即代码的行
+        //   也恒显徽标+代码；代价是代码在标题与徽标行各出现一次，用户明确接受）。
         val cn = MktSuggest.favName(r.it.s)
         sh.bd.text = favSubLine(r.it.t, cn)
-        val titleIsCode = (cn.isEmpty() || cn == r.it.s)
-        sh.codeTv.visibility = if (titleIsCode) View.GONE else View.VISIBLE
-        if (!titleIsCode) sh.codeTv.text = FavStore.displaySym(r.it.s)
+        sh.codeTv.visibility = View.VISIBLE
+        sh.codeTv.text = FavStore.displaySym(r.it.s)
         // 距支撑:paintDist 写值(含 flag),再按长度分档降字号防 '%' 被列宽裁掉。
         // ⚠ 2026-10-05 真机裁字教训:autosize 在这台真机上闪退,已永久弃用;
         //   改用确定性写法,纯算术不可能崩。
@@ -1419,12 +1438,29 @@ class FavPanel(
                 roi == null -> act.attrColor("colorFaint")
                 else -> act.attrColor("colorTeal")
             })
-        gainTip(r.m)?.let { sh.gc.tooltipText = it } // 悬浮:收益率·净收益USD·保存时间
+        // ⚠⚠ 2026-10-13 **悬浮说明与整行点击二选一，点击赢**（用户裁定「点一行任何地方都该跳」）。
+        //   收益率格子的 tooltip 是吞点击的触发源：三版剥离（空剥/剥品种列/剥整块 content）实测
+        //   全部无效（子代理两轮回归：有数据两列均 ✗、对照点名 ✓、坐标复核两次）——tooltip 的
+        //   接管不在 clickable/longClickable 这两个可剥的旗子上。空态（无 tooltip）能点是铁证。
+        //   ⟹ 不再设 tooltip（信息在计算页同源可见）；同时显式清 rc 的（paintRatioCell 若设过）。
+        //   保留下方 stripClickable 作皮带（不再承担本修复的成败）。
+        sh.gc.tooltipText = null
         // ⚠ 2026-10-07 与距支撑同幅缩小（统一小一号，避免% / ×被裁）。
         sh.gc.textSize = TS(R.dimen.fs_title) * 0.88f
         sh.rc.textSize = TS(R.dimen.fs_title) * 0.88f
         // 收益比。
         paintRatioCell(sh.rc, r.d, r.m)
+        sh.rc.tooltipText = null // 2026-10-13 同上：清 tooltip，别让它吞整行点击
+        // ⚠ 2026-10-13 用户实报「点字进不去，只有点空白处才能进行情页」。
+        //   根因：收益比/收益率格子设了 tooltipText（见上），Android 会自动把该 View 置为
+        //   **longClickable** ⟹ 它接管整次触摸去判长按 ⟹ 行根的点击监听收不到。建行时那次
+        //   stripClickable 是**一次性**的、且发生在设 tooltip **之前**，管不住后来打开的接管。
+        //   修法：**绑定时**再剥一次内容区所有后代（确认条两个按钮在 strip 里、不在 content 下，不受影响）。
+        //   定位：⚠⚠ 2026-10-13 二次翻车复盘——`sh.fname.parent` 只是「品种」列的容器，
+        //   距支撑/收益率/收益比在 content 里的**其它列容器**，不是它的子孙 ⟹ 从没被剥到：
+        //   空态无 tooltip 不长可点（能点），有数据 gainTip 设 tooltip → 长可点复活 → 吞 tap
+        //   （子代理实测两列均 ✗、对照点名 ✓）。改为 root 的第一个子孩子 == content 整块剥。
+        (sh.root.getChildAt(0) as? android.view.View)?.let { stripClickable(it) }
         // C 版行内确认条:展开时显示「删除 {代码} {中文名}? [取消] [删除]」。
         sh.strip.visibility = if (showConfirm) View.VISIBLE else View.GONE
         if (showConfirm) {
@@ -1460,11 +1496,17 @@ class FavPanel(
             t131PaintState(loading = false)
             // t8 照稿 A1③：空态下这一行**照常显示**（稿 v2.html:1642 是常驻渲染，不在 st!=='ok' 里），
             // 读作「距支撑 实时 0 / 无源 0」—— 用户问「为什么都没更新」，0/0 就是答案。
-            paintCountLine(live = 0, noneN = 0, wait = 0)
+            paintCountLine(live = 0, noneN = 0, wait = 0, total = 0)
             return
         }
-        // 距离窗口读distWin:已提交冻结/未提交跟随周期控件+根数(稿favKey=distWin)
-        val (tf, n) = mkt.distWin()
+        // ⚠ 2026-10-12 用户裁定 B 改：这里原有 `val (tf, n) = mkt.distWin()` —— **一个全局窗口**
+        //   在循环外取一次、遍历全部行。它就是两件事的病灶（详见 MktPanel 文件头 2026-10-12 墓碑）：
+        //     ① 改任一品种的窗口 → 全局 tf/n 变 → **全部**行的 FavDist key(含 n) 变 →
+        //        缓存/复用层全 miss → 全量重取；
+        //     ② 每行显示的窗口与该品种自己存的 gridcalc_win_v1[s] 不一致（设备实测 TSLA=M|31、
+        //        IBM=M|32 各自的记录，屏上却全按全局那一个算）。
+        //   ⟹ 改成**逐行**取（见下方 rows 循环内的 mkt.distWin(f.s)），一个行一个口径，互不影响。
+        //     本函数只做**展示**（FavDist.shown = 缓存/落盘读取），不发任何请求。
 
         // ⚠ 2026-10-05 **补中文名**。自选行的排版规则是「中文名 · 徽章 · 代码」，
         //   本地表（MktSuggest）里没有 A 股 ⟹ `favName` 返回空，标题回落成原始代码
@@ -1483,6 +1525,9 @@ class FavPanel(
         //   「屏上显示什么」与「判它缺不缺值」不会再分叉（缺陷 A 的根因就是这两处分叉）。
         //   ⚠ 2026-10-10：onShow 那条判据（连同 hasValue 的唯一调用点）已随"切页不刷"删掉，
         //     这里继续走 shown() 的理由不变——它就是"屏上显示什么"的定义，与取数策略无关。
+            // ⚠ 2026-10-12 裁定 B 改：**这一行用它自己的窗口** —— gridcalc_win_v1[s]（唯一真源），
+            //   无记录回落 ("M" to 20)。原来这里是循环外一个全局 mkt.distWin()，全部行共用。
+            val (tf, n) = mkt.distWin(f.s)
             val d = FavDist.shown(f.s, tf, n)
             val rec = act.latestRecOf(f.s)
             val roe0 = rec?.optDouble("roe", Double.NaN) ?: Double.NaN
@@ -1531,13 +1576,13 @@ class FavPanel(
         val noneCnt = rows.count {
             !pendingSyms.contains(it.it.s) && (it.d == null || !it.d.ok)
         }
-        paintCountLine(live = liveCnt, noneN = noneCnt, wait = pendCnt)
+        paintCountLine(live = liveCnt, noneN = noneCnt, wait = pendCnt, total = rows.size)
         // RecyclerView 化:整单换数据,不再逐行 addView(也不再有 capsules 反查表)。
         // 稿 L384 行自带 borderBottom 的规则不变 —— 它在行壳里,见 createRowShell。
         submitRows(sorted.map { FavRow(it.it, it.d, it.m, it.ratio) })
     }
 
-    // 距离刷新(照稿 refreshFavDist):读 distWin 窗;到一个补一个(行内逐条补数)。
+    // 距离刷新(照稿 refreshFavDist):**逐品种**读它自己的 distWin(s) 窗;到一个补一个(行内逐条补数)。
     // **t99 ②:删掉 5 秒重试环**。稿(可搜索:「重试环」)写得很直白:
     //   「刷新时机:只在"App 被点开/回到前台"时刷一次,**不做任何定时轮询**」
     // 稿里 FAVRetry 只在 :1641 被 clearTimeout 清除、从不排下一次;App 原先在
@@ -1549,14 +1594,19 @@ class FavPanel(
     //   onShow()       切回自选页 → 见 onShow：**只在进程内首次进入**真抓一轮(net=true，全量)；
     //                  之后切页**不发任何取数请求**（2026-10-10 用户裁定：切页不刷，
     //                  原"按缺值补刷 only=缺失集合"那条路径已删）
-    //   cycleSort / MainActivity.onDistCommitted → 全量(用户显式动作，那几处本来就该全刷)
+    //   cycleSort       → 全量(用户显式动作「点列头」,本来就该整表重刷)
+    //   MainActivity.onDistCommitted → **only = 刚确认的那一个品种**(2026-10-12 裁定 B 改;
+    //                  改前是无参全量,配合全局窗口 = 改一个就全量重取,见 MktPanel 文件头墓碑)
     //   add 成功后     只 repaint（新行没有值就顶着空/留底，等用户下一次显式动作）
     //   MainActivity  回前台**不**调 onShow（onResume 只 ensure 汇率）⟹ 回前台不刷，无定时轮询
     // bg=后台补抓轮(本会话已成功的 key 直接复用现值、不再发请求,幂等)
     // net=真抓轮(冷启动首次进自选的那一轮,**绕过全部复用层真的发网络请求**,见 FavDist.forceFetch)
-    // ⚠ 2026-10-10 起 onShow 不再传 only；only 参数仍被保留（语义未变），供日后显式入口按需使用。
+    // ⚠ 2026-10-10 起 onShow 不再传 only；**2026-10-12 裁定 B 改起，only 有了在用的调用点**
+    //   —— onDistCommitted 传 `setOf(刚确认的品种)`，只刷那一行（见上方「保留的刷新入口」）。
     fun refreshFavDist(bg: Boolean = false, only: Set<String>? = null, net: Boolean = false) {
-        val (tf, n) = mkt.distWin()
+        // ⚠ 2026-10-12 裁定 B 改：删掉循环外那句 `val (tf, n) = mkt.distWin()`（全局窗口）。
+        //   现在窗口**逐品种**在 for 循环里取（见下方 `mkt.distWin(s)`）—— 每个品种只受它
+        //   自己的 gridcalc_win_v1[s] 影响，别人确认窗口动不到它的 key。
         // ⚠⚠⚠ 2026-10-08 用户真机 **28 个品种**（截图 `实时 28 / 无源 1`）——**请求量爆炸的真正源头**。
         //   ⚠ 2026-10-10 补记：下面【修法】里那句「onShow → 传缺失集合」**已作废** ——
         //     用户当天裁定切页不刷，onShow 那条调用整个删了（见 onShow ③ 的墓碑注释）。
@@ -1575,10 +1625,11 @@ class FavPanel(
         //   一句话：判据对了，作用域错了。
         //
         // 【修法】加 only 参数：只补真正缺的那些行。
-        //   · onShow         → 传缺失集合（通常只有 1~2 行 ⟹ 1~2 条请求，而不是 40~50 条）
-        //   · 排序变化/窗口提交/加自选后 → 仍传 null（保持原有全量语义，那几处本来就该全刷）
-        //     ⚠ 2026-10-10：onShow 不再调用本函数，only 参数已无在用的调用点，但**保留**——
-        //       它是这个函数唯一"只刷某几行"的能力，删掉就等于把选择权也删了。
+        //   · onShow → 传缺失集合（2026-10-10 裁定切页不刷，该路径已删）
+        //   · 点列头 cycleSort → 仍传 null（保持原有**全量**语义，用户显式动作、本就该整表刷）
+        //   · 确认窗口 onDistCommitted → 传 `setOf(sym)`（2026-10-12 裁定 B 改：**只刷那一个品种**）
+        //     ⚠ 2026-10-10 曾记「only 已无在用的调用点」——**自 2026-10-12 起不再是**，
+        //       它现在是「改一个只重算一行」的唯一入口，删掉就等于把选择权也删了。
         //   ⚠ 错峰索引用**过滤后**的 syms（下方 staggerIdx），这样只补 1 行时不会白等
         //     "它在全集里排第 7" 的那 4 秒。
         val all = FavStore.get(act).map { it.s }.distinct()
@@ -1615,6 +1666,12 @@ class FavPanel(
             //   换来的是**单位时间请求量减半**，直接降低撞限流的概率。
             //   ⚠ 这不是把 300ms 调大这么简单 —— 十几条以内**必须保持原 300ms**，
             //     否则就是拿常见场景的体验去补极端场景的坑。
+            // ⚠ 2026-10-12 裁定 B 改：**每个品种进循环时定死它自己的窗口**（gridcalc_win_v1[s]，
+            //   无记录回落 ("M" to 20)）。下面 key / cached / lastOk / forceFetch / fullSup /
+            //   lightPx / display **七处同用这一份 (tf,n)** ⟹ 换窗口只换这一个品种的 key。
+            //   改前这份 (tf,n) 是循环外的全局值：一变，**所有**行的 key 同时变 → 新鲜缓存
+            //   全 miss → 全量重取（用户报的「改了 TSLA 的窗口，退回自选又把全部品种取了一遍」）。
+            val (tf, n) = mkt.distWin(s)
             val staggerMs = if (syms.size > 20) 600L else 300L
             val staggerIdx = syms.indexOf(s).coerceAtLeast(0)
             pendingSyms.add(s)
@@ -1685,7 +1742,8 @@ class FavPanel(
     //   此后切回本页**一个取数请求都不发**（下面 ③ 的位置原本是"按缺值补刷"那条路径，已删）。
     //   这是对 2026-10-05「没有获取到的，可以在限流措施内继续刷，但是只刷新他」的**取代**，
     //   不是回退到更早的全量刷：两条都不再要了。
-    //   ① 与 ② 保持原样；刷新入口只剩 cycleSort / MainActivity.onDistCommitted 两处用户显式动作。
+    //   ① 与 ② 保持原样；刷新入口只剩 cycleSort（全量）/ MainActivity.onDistCommitted
+    //     （only = 刚确认的品种，2026-10-12 裁定 B 改）两处用户显式动作。
     fun onShow() {
         hidden = false
         // ① **留底先上屏**：repaint 走 FavDist.shown()（cached 的 ok/soft → 落盘 lastOk 旧值），
@@ -1695,6 +1753,8 @@ class FavPanel(
         //   `FavDist.hasValue(s, tf, n)` 提供窗口参数；③ 删掉后 tf/n 再无读者
         //   （编译器报 "Variable 'tf' is never used"），一并删。distWin() 是纯 getter
         //   （读窗设置，不取数、无副作用），不再调用它**不改变任何行为**。
+        //   ⚠ 2026-10-12 裁定 B 改补记：那个**无参** distWin() 连同全局 DistWin 一起删了
+        //     （现在是 `distWin(品种)`，见 MktPanel 文件头墓碑）——本处本来就没读者，不受影响。
         val syms = FavStore.get(act).map { it.s }.distinct()
         if (syms.isEmpty()) return
 
@@ -1735,8 +1795,9 @@ class FavPanel(
         //   `val now = System.currentTimeMillis()` 与 `val (tf, n) = mkt.distWin()`
         //   也只剩这条路径在用，一并删（见上面两处 ⚠）。
         //
-        // 【还活着的刷新入口】cycleSort（用户点列头）、MainActivity.onDistCommitted
-        //   （用户提交距离窗口）→ 两处都调 refreshFavDist()，全量，**未动**；
+        // 【还活着的刷新入口】cycleSort（用户点列头）→ 全量，**未动**；
+        //   MainActivity.onDistCommitted（用户提交距离窗口）→ **only = 刚确认的那一个品种**
+        //   （2026-10-12 裁定 B 改；改前是无参全量，那时全局窗口一变就等于全部重取）；
         //   加自选后走 mktPanel.onFavChanged → 只 repaint（本来就不取数），**未动**。
         //   ⚠ 别再往 onShow 里加取数：那正是 2026-10-10 裁定要拿掉的东西。
     }
@@ -1807,6 +1868,9 @@ class FavPanel(
         FavStore.setSort(act, nx)
         paintSortHeads()
         repaint()
+        // ⚠ 2026-10-12 裁定 B 改**不动这里**：点列头仍是**全量** refreshFavDist()（用户显式
+        //   动作、整表重排，本来就该全刷）。变的只是每个品种各用各的窗口（循环内 distWin(s)）
+        //   —— 排序键（dist/gain/ratio）与两态状态机、无值沉底规则逐字未改。
         refreshFavDist()
     }
 

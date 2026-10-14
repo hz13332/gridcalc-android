@@ -20,18 +20,58 @@ import android.widget.PopupWindow
 import android.widget.TextView
 import java.util.Locale
 
-// ---------- 自选距离窗口冻结(照稿 var DISTTF=null, DISTN=null) ----------
-// 未提交时 distWin() 跟随行情页周期控件+根数;点▾"确认"后 commitDistWin() 冻结,
-// 直到下次确认。行情 K 线加载(mkLoad)不读 DistWin,仍实时跟随控件。
-object DistWin {
-    @Volatile var tf: String? = null
-    @Volatile var n: Int = 0
-
-    fun commit(curTf: String, curN: Int) {
-        tf = curTf
-        n = curN
-    }
-}
+// ═══════════════ 自选距离窗口：**每品种**（2026-10-12 用户裁定 B 改） ═══════════════
+//
+// ⚠⚠ 墓碑 · 2026-10-12：本文件顶部原先是一个 `object DistWin` —— **进程内存态的全局
+//   冻结窗**（照稿 `var DISTTF=null, DISTN=null`）：点「确认」由 commitDistWin() 冻结成
+//   一个值，未确认时 distWin() 跟随行情页周期控件+根数；自选页**所有行共用这一个窗口**。
+//   行情 K 线加载(mkLoad)从来不读它（这是 2026-10-03 起就成立的事实，本次未改）。
+//
+// 【为什么删 —— 用户 2026-10-12 裁定 B 改，原话】
+//   「就算我保存了某个品种的窗口周期数据，那也不应该只获取那一个嘛？」「我从行情界面
+//    退到自选界面，又再次自动取数值了」。
+//   全局窗口造成两件事（每一环都在代码里，不是推测）：
+//   ① 改**任一**品种的窗口 → 全局 tf/n 一变 → 自选**全部**行的 FavDist key
+//      （`symType|SYM|tf|n`，FavDist.kt:65）同时变 → 5 分钟新鲜缓存全 miss；
+//      而那时接线还是 `onDistCommitted → refreshFavDist()`（MainActivity，**全量、无 only**）
+//      ⟹ 8~10 个品种错峰各打一次 ⟹ 用户看到「改了 TSLA 的窗口，退回自选又把全部品种取了一遍」。
+//   ② 屏上每行显示的窗口与该品种**自己存的** `gridcalc_win_v1[s]` 不一致（设备实测已有
+//      TSLA=M|31、IBM=M|32 各自的记录，却全按全局那一个算）—— 数据结构本来就按品种存，
+//      只是屏上口径没用它。
+//
+// 【本次修法】自选页一律读**该品种自己的**窗口：入口 [distWin(sym)] =
+//   `gridcalc_win_v1[sym]`（唯一真源；无记录/记录非法回落 `("M" to 20)`，与行情页
+//   loadWin() 同一口径）。点「确认」只刷刚确认的那一个品种（见 [onDistCommitted]）。
+//
+// 【随之失去存在理由的全局机制 —— 逐个取舍，一并删干净，不许留死代码】
+//   · `object DistWin` + `commitDistWin()`：唯一读者是**无参** `distWin()`（自选页的
+//     repaint / refreshFavDist 两处）。自选页改读每品种后零读者；mkLoad 不读它（见上）。
+//   · `distWin()`（无参版）：调用点只有 FavPanel 那两处，均改为 `distWin(品种)`；
+//     无参版无调用点即删（留着就是死代码）。
+//   · `restoreDistWinOnce()` / `winRestoreTried`：它是给「全局窗口冷启动归零」治病的
+//     （症状：冷启动直看自选页，DistWin 空 + 输入框停在布局默认 20 ⟹ 自选页按 20 根
+//     查距离，用户看到「过了一段时间又变回来了」）。现在自选页**直接读磁盘真源**
+//     gridcalc_win_v1[s]，冷启动本来就取各品种自己的窗口 ⟹ 病灶不存在，恢复失去理由。
+//     它顺带的「回填行情页控件」也另有同源路径，不会因此打开「真覆盖」缺口：
+//       - mkLoad() 载入品种时 `if (symChanged) applyWinDefaults()`（本文件 ~:1409）；
+//         进程内 lastSym 初值必为空 ⟹ 本进程**第一次**载入恒为 symChanged ⟹ 必回填；
+//       - saveWin() 在 lastSym 空时早退（~:490）—— 行情页没载入品种时**写不进盘**；
+//         想写就必须先载入，而载入那一下就回填了控件；
+//       - autoRefreshOnce（PREF_AUTO_REFRESH 默认开，MainActivity:3161）启动即
+//         setSym + mkLoad ⟹ applyWinDefaults，控件同样是盘里的值。
+//     ⟹ 残余差异只剩一条**极窄且纯展示**的路径：关掉「启动时刷新」+ 冷启动先进自选页
+//        + 再直接点行情 Tab（**不载入品种**）——那时控件显示布局默认 20，而不是「最后
+//        确认过的那个品种」的窗口。没有品种就没有「该品种的窗口」可言，且该状态下点
+//        「确认」写不进盘（saveWin 早退），**无数据后果**。
+//   · `gridcalc_win_confirmed_sym` 指针（`winConfirmedSymKey`）+ `persistConfirmedSym()`
+//     + `confirmedSymOnDisk()`：指针的**唯一读者**就是 restoreDistWinOnce（确认制语义：
+//     只在点确认时写、只存品种名、绝不存窗口值）。读者没了 ⟹ 写者一并删。
+//     ⚠ 磁盘上历史遗留的 `gridcalc_win_confirmed_sym` 键**全工程零读方**：不迁移、
+//       不新增写入（再写一次就多一份真源的风险）；`gridcalc_win_v1` 仍是唯一真源。
+//
+// ⚠⚠ **行情页自己的窗口三件套一字未动**（2026-10-03 三次裁定的净结果）：
+//   ① 控件显示 applyWinDefaults()/paintTf()；② 点「确认」落盘 saveWin()；
+//   ③ 离开行情页 onLeave() 还原。本次只删上面那批**全局**机制，三件套逐字保留。
 
 // ---------- 行情 VPVR · 面板接线 ----------
 // 照搬设计稿 mkLoad/renderMK 的文字侧:品种+K数+周/月/季分段+查看,
@@ -130,8 +170,12 @@ class MktPanel(private val act: MainActivity, page: View) {
 
     // 自选变更(收藏/删除)时通知自选页重绘;由MainActivity接线
     var onFavChanged: (() -> Unit)? = null
-    // 点▾确认提交距离窗口后,通知自选页重刷距离(稿winGo:commit+refresh+收菜单)
-    var onDistCommitted: (() -> Unit)? = null
+    // 点「确认」提交距离窗口后,通知自选页刷新**刚确认的那一个品种**(稿winGo:commit+refresh+收菜单)
+    // ⚠ 2026-10-12 裁定 B 改：回调从**无参全量**改成**带品种**（= 点确认那一刻正在看的
+    //   lastSym）。窗口改成每品种之后，改谁就只有谁的 FavDist key 会变 ⟹ 只刷那一个品种，
+    //   其余行 key 纹丝不动（新鲜缓存照旧命中、零请求）。改前的无参全量刷新配着全局窗口，
+    //   正是「改一个 → 全部重取」的病灶（墓碑见文件头 2026-10-12 段）。
+    var onDistCommitted: ((String) -> Unit)? = null
 
     // 稿§4 根数范围 KMIN=15/KMAX=100,越界clamp
     private val KMIN = 15
@@ -336,7 +380,16 @@ class MktPanel(private val act: MainActivity, page: View) {
      */
     fun setDispName(n: String, symFallback: String) {
         dispName = n
-        titleTx.text = n.ifBlank { symFallback }
+        // ⚠ 2026-10-13 用户裁定：**显示名字时代码同屏**（"名字 代码"），不再让名字顶掉代码。
+        //   用户实报「XOM 显示了英文名字就没有代码了」。改前 `n.ifBlank{symFallback}` 是
+        //   二选一；现在空名回退纯代码、有名则"名字 代码"（与 cmdty 标题「黄金 XAUUSD」同规则）。
+        //   ⚠ 中文名优先级：favName 先查 CNNAME 再落 NameBook 英文名 ⟹ 表里补了
+        //     埃克森美孚/太空探索技术公司后，这两个品种标题自动变中文名+代码。
+        titleTx.text = when {
+            n.isBlank() -> symFallback
+            n == symFallback -> n
+            else -> n + " " + FavStore.displaySym(symFallback)
+        }
     }
 
     /** 自选行带来的中文名。空串 ⟹ 标题回退显示代码。 */
@@ -377,10 +430,11 @@ fun setSym(s: String) {
      * (由归档的 fix_auto_refresh_repair.py 断言守着)—— 改一边另一边就会对不上。
      * ⚠ 2026-10-12 起确认时也会补记一次(见 [toggleWinPop])：确认那一刻正在看的就是这个品种，
      *   「启动时刷新」与按品种取的步长阈值都该记住它。
-     * ⚠⚠ 2026-10-12(t4) **它不再是冷启动恢复的查表 key** —— 那条改认「最后**确认过**的
-     *   品种」([persistConfirmedSym])。理由：「看过」≠「确认过」—— 确认 TSLA 后再点开
-     *   005930（不确认）就会把它覆盖成 005930，恢复于是去查一条不存在的记录、静默回落 20
-     *   （t3 验证员报的 F1，详见 [restoreDistWinOnce] 的注释）。
+     * ⚠⚠ 2026-10-12(t4) 它一度被改成**冷启动恢复的查表 key**；同日用户裁定 B 改后，
+     *   「冷启动恢复」这条链（restoreDistWinOnce + 「最后确认过的品种」指针
+     *   gridcalc_win_confirmed_sym）**整条删除** —— 自选页改读每品种自己的
+     *   gridcalc_win_v1[s]，不再需要任何"全局窗口的恢复"。取舍全文见**文件头 2026-10-12 墓碑**。
+     *   ⟹ 本键现在只剩两个用途：「启动时刷新」与按品种取的步长阈值（与确认无关，未动）。
      */
     private fun persistLastSym(s: String) {
         if (s.isEmpty()) return
@@ -394,33 +448,12 @@ fun setSym(s: String) {
             .getString("mkt_last_sym", "") ?: ""
     } catch (_: Exception) { "" }
 
-    // ── 「最后**确认过**的品种」指针（2026-10-12 t4，修 t3 报的 F1） ──
-    //
-    // 与 mkt_last_sym 的分工（两者都写在 "gridcalc" 这个 SP 里，但**语义不同**）：
-    //   · `mkt_last_sym` = 最近「**看过**」的品种（setSym / 确认时各记一次）
-    //     —— 服务「启动时刷新」与步长阈值；
-    //   · `gridcalc_win_confirmed_sym` = 最近「**确认过**」的品种（**只在确认时写**）
-    //     —— 只服务一个用途：冷启动恢复已确认窗口时，**去 gridcalc_win_v1 查谁**。
-    // ⚠ 它**只存品种名，不存窗口值**：窗口的唯一真源仍是 `gridcalc_win_v1[该品种]`，
-    //   指针只回答「重启后该去查谁」。复制窗口值会造出第二份真源，两边迟早打架。
-    private val winConfirmedSymKey = "gridcalc_win_confirmed_sym"
-
-    /**
-     * 写「最后确认过的品种」。**唯一调用点 = 确认按钮 [toggleWinPop]**（确认制语义：
-     * 只有点了确认才配留下痕迹）；`lastSym` 空（行情页没载入品种）时不写 ——
-     * 与 `saveWin()` 的早退同界：**不给一条不存在的记录立指针**。
-     */
-    private fun persistConfirmedSym(s: String) {
-        if (s.isEmpty()) return
-        try { act.getSharedPreferences("gridcalc", android.content.Context.MODE_PRIVATE)
-            .edit().putString(winConfirmedSymKey, s).apply() } catch (_: Exception) {}
-    }
-
-    /** 冷启动时取回「最后确认过的品种」；从没确认过 → 空串（不猜、不回落成最近看过的）。 */
-    private fun confirmedSymOnDisk(): String = try {
-        act.getSharedPreferences("gridcalc", android.content.Context.MODE_PRIVATE)
-            .getString(winConfirmedSymKey, "") ?: ""
-    } catch (_: Exception) { "" }
+    // ── 墓碑 · 2026-10-12（裁定 B 改）：「最后**确认过**的品种」指针已整块删除 ──
+    //   原物 = `winConfirmedSymKey`("gridcalc_win_confirmed_sym") + `persistConfirmedSym()`
+    //   + `confirmedSymOnDisk()`。**唯一读者**是 restoreDistWinOnce（冷启动恢复全局窗口），
+    //   后者连同全局 DistWin 一起删 ⟹ 写者一并删，不留死代码。
+    //   取舍全文见**文件头 2026-10-12 墓碑**；`gridcalc_win_v1` 仍是窗口的唯一真源。
+    //   磁盘上遗留的该键零读方，不迁移、不新增写入。
 
     // 自选距离键用(对标稿子favKey读tfSeg/kcount)
     fun curTf(): String = tf
@@ -437,19 +470,19 @@ fun setSym(s: String) {
 
     private fun confirmedN(): Int = loadWin().second
 
-    // 自选距离窗口(照稿distWin):已提交返回冻结值,未提交跟随周期控件+当前根数
+    // 自选页「距支撑」用的**该品种自己的**窗口（2026-10-12 用户裁定 B 改：每品种）。
     //
-    // ⚠ 2026-10-12:入口处多了一次 [restoreDistWinOnce] —— 它是**一次性**的,
-    //   跑过之后这里只剩一个布尔读,不会给这条高频路径(自选页每次重绘都调)加活。
-    fun distWin(): Pair<String, Int> {
-        restoreDistWinOnce()
-        return DistWin.tf?.let { it to DistWin.n } ?: (tf to curN())
-    }
-
-    // 点▾确认(照稿commitDistWin):按当前周期控件+根数冻结窗口
-    fun commitDistWin() {
-        DistWin.commit(tf, curN())
-    }
+    //   · 读 `gridcalc_win_v1[sym]`（唯一真源，由行情页点「确认」的 saveWin() 写入）；
+    //   · 无记录 / 记录非法 → `("M" to 20)` —— 与行情页 loadWin() **同一个回落口径**；
+    //   · **不看**行情页周期控件、不看任何全局冻结值：那套全局机制已删（文件头 2026-10-12 墓碑）。
+    //
+    // 改前这里是**无参** `distWin()`：`DistWin.tf?.let{...} ?: (tf to curN())` —— 一个全局窗
+    // 被自选页所有行共用，于是改任一品种的窗口就让**全部**行的 FavDist key（含 n）一起变、
+    // 缓存全 miss、全量重取（见文件头墓碑 ①）。改后每行各取各的，互不影响。
+    //
+    // ⚠ 调用点（两处，都在 FavPanel）：repaint() 的**每行**、refreshFavDist() 的**每个品种**。
+    // ⚠ 纯读、无副作用、不发任何请求；SP 读的是已载入内存的 map，逐行调用开销可忽略。
+    fun distWin(sym: String): Pair<String, Int> = loadWinOrNull(sym) ?: ("M" to 20)
 
     // ---------- 稿§4 根数/周期按品种默认(gridcalc_win_v1) ----------
     // ▾确认才落盘;回车/失焦只重画不回填;离开行情页丢弃未确认值;
@@ -503,70 +536,30 @@ fun setSym(s: String) {
         if (typed != wn.toString()) kcountInp.setText(wn.toString())
     }
 
-    // ══════ 2026-10-12 冷启动恢复「已确认窗口」(修自选页距离窗口回退到 20) ══════
+    // ══════ 墓碑 · 2026-10-12 用户裁定 B 改：「冷启动恢复已确认窗口」整段删除 ══════
     //
-    // 【用户原话(2026-10-12)】「我点了特斯拉的确认周期……我点了确认之后就变成 60% 多了。
-    //   只不过为什么，过了一段时间又变回来了，像是被覆盖了式的」「每次待取数的时候就会出现
-    //   这种问题」——「待取数」就是冷启动那一轮刷新。
+    // 【它原本治什么】同日早些时候用户报「我点了特斯拉的确认周期……我点了确认之后就变成
+    //   60% 多了。只不过为什么，过了一段时间又变回来了，像是被覆盖了式的」「每次待取数的
+    //   时候就会出现这种问题」——「待取数」就是冷启动那一轮刷新。
+    //   机制链条（逐环都在本文件）：① 全局 DistWin 是进程内存态 object、不落盘，被杀即归零；
+    //   ② 无参 distWin() 未冻结时读行情页周期控件+根数输入框；③ 输入框初值是 page_mkt.xml
+    //   写死的 `android:text="20"`；④ 把 gridcalc_win_v1[lastSym] 回填进控件的
+    //   applyWinDefaults() 只在 mkLoad 的 `if (symChanged)` 处跑 ⟹ 冷启动直看自选页时
+    //   窗口 =(M,20) ⟹ key 从 `stock|TSLA|M|31` 变成 `stock|TSLA|M|20` ——
+    //   **不是值被覆盖，是窗口换了把钥匙**（31 根那次的值在它自己的 key 下没丢）。
+    //   当时的修法 = 首次 distWin() 时一次性恢复（restoreDistWinOnce + winRestoreTried），
+    //   并把查表 key 从 mkt_last_sym 换成「最后确认过的品种」指针 gridcalc_win_confirmed_sym
+    //   （修 t3 验证员报的 F1：点开 005930 不确认 → 指针被覆盖 → 查不到记录 → 回落 20）。
     //
-    // 【机制链条】(逐环都在本文件,不是猜的)
-    //   ① DistWin(文件顶部)是**进程内存态** object 单例,不落盘 → 进程被杀即归零;
-    //   ② distWin() 未冻结时读「行情页周期控件 tf + 根数输入框 curN()」;
-    //   ③ 输入框初值 = page_mkt.xml `android:text="20"` 写死的**布局默认 20**;
-    //   ④ 把 gridcalc_win_v1[lastSym] 回填进控件的 applyWinDefaults() **只在**
-    //      mkLoad() 的 `if (symChanged)` 处调用,即**只有行情页真的载入了品种才跑**;
-    //   ⟹ 冷启动后用户**直接看自选页**(行情页没载入品种)时:DistWin 空、输入框停在 20
-    //      ⟹ distWin()=(M,20) ⟹ 自选页按 20 根查距离,读到 key `stock|TSLA|M|20` 下的
-    //      旧值 10.23%。31 根那次的 60% 多**仍在** key `stock|TSLA|M|31` 下没丢 ——
-    //      **不是值被覆盖,是窗口换了把钥匙**(key 里的 n 从 31 变 20),用户看到"变回去了"。
-    //
-    // 【本次修法】首次 distWin()(自选页 repaint/refresh 都会走到)时做**一次性**恢复:
-    //   条件三道,缺一不恢复 ——
-    //     ① DistWin 还没冻结(本进程没人确认过);
-    //     ② 本进程行情页还没载入过品种(lastSym 空,applyWinDefaults() 还没接管过控件);
-    //     ③ 磁盘 gridcalc_win_v1[**最后确认过的品种**] 里**确有合法值**(loadWinOrNull != null)。
-    //   恢复动作 = DistWin.commit() 冻结它 + 把行情页周期按钮/根数输入框一并回填:
-    //   后者是防「真覆盖」—— 不回填的话屏上仍是 20,用户此时点「确认」就把 20 存回
-    //   gridcalc_win_v1,那才是把 31 真的抹掉(用户说的"像是被覆盖了式")。
-    //   无记录 / 周期或根数非法 → 什么都不做,回落现有语义 ("M" to 20),不崩、不写脏值。
-    //
-    // ⚠⚠ 2026-10-12(t4) **修 t3 验证员报的 F1 残留路径**（用户原始症状的另一半）：
-    //   【F1 最小复现（t3 实测 6 帧恒定）】行情页确认 TSLA(月线31) → 点开另一品种 005930
-    //     （**不确认**）→ `am force-stop` → 冷启动直看自选 → **TSLA 距支撑回退成 20 根口径
-    //     +30.07%**（31 根口径应是 +46.09%）。
-    //   【机制】t1 的查表 key 用的是 [lastSymPersisted] = `mkt_last_sym` = 最近「**看过**」
-    //     的品种，而用户的语义是「最后**确认过**的窗口」。点开 005930 就把 mkt_last_sym
-    //     覆盖成 005930 ⟹ 重启后拿 005930 去查 gridcalc_win_v1，那键不存在（005930 没确认过）
-    //     ⟹ loadWinOrNull 返回 null ⟹ 不恢复 ⟹ 静默回落到输入框默认 20。
-    //   【修法】查表 key 换成「最后确认过的品种」指针（[persistConfirmedSym]/[confirmedSymOnDisk]）：
-    //     · **何时写**：只在确认按钮 [toggleWinPop] 里、saveWin() 之后写一次（与确认制同生，
-    //       没点确认就不写 —— 与 saveWin/commitDistWin/onLeave 的语义一致）；
-    //     · **写什么**：只写品种名（"gridcalc" SP 的 `gridcalc_win_confirmed_sym`）——
-    //       窗口值的唯一真源仍是 gridcalc_win_v1[该品种]，指针只回答「重启后该去查谁」；
-    //     · **在哪读**：本函数的 [confirmedSymOnDisk]（全工程仅此一处读）。
-    //     ⟹ 中途点开/看过别的品种一律不影响它；从没确认过（或本版本之前确认的、指针尚不存在）
-    //        → 空串 → 不恢复 → 回落 ("M" to 20)，不猜、不造、不写盘。
-    //
-    // ⚠ 只读本地 SharedPreferences,**不新增任何网络请求**;
-    // ⚠ 不碰 onLeave() 的「不确认就不存」,不动 saveWin()/commitDistWin() 的写语义;
-    // ⚠ 不改 onLeave 里那行 applyWinDefaults()(2026-10-03 三次裁定的净结论)。
-    @Volatile private var winRestoreTried = false
-
-    private fun restoreDistWinOnce() {
-        if (winRestoreTried) return
-        winRestoreTried = true // 本进程只试一次:之后这条高频路径上只剩一个布尔读
-        if (DistWin.tf != null) return                 // 本进程已确认过 → 冻结值优先
-        if (lastSym.isNotEmpty()) return               // 行情页已载入 → applyWinDefaults() 已回填过控件
-        // ← t4：查表 key = 「最后**确认过**的品种」，**不再是最近看过的**（F1 的病根，见上方 ⚠⚠）。
-        val sym = confirmedSymOnDisk()
-        if (sym.isEmpty()) return                      // 从没确认过 → 维持 ("M" to 20)
-        val (wtf, wn) = loadWinOrNull(sym) ?: return   // 指针在但记录非法/缺失 → 不猜、不造、不写
-        DistWin.commit(wtf, wn)                        // ← 恢复点:已确认窗口跨重启存活
-        // 与 applyWinDefaults() 同源地回填行情页控件(理由见上方注释末段)。
-        tf = wtf
-        paintTf()
-        if (kcountInp.text.toString().trim() != wn.toString()) kcountInp.setText(wn.toString())
-    }
+    // 【为什么现在删 —— 病灶本身没了，不是修法过时】2026-10-12 裁定 B 改后，自选页**每行**
+    //   直接读磁盘真源 gridcalc_win_v1[sym]（见 [distWin(sym)]），冷启动天然就是各品种自己
+    //   的窗口：既不经过全局 DistWin，也不经过行情页控件 ⟹ 「恢复」没有对象了。
+    //   它顺带的「回填行情页控件」另有同源路径，**不会**因此打开「真覆盖」缺口 —— 三条论证
+    //   + 一条残余的纯展示差异写在**文件头 2026-10-12 墓碑**里。
+    //   连带删除（读者没了就删写者，不留死代码）：winRestoreTried、restoreDistWinOnce()、
+    //   persistConfirmedSym()、confirmedSymOnDisk()、winConfirmedSymKey。
+    //   ⚠ 磁盘遗留键 gridcalc_win_confirmed_sym 现在全工程零读方：不迁移、不新增写入。
+    //   ⚠ 只读本地 SharedPreferences、不新增任何网络请求这一点，改前改后一致。
 
     // 离开行情页(返回键/‹返回/切Tab,由showTab统一钩)。
     //
@@ -607,18 +600,18 @@ fun setSym(s: String) {
         val tfName = MktData.tfName(tf)
         // 稿§4：确认才把(周期+根数)写成该品种已确认默认；输入框归一到 clamp 值
         kcountInp.setText(n.toString())
-        commitDistWin()
+        // ⚠ 2026-10-12 裁定 B 改：这里原有两句 `commitDistWin()`（把窗口冻结进**全局** DistWin）
+        //   与 `persistConfirmedSym()`（记「最后确认过的品种」，供冷启动恢复查表）——
+        //   两者都只服务**全局窗口**，自选页改读每品种后一并删除（取舍见文件头 2026-10-12 墓碑）。
+        //   ⟹ 落盘只剩下面这一处 saveWin() → `gridcalc_win_v1[lastSym]`，唯一真源，一字未动。
         saveWin()
         // ④ 2026-10-12(t1)：确认那一刻正在看的就是这个品种，「上次看的品种」补记一次
-        //   （服务「启动时刷新」/按品种的步长阈值，**不再**是恢复查表 key）。
+        //   （服务「启动时刷新」/按品种的步长阈值，**不是**恢复查表 key —— 那条链已删）。
         persistLastSym(lastSym)
-        // ⚠⚠ 2026-10-12(t4)：**再记一条「最后确认过的品种」** —— 冷启动恢复
-        //   (restoreDistWinOnce) 只认这条、不认 mkt_last_sym：「看过」≠「确认过」，
-        //   确认 TSLA 后点开 005930（不确认）就会把 mkt_last_sym 覆盖掉，恢复于是去查
-        //   一条不存在的记录、静默回落 20（t3 报的 F1；复现路径与机制见 restoreDistWinOnce）。
-        //   ⚠ 只在确认时写、只写品种名；窗口值仍只由上面的 saveWin() 写 gridcalc_win_v1。
-        persistConfirmedSym(lastSym)
-        onDistCommitted?.invoke()
+        // ⚠ 带上「刚确认的品种」：自选页窗口已改每品种，只有它的 key 会变 ⟹ 只刷它一行
+        //   （回调接线见 MainActivity:2754 附近 → refreshFavDist(only = setOf(sym))）。
+        //   lastSym 空（行情页没载入品种，saveWin 也早退、盘里没变）→ 交给接收方判空后跳过。
+        onDistCommitted?.invoke(lastSym)
         android.widget.Toast.makeText(act, "已保存：$tfName · $n 根",
             android.widget.Toast.LENGTH_SHORT).show()
     }
@@ -1783,7 +1776,8 @@ private fun clearForNewSymbol() {
                         if (t != null && t > 0) MktData.MktSave.predSave(ck, day, t)
                         t
                     }
-                } else MktData.predTarget(sym)
+                } else if (lastType == "kr") MktData.fetchTgtKrManual(ck)?.avg // 2026-10-13 手动快照+折美元
+                else MktData.predTarget(sym)
                 act.runOnUiThread {
                     // ⚠⚠ 2026-10-03 用户报「预测价混了策略」——**实测确认是这个串台**：
                     //   屏上是 01211(港股)，mkt_tgt 却写着 `预测价(最高×1.2) 115,045.76`，
@@ -1802,7 +1796,11 @@ private fun clearForNewSymbol() {
                         return@runOnUiThread
                     }
                     // t107 ⑦ 只留值，不留解释性文字
-                    tgt.text = tgtLabel(kind) + " " + MktData.mkFmt(v)
+                    // ⚠ 2026-10-13 用户裁定：韩股目标价遇汇率过期时**旧汇率照折 + 行尾注明日期**
+                    //   （rateOf 返回的是本地留底的旧值，照折不藏；注明让用户知道这个数折在旧汇率上）。
+                    val staleNote = if (lastType == "kr" && MktData.FX.rateStale())
+                        "（旧汇率 ${MktData.FX.rateDate()}）" else ""
+                    tgt.text = tgtLabel(kind) + " " + MktData.mkFmt(v) + staleNote
                     tgt.visibility = View.VISIBLE
                     // 稿PH(406-414):预测价>现价且>当前最低价才写计算页最高价(同值不扰手改)
                     act.linkPhigh(v, cur)

@@ -103,13 +103,19 @@ object MktSuggest {
         //       —— 这与既有 `GE Vernova` 键在搜 `E` 时的表现同源，不是本批新引入的规则。
         //   ⚠ 真要更进一步（contains 命中不该与前缀命中同级）就得改 [local] 的匹配/排序规则，
         //     那是既有逻辑，按本次约定（只加条目、既有问题单列）不擅改。
-        "SNDK", "ARM", "DELL", "IBM", "ASML", "AMAT", "LRCX", "KLAC")
+        "SNDK", "ARM", "DELL", "IBM", "ASML", "AMAT", "LRCX", "KLAC",
+        // ⚠ 2026-10-13 全表扫描补漏：下列代码在 CNNAME 里有中文名、却不在本表
+        //   ⟹ 敲代码搜「无匹配」、搜中文名才出（方向反了）。代码是事实不是译名，直接补。
+        "MU", "INTC", "QCOM", "AVGO", "ORCL", "JPM", "PFE", "KO", "MCD",
+        "DIS", "PYPL", "CSCO", "PDD", "JD", "LI", "NIO", "XPEV")
 
     // 稿子CNNAME原样照搬(中文名→代码),v3.7 增补 17 种大宗商品 *00Y
     private val CNNAME = listOf(
         "美光" to "MU", "苹果" to "AAPL", "特斯拉" to "TSLA", "英伟达" to "NVDA",
-        "微软" to "MSFT", "亚马逊" to "AMZN", "谷歌" to "GOOGL", "超微" to "AMD",
-        "台积电" to "TSM", "阿里" to "BABA", "奈飞" to "NFLX", "微策略" to "MSTR",
+        // ⚠ 2026-10-13 用户更正：AMD 全名=**超威半导体**（原键「超微」为错名，
+        //   超微=SMCI 常用名，废除；搜「超威」contains 命中全名）。
+        "微软" to "MSFT", "亚马逊" to "AMZN", "谷歌" to "GOOGL", "超威半导体" to "AMD",
+        "台积电" to "TSM", "阿里巴巴" to "BABA", "奈飞" to "NFLX", "微策略" to "MSTR",
         "英特尔" to "INTC", "高通" to "QCOM", "博通" to "AVGO", "甲骨文" to "ORCL",
         "拼多多" to "PDD", "京东" to "JD", "理想" to "LI", "蔚来" to "NIO",
         "小鹏" to "XPEV", "摩根大通" to "JPM", "辉瑞" to "PFE", "可口可乐" to "KO",
@@ -195,10 +201,32 @@ object MktSuggest {
         "戴尔" to "DELL", "戴尔科技" to "DELL",
         "阿斯麦" to "ASML", "阿斯麦尔" to "ASML",
         "应用材料" to "AMAT",
-        "拉姆研究" to "LRCX", "泛林集团" to "LRCX", "泛林材料" to "LRCX",
+        // ⚠ 2026-10-13 用户更正：LRCX 显示名应为**泛林集团**（腾讯+新浪+百度主词 2.5:1 领先
+        //   东财的「拉姆研究」）。favName 取 firstOrNull ⟹ 键序即显示序，把泛林集团调到第一；
+        //   三个键全保留（搜「拉姆研究」「泛林材料」照旧命中），只动排序不动收录。
+        "泛林集团" to "LRCX", "泛林材料" to "LRCX",
         "科磊" to "KLAC",
-        "安谋" to "ARM", "ARM控股" to "ARM",
-        "国际商业机器" to "IBM",
+        // ⚠⚠ 2026-10-13 用户裁定「名字四连修」（当轮原话见下，逐条执行）：
+        //   ① **删**「安谋」「ARM控股」—— 用户裁定 ARM **没有中文名**，「打个 ARM 不就好了」。
+        //      搜代码 ARM 仍由 [TOPS] 前缀腿保证；历史：2026-10-11 曾按腾讯 qt「安謀」+
+        //      维基条目「安謀控股公司」收录，现按产品裁定撤下（源里有此写法 ≠ 产品要显示它）。
+        //   ② **补** XOM=埃克森美孚 —— 此前中文搜不到，行情标题回落成 NameBook 的英文名。
+        //   ③ **补** SPCX=太空探索技术公司 —— V4.5 符号表纠正（SPAC→SPCX）时只改了代码、
+        //      没进中文名表，中文名一直缺失。
+        //   ④ 「阿里」→「阿里巴巴」—— 译名要全；搜「阿里」仍 `contains` 命中，不受影响。
+        //   ③ SPCX 显示名：先补「太空探索技术公司」，同日用户再裁**改用「SpaceX」**
+        //      （8 字中文名触发缩字号后仍不理想 → 直接用品牌名；搜代码 SPCX 不受影响）。
+        "埃克森美孚" to "XOM", "SpaceX" to "SPCX",
+        // ⚠ 2026-10-13 全表扫描补漏（同日「名字四连修」的后续，用户追问「其他的呢」）：
+        //   META=Meta平台、GE=通用电气（TOPS 里有码无名的仅这两只）。
+        //   COIN/PLTR **刻意不译**：无稳定通行中文名，按同日 ARM 裁定「没有中文名就显示代码」。
+        //   ⑤ 用户再裁（同日）：删「拉姆研究」键（只留泛林集团/泛林材料）；「Meta平台」→「Meta」
+        //      （不加"平台"俩字，就叫 Meta；搜代码 META 走 TOPS 前缀腿不受影响）。
+        "Meta" to "META", "通用电气" to "GE",
+        // ⚠ 2026-10-13 用户裁定：**删「国际商业机器」→IBM** ——「就叫 IBM」。
+        //   与同日 ARM 裁定同规则：代码本身就是名字，不硬译、不截断；搜代码 IBM 由 [TOPS] 保证。
+        //   历史：2026-10-11 曾按东财 f14「IBM国际商业机器」收录此键，自选行标题 6 字被列宽
+        //   截成「国际商业…」—— 2026-10-13 撤下（原「搜 IBM 出两行」的警告随键删除一并失效）。
         "原油" to "CL00Y", "布伦特原油" to "B00Y", "天然气" to "NG00Y",
         "燃油" to "HO00Y", "汽油" to "RB00Y", "铜" to "HG00Y", "铂金" to "PL00Y",
         "钯金" to "PA00Y", "玉米" to "ZC00Y", "小麦" to "ZW00Y", "大豆" to "ZS00Y",
@@ -316,7 +344,13 @@ object MktSuggest {
     //   名字由 [MktData.NameBook] 后台从腾讯行情查一次并落盘。
     fun favName(s: String): String =
         CNNAME.firstOrNull { it.second == s }?.first
-            ?: marketName(s).ifEmpty { MktData.NameBook.of(s) }
+            ?: marketName(s).ifEmpty {
+                // ⚠ 2026-10-13 用户裁定「按前面的标准」：NameBook 抓回的**英文法定名不作显示名**
+                //   （美股 qt 给的是 "Palantir Technologies Inc" 这类英文名 ⟹ PLTR/COIN 标题会顶掉代码）。
+                //   无中文名的品种一律回落代码（ARM/IBM 同款裁定）。只放行含汉字的结果
+                //   （A 股 sh688825 长鑫存储走这条，不受影响）。
+                MktData.NameBook.of(s).let { n -> if (n.any { it.code in 0x4E00..0x9FFF }) n else "" }
+            }
 
     private val SPOT_QUOTES = setOf("USDT", "USD", "USDC")
 

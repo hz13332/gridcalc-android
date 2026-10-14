@@ -2712,11 +2712,11 @@ private fun recLoad() {
                 packageManager.getPackageInfo(packageName, android.content.pm.PackageManager.PackageInfoFlags.of(0L))
             } else { @Suppress("DEPRECATION") packageManager.getPackageInfo(packageName, 0) }
         } catch (e: Exception) { android.util.Log.w("LP", "about version failed: $e"); null }
+        // ⚠ 2026-10-06 曾同时打出 versionCode（设置界面做标记，否则几个手工包分不清）。
+        //   ⚠ 2026-10-13 用户裁定**移除 versionCode 括号**（「图片上的东西可以去掉了」）——
+        //     版号体系已随 v4.6 升档（第二位逢十进一），关于页只留 versionName。
         val vn = pkgInfo?.versionName
-        @Suppress("DEPRECATION")
-        val vc = pkgInfo?.versionCode
-        aboutV?.text = "网格交易收益计算器" + (vn?.let { " v$it" } ?: "") +
-            (vc?.let { " ($it)" } ?: "")
+        aboutV?.text = "网格交易收益计算器" + (vn?.let { " v$it" } ?: "")
         mktPanel = MktPanel(this, mktPage)
         favPage = inf.inflate(R.layout.page_fav, body, false)
         favPanel = FavPanel(this, favPage, mktPanel) { s, disp ->
@@ -2751,7 +2751,17 @@ private fun recLoad() {
         }
         mktPanel.onFavChanged = { favPanel.repaint() }
         // 点▾确认=提交距离窗口+重刷自选距离+收菜单(稿winGo;收菜单在MktPanel内)
-        mktPanel.onDistCommitted = { favPanel.refreshFavDist() }
+        // ⚠⚠ 2026-10-12 用户裁定 B 改：回调从**无参全量**改成**带刚确认的品种**，
+        //   这里只刷那一个品种 —— `refreshFavDist(only = setOf(sym))`。
+        //   改前是 `refreshFavDist()`（全量、net=false）：那时自选页所有行共用**一个全局窗口**
+        //   （MktPanel 的 DistWin），一确认则全部行的 FavDist key（含 n）同变 ⟹ 两级缓存/
+        //   复用层全 miss ⟹ 8~10 个品种错峰各发一次请求 —— 用户报的「改了 TSLA 的窗口，
+        //   退回自选又把全部品种取了一遍」。窗口改成每品种后（gridcalc_win_v1[s]），
+        //   **只有**被确认那个品种的 key 会变 ⟹ 其余行根本进不了取数路径（缓存照旧命中）。
+        //   sym 空 = 行情页没载入品种（saveWin 此时也早退、盘里什么都没变）→ 不刷、零请求。
+        mktPanel.onDistCommitted = { sym ->
+            if (sym.isNotEmpty()) favPanel.refreshFavDist(only = setOf(sym))
+        }
 
         // ④ 启动时刷新一次 —— **已移到 onCreate 末尾**，见那里的 autoRefreshOnce()。
         //   （原来就放在这里，但它会同步走到 restoreCalc，而计算页的视图那时还没绑定。）

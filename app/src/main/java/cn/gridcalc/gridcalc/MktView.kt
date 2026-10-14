@@ -659,8 +659,13 @@ class MktView @JvmOverloads constructor(
         }
         val mdLabels = tickIdx.map { MktData.fmtMD(ks[it].t) }
         val withDup = mdLabels.size != mdLabels.distinct().size
+        // ⚠ 2026-10-13 用户实报「时间轴没有年份」：t319 只在刻度**重名**时换 fmtYM，
+        //   月线 5 档跨三年恰好不重名（9-1 6-1 3-1 12-1 10-1）就漏了年份。
+        //   改为**刻度跨年即强制年月**（周线跨年同理；日线短窗不受影响）。
+        val spanYear = MktData.fmtYM(ks[tickIdx.first()].t).substringBefore('-') !=
+            MktData.fmtYM(ks[tickIdx.last()].t).substringBefore('-')
         for (k in tickIdx.indices) {
-            val lbl = if (withDup) MktData.fmtYM(ks[tickIdx[k]].t) else mdLabels[k]
+            val lbl = if (withDup || spanYear) MktData.fmtYM(ks[tickIdx[k]].t) else mdLabels[k]
             c.drawText(lbl, chartX + tickIdx[k] * cw + cw / 2, H - dp(5.7f), paint)
         }
 

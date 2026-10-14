@@ -493,6 +493,22 @@ object MktData {
      *
      * @param n 返回的 [Tgt.n] 是**参与平均的家数**（不是报告总数）。
      */
+    // ⚠ 2026-10-13 用户裁定：韩股两只**手动录入**的共识目标价（Naver 컨센서스，用户截图提供，
+    //   与 Nasdaq/etnet 源不可比对——Naver 反爬闸死、三轮探针留档 tools/naver_tgt1~3_out.txt）。
+    //   原值韩元，**入库即按汇率折美元**（FX.rateOf("KRW")，1 USD = X KRW；与 fetchTgtEtnet
+    //   港元折美元同规矩：屏上其余数字都是美元量纲，不折就是串量纲）。
+    //   ① 000660 SK海力士 3,257,727 KRW（Naver 快照 2026-10-12）
+    //   ② 005930 三星电子   495,227 KRW（Naver 快照 2026-10-13，页面注明「最近3个月中权券商均值」）
+    //   ⚠ 静态快照、**不自动更新**：过期改这张表；汇率取不到 ⟹ null（该行不显示），不拿未折算韩元冒充美元。
+    private val KR_TGT_KRW = mapOf("000660" to 3_257_727.0, "005930" to 495_227.0)
+    fun fetchTgtKrManual(krCode: String): Tgt? {
+        if (!Regex("^\\d{6}$").matches(krCode)) return null
+        val krw = KR_TGT_KRW[krCode.trim().uppercase(Locale.US)] ?: return null
+        val r = FX.rateOf("KRW") ?: return null
+        if (!(r > 0)) return null
+        return Tgt(krw / r, 1)
+    }
+
     fun fetchTgtEtnet(hkCode: String): Tgt? {
         // 只收 5 位以内的纯数字港股代码（00001/00700/09999）；带 sh/sz 前缀的走 A 股，不归这里
         val code = hkCode.trim()
@@ -1000,7 +1016,9 @@ object MktData {
     }
 
     /**
-     * ⚠⚠⚠ 2026-10-10 **韩股第二腿：Naver**（用户当天拍板「走 C + B」，本条是 **B**）。
+     * ⚠⚠⚠ 2026-10-10 **韩股腿：Naver**（用户当天拍板「走 C + B」，本条是 **B**）；
+     *   **2026-10-13 起升为主腿** —— 用户裁定「韩股就用 Naver」，`stockLegs` kr 分支对调为
+     *   `[Naver, 东财]`，东财降为兜底。稳定性实测见 `stockLegs` kr 分支（连发 20/20 零限流）。
      *
      * 【为什么要有它 —— 腾讯这条腿占着位置却从不产出】
      *   `fetchTencent` 对韩股 `kr005850` 的 **month 与 day 都只回 1 根**
@@ -1013,11 +1031,15 @@ object MktData {
      *
      * 【请求成本：零增量（这是本方案成立的前提）】
      *   `raceOk` 是**顺序替补**：前一条腿 `prep` 成功即 `break`，后面的腿**根本不发请求**。
-     *   ⟹ 东财成功时 Naver 一个请求都不发（**成功路径与改前完全相同**）；
-     *     东财失败/被熔断跳过时，那 1 次请求本来也是花在**必死的腾讯腿**上，这里是**等量替换**。
+     *   ⟹ 2026-10-13 起方向对调（Naver 在前）：**Naver 成功时东财一个请求都不发**；
+     *     下面这句「东财成功时 Naver 一个请求都不发」是 t8 当时（[东财, Naver]）的方向，
+     *     保留作历史 —— 两个时代的**零增量性质完全相同**，只是主次互换。
+     *     Naver 失败/被熔断跳过时，那 1 次请求兜底到东财，仍是**等量替换**。
      *   ⟹ 每品种**最多 2 次**（与改前一致），符合用户 2026-10-10 的硬上限。
-     *   ⛔ **绝不要"叠加"成 `[东财, Naver, 腾讯]`**：失败路径会变成 3 次（+50%）。
-     *     本函数是**替换**腾讯，不是新增第三腿 —— 见 `stockLegs` 的 kr 分支。
+     *   ⛔ **绝不要"叠加"成 `[Naver, 东财, 腾讯]`**：失败路径会变成 3 次（+50%）。
+     *     腾讯从来不在 kr 的腿上 —— 见 `stockLegs` 的 kr 分支。
+     *   （历史原文：东财成功时 Naver 一个请求都不发（成功路径与改前完全相同）；
+     *     东财失败/被熔断跳过时，那 1 次请求本来也是花在必死的腾讯腿上，这里是等量替换。）
      *
      * 【可达性】`api.finance.naver.com/siseJson.naver` 从**中国大陆出口**（广州电信
      *   218.19.7.150）HTTP 200，**不需要 Referer**，普通浏览器 UA 即可（scout t3 §3-B 实测）。
@@ -1048,14 +1070,17 @@ object MktData {
      *     `m.stock.naver.com/api/stock/005850/basic` → `closePrice:"50,000"`、
      *     `localTradedAt:"2026-10-08T20:34:33+09:00"`（**20:34 KST**，远在 15:30 之后）。
      *   而东财/腾讯/Yahoo 取的是 **KRX 正规交易时段收盘竞价价（15:30 KST）**
-     *     （⚠ 这里是**收盘价口径的对照**，不是腿链：腾讯早已不在 kr 的腿上 —— 2026-10-10 t8 起
-     *       kr = [东财, Naver]；列腾讯/Yahoo 是因为当时的三源实测拿它们做过对照）
+     *     （⚠ 这里是**收盘价口径的对照**，不是腿链：腾讯早已不在 kr 的腿上；
+     *       腿链：2026-10-10 t8 起 [东财, Naver] → **2026-10-13 起 [Naver, 东财]**（用户裁定
+     *       「韩股就用 Naver」）；列腾讯/Yahoo 是因为当时的三源实测拿它们做过对照）
      *     （Yahoo `meta.regularMarketTime = 1791441002` = 2026-10-08 15:30 KST，三源同值 50300）。
      *   ⟹ **O/H/L 与东财逐位一致，C 系统性不同**：实测差 **0.1%~0.9%**
      *     （005850 最大 **0.71%**，005930 最大 **0.92%**，8/8 个交易日都不同）；
      *     成交量口径也差约 **2%**（东财 65310 vs Naver 66602，东财偏小）。
-     *   ⟹ 这是**兜底路径**的口径差，不是 bug：只在东财失败时才看得到，
-     *     且屏上来源名会显示 `Naver`（见 [vendorName] 的 `"NV"`），**不新增任何 UI 元素**。
+     *   ⟹ 这是**口径差，不是 bug**。2026-10-13 起 Naver 升为**主腿**（用户知情裁定
+     *     「韩股就用 Naver」）⟹ 上面这个 0.1%~0.9% 的差从此**常态可见**；
+     *     改前它是兜底路径差，只在东财失败时才看得到。
+     *     屏上来源名会显示 `Naver`（见 [vendorName] 的 `"NV"`），**不新增任何 UI 元素**。
      *
      * 【失败即"这条腿没有"】解析不到 ≥3 根就返回 `emptyList()` ⟹ `raceOk` 按既有口径
      *   判 `noData` 并给该腿记 20s 软熔断，文案走 t6 的三类体系，本函数不自己造文案。
@@ -1553,25 +1578,30 @@ private fun raceOk(
         val ty = symType(sym.trim().uppercase(Locale.US))
         if (ty == "cmdty" || ty == "gold" || ty == "silver") return emptyList()
         // 稿(可搜索:「韩股 = [腾讯, 东财]」)的原始顺序是 [腾讯, 东财]；本仓先后改成
-        //   [东财, 腾讯]（2026-10-07）→ **[东财, Naver]（2026-10-10 t8，见下）**。
-        // ⚠⚠⚠ 2026-10-10 **第二腿 腾讯 → Naver**（用户当天拍板「走 C + B」，本条是 B）。
-        //   【为什么换】腾讯对韩股 month/day **都只回 1 根**（scout t3 §3 实测，换 host 也一样）
-        //     ⟹ 永远过不了 `prep` 的 ≥3 根门槛 ⟹ 它占着第二腿的位置却**从不产出**，
-        //       东财一失败韩股就是**假无源**。
-        //   【为什么是 Naver】`api.finance.naver.com/siseJson.naver` 从**中国大陆出口**实测
+        //   [东财, 腾讯]（2026-10-07）→ [东财, Naver]（2026-10-10 t8）→
+        //   **[Naver, 东财]（2026-10-13 用户裁定「韩股就用 Naver」，主次对调）**。
+        // ⚠⚠⚠ 2026-10-13 **主腿 腾讯/东财 → Naver**（用户当天裁定；稳定性实测见下）。
+        //   【为什么换】用户实报韩股行情慢；本机实测东财韩股 0.16~0.26s、Naver 0.17~0.33s
+        //     **两端都不慢** ⟹ 慢源在「手机到东财」的路由/抖动上（单看本机无法定位手机端），
+        //     但顺序替补意味着韩股**每次先付东财的往返**，东财一抖就整屏等满超时。
+        //     把实测同样快、且连发 20/20 不限流的 Naver 放前面，把这条不确定路径挪到兜底位。
+        //   【稳定性实测(2026-10-13, tools/naver_soak1.py)】2 品种 × 日/月 × 5 连发 =
+        //     20/20 HTTP 200、行数全对（日 26 根/月 13 根），avg 0.39s、max 1.23s、零限流。
+        //   【为什么 Naver】`api.finance.naver.com/siseJson.naver` 从**中国大陆出口**实测
         //     HTTP 200、不需 Referer、日/周/月三档齐全、**有成交量**（scout t3 §3-B）。
         //     路线 A（恢复 Yahoo `.KS`）已被实测否决：大陆出口 403（Yahoo 停服大陆），别回头做。
-        //   【成本】**零增量**：`raceOk` 顺序替补、赢面即止 ⟹ 东财成功时 Naver 一个请求都不发；
-        //     东财失败时那 1 次本来也花在必死的腾讯腿上 ⟹ 等量替换，每品种**仍是最多 2 次**。
-        //     ⛔ 绝不要叠加成 [东财, Naver, 腾讯]（失败路径变 3 次，用户硬上限是 2 次）。
-        //   【口径代价】Naver 的**收盘价是盘后价**（20:34 KST），东财/腾讯是 15:30 KRX 收盘竞价价
-        //     （⚠ 腾讯在这句里是**收盘价口径的对照源**，不在 kr 的腿上 —— t8 起 kr = [东财, Naver]）
-        //     ⟹ C 系统性差 0.1%~0.9%、成交量差约 2%；O/H/L 逐位一致。完整说明与实测数字
-        //     见 `fetchNaver` 的注释。只在兜底时可见，来源名显示 `Naver`。
+        //   【成本】**零增量**不变：`raceOk` 顺序替补、赢面即止 ⟹ Naver 成功时东财一个请求都不发；
+        //     东财失败时那 1 次本来也花在必死的腾讯腿上 ⟹ 每品种**仍是最多 2 次**（硬上限）。
+        //     ⛔ 绝不要叠加成 [Naver, 东财, 腾讯]（失败路径变 3 次，用户硬上限是 2 次）。
+        //   【口径代价 · 从「兜底可见」升级为「常态可见」】Naver 的**收盘价是盘后价**（20:34 KST），
+        //     东财/腾讯是 15:30 KRX 收盘竞价价 ⟹ 现价/涨跌与东财口径系统性差 0.1%~0.9%、
+        //     成交量差约 2%；O/H/L 逐位一致。完整说明与实测数字见 `fetchNaver` 的注释。
+        //     来源名显示 `Naver`（既有 "NV" 映射，零 UI 改动）。不满意可回退：对调两行即回到
+        //     2026-10-10 的 [东财, Naver]，注释历史都在。
         //   ⚠ 腾讯腿**没删**：它仍是 A 股/港股/美股的腿（见下方分支），只是不再占韩股第二腿。
         if (ty == "kr") return listOf(
-            srcKey("东财", "kr") to { fetchEastmoney(sym, tf, count, EM_TIMEOUT_MS) },
-            srcKey("Naver", "kr") to { fetchNaver(sym, tf, count) }
+            srcKey("Naver", "kr") to { fetchNaver(sym, tf, count) },
+            srcKey("东财", "kr") to { fetchEastmoney(sym, tf, count, EM_TIMEOUT_MS) }
         )
         // ⚠⚠⚠ 2026-10-04 **A 股单腿走腾讯**。
         // 【为什么不竞速】`fetchBaidu` 的白名单是 `ctype != "hk" && ctype != "stock" → return emptyList()`，
@@ -1579,6 +1609,17 @@ private fun raceOk(
         //   而且 A 股只有一条腿，竞速没有意义 —— 单腿直接省掉一次请求。
         if (ty == "ashare") return listOf(
             srcKey("腾讯", "ashare") to { fetchTencent(sym, tf, count, 8000, maxBars) }
+        )
+        // ⚠⚠ 2026-10-13 用户裁定「对齐全量分红前复权」：美股腿 **腾讯 → 东财**（首腿）。
+        //   【实测依据 tools/em_tlt_probe1_out.txt】东财 fqt=1 = 深分红前复权：TLT 2023-10 低
+        //     72.527 对上用户参照图的 72.52、2021-12 高 130.007 对上 129.96、现价 78.05 与腾讯
+        //     一致（前复权不改现价）；而腾讯 fqkline 的 qfq 历史偏浅（同月 82.42/146.94）
+        //     ⟹ 「哪个月最低」排序都被改写。坑位保持**最多 2 次**硬上限：东财失败才投腾讯。
+        //   ⚠ 百度退出美股腿：与腾讯同属浅复权，且 2 腿上限必须让位（百度曾为首腿，历史见 git）。
+        //   ⚠ 连带：K线/支撑/腰斩/步长随深复权序列一次性下移，属预期行为不是回归。
+        if (ty == "stock") return listOf(
+            srcKey("东财", ty) to { fetchEastmoney(sym, tf, count, EM_TIMEOUT_MS) },
+            srcKey("腾讯", ty) to { fetchTencent(sym, tf, count, 8000, maxBars) }
         )
         return listOf(
             srcKey("百度", ty) to { fetchBaidu(sym, tf, count, maxBars) },
@@ -2757,6 +2798,10 @@ class StepR(val v: Double?, val why: String) {
         }
 
         fun rateOf(cur: String): Double? = if (cur == "USD") 1.0 else rates[cur]
+        // ⚠ 2026-10-13 用户裁定：汇率断供时**用旧汇率照折 + 行尾注明**（不藏行、不静默）。
+        //   staleness 与 ensure() 的 TTL 同一判据；rateDate = 最近一次成功拉取的日期（fxText 同源）。
+        fun rateStale(): Boolean = loaded && (System.currentTimeMillis() - ts >= TTL)
+        fun rateDate(): String = dateStr
 
         // 缓存键尾缀:美元=1,无汇率=0,有汇率用去尾零十进制串(7.844/1355.05)
         fun keyRate(sym: String): String {
@@ -3450,6 +3495,9 @@ class StepR(val v: Double?, val why: String) {
         // 支撑位(照稿子v3.3):首沿从高价行往低价行扫,行量相对运行最高腰斩即第一支撑;
         // 后继沿:抛弃旧峰,下方须先出现爬升再取新峰,峰下腰斩为下一支撑;
         // 守卫防越界,行0可入选。返回行中点价数组(现价过滤由调用方做)。
+        // ⚠ 2026-10-13 用户裁定「死路续扫」,见下方循环内注释:第二支撑由「第二次腰斩
+        //   落在哪」决定,峰只是腰斩的参照物;收口后峰下无腰斩 ⟹ 续扫更深的峰,
+        //   而不是终止整条链。
         val supRows = mutableListOf<Int>()
         var smax = -1.0
         var b = -1
@@ -3467,6 +3515,7 @@ class StepR(val v: Double?, val why: String) {
             var m2row = -1
             var climbed = false
             var prev = rv[b]
+            var nxt = -1
             for (i in b - 1 downTo 0) {
                 if (rv[i] > prev) climbed = true
                 prev = rv[i]
@@ -3477,17 +3526,40 @@ class StepR(val v: Double?, val why: String) {
                     (i == 0 || rv[i - 1] <= rv[i])
                 ) {
                     // 稿740死角修复:climb后第一个显著局部峰收口(MU月线30:732.49/334.51)
-                    break
+                    //
+                    // ⚠⚠ 2026-10-13 **用户裁定「死路续扫」**:收口后先在这个峰下找腰斩;
+                    //   **找不到(空手而归)不再终止整条链**,继续往下找下一个(更深)的峰再试。
+                    //   【语义(用户原话口径)】第二支撑由「第二次腰斩落在哪」决定,峰只是
+                    //   腰斩的参照物:最高峰上方若有次峰、且次峰能腰斩出一根柱,就用次峰的
+                    //   腰斩;最高峰若是底部量墙、墙下无物、且没有任何次峰能腰斩出结果 ⟹
+                    //   不显示第二支撑(用户接受这个空档)。
+                    // 【实测(腾讯月线30,tools/vpvr_sim2.py)】AMD月线截图 [13]→[13,0]
+                    //   (最下面那根柱子拿到第二支撑线);MU [13,5] 732.86/335.04 不变;
+                    //   NFLX [19,13,9] 不变;NVDA/TSLA 不变;AMD n=30 多补一条深位第二支撑。
+                    // 【为什么不是「显著性门槛」】曾试过给收口加 m2>=K*全场最高 的门槛,
+                    //   实测把 MU 23% 量的好峰、NFLX 2% 量的好峰一并拦掉(坏峰9%夹在两者
+                    //   之间,任何比例阈值切不开),第二支撑整体归零 ⟹ 当场否决。
+                    for (j in m2row - 1 downTo 0) {
+                        if (rv[j] <= m2 * 0.5) {
+                            nxt = j
+                            break
+                        }
+                    }
+                    if (nxt >= 0) break   // 峰下腰斩命中 → 第二(三…)支撑
+                    // 空手而归 → 不 break,继续下行找更深的峰(死路续扫)
                 }
             }
             if (m2row < 0) break
-            b = -1
-            for (i in m2row - 1 downTo 0) {
-                if (rv[i] <= m2 * 0.5) {
-                    b = i
-                    break
+            if (nxt < 0) {
+                // 收口从未触发(如一路走到底)时,仍按运行最高峰收一次尾
+                for (i in m2row - 1 downTo 0) {
+                    if (rv[i] <= m2 * 0.5) {
+                        nxt = i
+                        break
+                    }
                 }
             }
+            b = nxt
         }
         return Profile(rv, ru, rd, up, dn, lo, hi,
             lo + ww * (poc + 0.5), lo + ww * (up + 1), lo + ww * dn,
