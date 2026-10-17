@@ -405,17 +405,27 @@ class MktView @JvmOverloads constructor(
         val bw = max(1f, cw * 0.6f)
 
         // K线
+        // ⚠ 2026-10-17 用户当面裁定：**涨跌实体一律 FILL（全实心）** —— 这是对
+        //   方向 B §6.9 / M9「涨空心 / 跌实心」的**有意偏离**（用户反馈「空心不好看」）。
+        //   沿革：2026-10-16 t52 曾按稿把涨改成空心；本次按要求改回两态全实心。
+        //   代价（已登记，别当没发生）：失去「空心 / 实心」这重**不依赖颜色**的第二编码，
+        //   涨跌回归**只由颜色承载**——正是方向 B §3.10 与设计系统 §7.2 原本要避免的一点。
+        //   影线（wick）恒为 STROKE、两态同色；实体：两态皆 FILL。
+        //   ⚠ 颜色**一字未动**：涨 colorTeal（绿）/ 跌 colorRed（红）—— 语义硬约束，不许翻转。
         ks.forEachIndexed { i, k ->
             val cx = chartX + i * cw + cw / 2
-            val col = if (k.c >= k.o) upC else dnC
+            val up = k.c >= k.o
+            val col = if (up) upC else dnC
             paint.color = col
             paint.strokeWidth = max(1f, cw * 0.15f)
+            paint.style = Paint.Style.STROKE
             c.drawLine(cx, y(k.h), cx, y(k.l), paint)
             val yO = y(k.o)
             val yC = y(k.c)
-            paint.style = Paint.Style.FILL
-            c.drawRect(cx - bw / 2, min(yO, yC), cx + bw / 2,
-                min(yO, yC) + max(1f, abs(yC - yO)), paint)
+            val top = min(yO, yC)
+            val bodyH = max(1f, abs(yC - yO))
+            paint.style = Paint.Style.FILL   // 2026-10-17 用户裁定：涨跌两态全实心（见上方登记）
+            c.drawRect(cx - bw / 2, top, cx + bw / 2, top + bodyH, paint)
         }
 
         // t106 ⑦ VPVR 剖面:左侧独立一列、灰色单色。t107 ⑤:柱子最右不越过间隙。
@@ -452,7 +462,13 @@ class MktView @JvmOverloads constructor(
             // t218 修回归: t215 给非高亮档乘了 alpha=150, 而 colorBorder 在浅色主题下本就浅,
             //   乘完几乎等于白, 整块剖面在真机上消失(截图才发现, dump 发现不了 —— Canvas 没有 view 节点)。
             // 稿里本就没有这层透明度, 去掉它不是"调回我的偏好", 是回到稿。
-            paint.color = if (i in supBins) attrColor("colorPrimary") else attrColor("colorBorder")
+            // ⚠ 2026-10-16 t52 · 方向 B §6.9 的剖面配方是「基色 --border-strong + opacity .55、
+            //   命中柱 --accent-fill + opacity 1」。这里**只落色、不落 opacity**，理由是本文件
+            //   t218 的血泪记录（见上面那段墓碑）：非高亮档乘 alpha 会让整块剖面在浅色下
+            //   「几乎等于白」而消失。方向 B 的基色由 v1 的 colorBorder 换成 **colorBorderStrong**
+            //   （浅 #C6D0DC / 深 #3A434F）—— 它本身比 0.55 透明后的等效色更清楚，视觉档位一致
+            //   而不再冒「截图才发现」的风险。命中柱换 **colorAccentFill**（= --accent-fill）。
+            paint.color = if (i in supBins) attrColor("colorAccentFill") else attrColor("colorBorderStrong")
             paint.alpha = 255
             c.drawRect(profX, yy + 1, profX + max(if (w > 0) 1f else 0f, w),
                 yy + 1 + max(1f, rh - 2), paint)
