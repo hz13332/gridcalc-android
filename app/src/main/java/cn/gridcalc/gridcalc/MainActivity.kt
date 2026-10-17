@@ -30,11 +30,21 @@ import kotlin.math.pow
  *    维持保证金率：按杠杆查表 MMR_KNOWN（币安实测），见 mmrOf。
  *
  * ⚠⚠ 关键背景（**用户自己指出来的**）：维持率不是无用参数，它是**杠杆的天花板本身**。
- *    引擎有硬门 `杠杆 × 维持率 ≥ 1 ⟹ 拒绝计算`。
- *    原先维持率写死 1%(0.01) ⟹ 杠杆必须 < 100 ⟹ 上一轮开放的 150 **够不着**，
- *    填 100 以上会被直接拒绝。
- * ⟹ 改为**由杠杆反推**（用户选定方案）：`mmr = 1/杠杆 × 0.9`，
- *    于是 `杠杆 × mmr ≡ 0.9 < 1` **恒成立**，杠杆填到 150 也算得出。
+ *    引擎有硬门 `杠杆 × 维持率 ≥ 1 ⟹ 拒绝计算`（OverLeverageException，见其抛出点）。
+ *
+ * ⚠⚠ 2026-10-17 t15 **更正本段**（只改注释、逻辑一字未动）——
+ *    原文写的是「⟹ 改为**由杠杆反推**（用户选定方案）：`mmr = 1/杠杆 × 0.9`，
+ *    于是 `杠杆 × mmr ≡ 0.9 < 1` 恒成立」。**那是已被替换掉的旧方案，与实现不符**：
+ *    真正在用的是下面 `MMR_KNOWN` 那张**阶梯表**（币安实测档位），
+ *    `mmrOf()` 按「≤x 的最大档位边界」取整档、**不插值**。
+ *    ⚠ 这条过期注释**已经把人带偏过一次**：t12 把它当成「OverLeverage 不可达」的
+ *      数学证明引用，被 t13 实测推翻。故改准以免继续误导。
+ *
+ * ⚠ 现在真正的「天花板」在哪：`LEV_MAX = 150.0`（见其声明处）把输入钳到 150，
+ *    而 150 档的维持率是 **0.4%** ⟹ `max(杠杆 × 维持率) = 150 × 0.004 = 0.6 < 1.0`，
+ *    所以那道硬门**永远够不着**、`OverLeverageException` 实际不可达 ——
+ *    原因是「杠杆被钳到 150 + 150 档只有 0.4%」，**不是**上面那个 `1/杠杆 × 0.9`。
+ *    ⚠ 若日后放开 `LEV_MAX` 或改动档位表，这个结论会变 —— 改表时请一并复核本段。
  *
  * ⚠ 这**偏离稿**：稿 L597-609 有 fee / mmr 两个输入，稿 L783-784 有设置屏只读回显。
  *    是产品裁定，不是移植对齐。
@@ -224,6 +234,14 @@ private lateinit var calcIdleHint: TextView
     private var lkCap: Double? = null // 目标爆仓价上限(sup2;×解除后同对不再回写)
     private var lkPh: Double? = null // 上次由机构目标均价写入的最高价(同值不扰手改)
     private lateinit var statLiqCard: View // 爆仓卡(超上限画红框)
+    /**
+     * t9：「爆仓价」格的**原始面**（XML 的 `@drawable/calc_tile_bg`）。
+     * 为什么需要它：v1 的 `statLiqCard.background = null` 本意是「清掉 done 态标的红框」，
+     * 却把这张格的面**永久**清掉了（`background = null` 是不可逆的，XML 面回不来）。
+     * bind 期先存下实例，idle 路径改用它还原 ⟹ 红框照清、面照在。
+     * ⚠ 必须在那几处 `background = null` **之前**取（见 bindViews 里紧跟 findViewById 的那行）。
+     */
+    private var statLiqBg0: android.graphics.drawable.Drawable? = null
     private lateinit var statTiles: View   // t153 ⑩:四个 tile 的横向容器(队长在 XML 加的 id)
     private lateinit var statCap: View // 目标上限行(默认收起)
     private lateinit var statCapv: TextView
@@ -384,7 +402,14 @@ fun clearCalcInputs() {
             statVals["pos"]!!.text = "%.4f".format(rec.optDouble("pos"))
             statVals["sell"]!!.text = fmt(rec.optDouble("sell"))
             showErr(null)
-            statLiqCard.background = null
+            // ⚠⚠ 2026-10-17 t15 · **回填态也要有面**（t13 新发现 ⑨）。
+            //   这里原是 `statLiqCard.background = null`：回填（restoreCalc）走的是 done 语义，
+            //   于是刚回填完那张格又「裸在卡白上」，与其余三格不一致 —— 与 t12 修的
+            //   onCalc 成功路径是**同一处病灶的第二现场**。
+            //   改为还原 bind 期存下的原始面（[statLiqBg0]），与 idle / onCalc 两条路径同一手法。
+            //   ⚠ 回填态不重算、没有 over 判定，所以这里**不需要** over 分支；
+            //     `markLiqBad()` 与它的红框逻辑**一字未动**。
+            if (::statLiqCard.isInitialized && statLiqBg0 != null) statLiqCard.background = statLiqBg0
             statVals["liq"]?.setTextColor(attrColor("colorInk"))
             // ⚠ 2026-10-05 置位「刚回填」：紧随其后的那次自动重算（步长阈值到位触发）
             //   就不该把「已保存」翻成「● 未保存」。见 [justRestored]。
@@ -545,10 +570,20 @@ fun clearCalcInputs() {
      * 都是**纯白**(themes.xml L31 / L66) ⟹ 深色下 thumb 渲染成 #FAFAFA。
      * 照稿改取 `draftOnFill()`: 深色 → 稿 L99 的 oklch(0.160 0.012 265) = **#0B0D13**。
      * **没有改 colorOnPrimary 本身** —— 它是 9 处共享 token, 理由见 draftOnFill() 的注释。
+     *
+     * 2026-10-16 t50 · 方向 B §2.4-3.7：thumb 两态改吃 t49 落的 token ——
+     *   开 = `colorOnPrimary`（on-accent，两套主题都是 #FFFFFF）、
+     *   关 = `colorThumbOff`（= --thumb-off，浅 #333C48 / 深 #C3CBD6）。
+     *   这取代了 t10 的「局部取 draftOnFill」：那一处是 v1 稿的 onFill 口径（深色要深墨），
+     *   而方向 B 的开关是「主色实底 + 白滑块」，白压 colorAccentFill 实底浅 5.87:1 / 深 4.80:1
+     *   都达标（t49 已复算）⟹ 不再需要 per-theme 取深墨的特例。
+     *   `draftOnFill()` 函数**保留**：计算屏 paintSide()（:2451）仍在用，属 F-5 的另一处站点。
+     * ⚠ 轨道四态（开 / 开+按压 / 关 / 关+按压）在 `switch_track.xml` 里，本函数**只管 thumb** ——
+     *   「同一件事只留一个主人」这条不变。
      */
     private fun t211PaintSwitch(sw: android.widget.Switch, on: Boolean) {
         sw.thumbTintList = android.content.res.ColorStateList.valueOf(
-            if (on) draftOnFill() else attrColor("colorFaint"))
+            if (on) attrColor("colorOnPrimary") else attrColor("colorThumbOff"))
         // t10 (2026-10-02) ① **删掉 trackTintList**: 轨道两态改由 R.drawable.switch_track
         // 这个 selector 自带(根因见该文件头)。改前这里设的是不带 alpha 的实色 colorPrimary,
         // 真机却渲染成 ~30% 不透明的淡紫; 而同一 API 的 thumbTintList 是生效的
@@ -971,18 +1006,40 @@ fun clearCalcInputs() {
             String.format(java.util.Locale.US, "%,.2f", kotlin.math.abs(v))
 
 
-    /** 稿 L662 {st!=='idle'&& ( … )}: idle 时结果区整块不渲染。 */
-    private fun t227SetResultArea(vis: Boolean) {
+    /**
+     * 结果区的生灭开关。
+     *
+     * ⚠⚠ 2026-10-16 t5 · **用户授权：idle 态也显示结果整卡**（本条更新原 t154/t227 的
+     * 「未算时整块不显示」契约 —— 那条按的是 v1 稿 L662 `{st!=='idle'&& ( … )}`）。
+     * 依据是**方向 B 稿子源码**（判据源）：`design\四屏视觉改版\方向-B\四屏-计算页.html`
+     *   · `:330` `.calc-result`（结果卡）在 idle 态**照样渲染**，里面 hero「净收益」+`—`、
+     *     四格四个 `—` 全在；idle 与 done 共用同一组节点，靠 `data-calc-state` 换装；
+     *   · idle 真正隐藏的只有 `:161` `.calc-collapse`（折叠口）与 `:194` `.calc-panel`（两个展开面板）。
+     * ⟹ 参数拆成两档：结果**卡**（四格 + 其上边线）idle 也 VISIBLE；
+     *    **折叠口那一行**只在 done 态出现。
+     *
+     * @param vis 结果卡（四格 + 其上边线）是否可见
+     * @param collapseRow 折叠口那一行（两个口 + ladderNote + 行 + 上边线）是否可见；
+     *        默认跟 [vis] 走 ⟹ 原有调用点（onCalc / OverLeverage）行为一字未变。
+     */
+    private fun t227SetResultArea(vis: Boolean, collapseRow: Boolean = vis) {
         val v = if (vis) View.VISIBLE else View.GONE
         if (::statTiles.isInitialized) statTiles.visibility = v
-        // t28 B4: 四格的上边线与 statTiles 同一生灭(稿 L675 只在 !over 渲染四格)
-        if (::statTilesTopline.isInitialized) statTilesTopline.visibility = v
-        if (::moreToggle.isInitialized) moreToggle.visibility = v
-        if (::detToggle.isInitialized) detToggle.visibility = v
-        if (::ladderNote.isInitialized) ladderNote.visibility = v
+        // ⚠ 2026-10-17 t9：`stat_tiles_topline` **按稿退役，恒 GONE** ——
+        //   稿的结果卡内没有这条全宽 1dp 发丝（`theme.css:431-438` 的卡片组只给
+        //   bg-surface + r-card + elev-1，卡内分段一律靠 bg-surface-2 的内嵌面）；
+        //   而 t9 把四格并进结果卡后，它连「卡外分段」的语义也没了、还落在**卡内**，双重不符。
+        //   ⟹ 节点与绑定**保留**（MainActivity 有 findViewById + 三处赋值，删节点会断绑定 ——
+        //     本仓 t298/t316 的既有教训），渲染层面等同移除。
+        //   ⚠ 连带结果（登记）：done 态这条发丝随之消失。它是「合并」的**必然结果**，不是超范围改动。
+        if (::statTilesTopline.isInitialized) statTilesTopline.visibility = View.GONE
+        val c = if (collapseRow) View.VISIBLE else View.GONE
+        if (::moreToggle.isInitialized) moreToggle.visibility = c
+        if (::detToggle.isInitialized) detToggle.visibility = c
+        if (::ladderNote.isInitialized) ladderNote.visibility = c
         // t23: 折叠口那一行**本身**与它的上边线也要一起收 —— 见 page_calc.xml 同行注释。
-        if (::toggleRow.isInitialized) toggleRow.visibility = v
-        if (::toggleRowTopline.isInitialized) toggleRowTopline.visibility = v
+        if (::toggleRow.isInitialized) toggleRow.visibility = c
+        if (::toggleRowTopline.isInitialized) toggleRowTopline.visibility = c
         // t351 B-5 窄边界(子 agent 3f483577 报的): 上面只收 statTiles / 两个折叠口 / ladderNote,
         // **不收展开区本体** ⟹ 先点开「展开更多」或「网格明细」、再改参数回到 idle 时,
         // 折叠口已经收起、内容区却还 VISIBLE —— 与「结果区整块不显示」(稿 L662) 矛盾。
@@ -992,13 +1049,20 @@ fun clearCalcInputs() {
 
     private fun idle() {
     t304Note(null)   // t304: 回到 idle 态就别再挂着改写提示
-        // t141:稿 L662 st!=='idle' —— 未算时**整块不显示**,不是显示一个占位破折号
+        // ══ 2026-10-16 t5 · **用户授权：idle 态对齐方向-B 稿子** ═══════════════════════════
+        // 本条推翻 t141 的「未算时**整块不显示**,不是显示一个占位破折号」—— 那条按的是 v1 稿。
+        // 方向 B 稿（判据源）的 idle 态**照样渲染结果整卡**，只把值换成占位 `—` 并染成 faint：
+        //   `方向-B\四屏-计算页.html:334` hero 的 DOM 字面量就是 `—`（不是空串）；`:121` idle 字色 ink-faint；
+        //   `:342/:346/:350/:354` 四格四个 `—`；`:145` idle 四格字色 ink-faint；
+        //   `:129` idle 只藏 hero 副行（本页 hero_sub 恒 GONE）；`:161/:194` idle 藏折叠口与展开面板。
+        // ⚠ 本次**只放行 idle 态**：done 态的数字 / 涨跌色 / 展开态 / 各可见性契约一个字未动
+        //   （faint 的还原见 onCalc 成功路径那行 —— 不还原就会把占位色带进 done）。
         // t143:这两个是 lateinit View,绑定在后面的 bindViews 块里;
         // idle() 会先于绑定被调用(TextWatcher),未初始化就访问会抛
         // UninitializedPropertyAccessException。**这里必须守卫**,
         // 否则异常被 L1334/L1342 的 catch(Throwable){} 吞掉,
         // 表现就是「回车按了没反应、logcat 什么都没有」—— t121 同款。
-        if (::calcHeroBox.isInitialized) calcHeroBox.visibility = View.GONE
+        if (::calcHeroBox.isInitialized) calcHeroBox.visibility = View.VISIBLE
         if (::calcIdleHint.isInitialized) {
             calcIdleHint.visibility = View.VISIBLE
         } else {
@@ -1009,22 +1073,47 @@ fun clearCalcInputs() {
         if (::calcOverline.isInitialized) calcOverline.visibility = View.GONE
         if (::calcOverlineTopline.isInitialized) calcOverlineTopline.visibility = View.GONE
         // t153 ⑩:回到未算态要恢复显示(否则 over 之后改任一参数,四格一直是空的)
-        // 改前这里是 VISIBLE —— 稿 L662 要求 idle 整块不渲染, 改走统一开关。
-        t227SetResultArea(false)
-        hero.setTextColor(attrColor("colorInk"))
-        hero.text = ""
+        // ⚠ 2026-10-16 t5:改前这里传 false（整块收掉，因为 v1 稿 L662 要求 idle 不渲染结果区）。
+        //   现在结果**卡**在 idle 也显示，只有**折叠口那一行**按稿隐藏
+        //   （稿 :161 `[data-calc-state="idle"] .calc-collapse{display:none}`）
+        //   ⟹ 第二个实参 collapseRow=false，与 done 态的 t227SetResultArea(true) 区分开。
+        t227SetResultArea(true, collapseRow = false)
+        // 稿 :121 —— idle 的 hero 字色 = ink-faint（本页 colorFaint）；`—` 是稿里的 DOM 字面量占位。
+        hero.setTextColor(attrColor("colorFaint"))
+        hero.text = "—"
         heroSub.setTextColor(attrColor("colorPrimary"))
         heroSub.text = ""
-        statVals.values.forEach { it.text = "—" }  // t119 ① 同上
+        // t119 ① 同上；⚠ 2026-10-16 t5：四格的**字色**也要跟着换 faint（稿 :145
+        //   `[idle] .calc-tile__value{color:ink-faint}`）。其中 grids / eqb / pos / sell / cost / ccy
+        //   六格的**唯一**颜色来源是 XML 的 ?attr/colorInk（Kotlin 里没有第二处赋值）
+        //   ⟹ 这里染了就必须在 onCalc 的成功路径统一还原，否则 faint 会跟着进 done 态。
+        val faint = attrColor("colorFaint")
+        statVals.values.forEach {
+            it.text = "—"
+            it.setTextColor(faint)
+        }
         detSum.setTextColor(attrColor("colorSub"))
         detSum.text = "明细会在计算后显示"
         lastLines = -1   // t167:与 detSum 同处一块;无明细就不报行数
         t229SyncLadderNote()
         rows.removeAllViews()
-        // 稿resetIdle:清报错行+爆仓卡红框(.stat.bad remove),爆仓价值色回墨
+        // 稿resetIdle:清报错行+爆仓卡红框(.stat.bad remove)
         showErr(null)
-        if (::statLiqCard.isInitialized) statLiqCard.background = null
-        statVals["liq"]?.setTextColor(attrColor("colorInk"))
+        // ══ 2026-10-17 t9 · **「爆仓价」格按稿修（评审 t8 §9-F1）** ══════════════════════════
+        // 稿 `方向-B\四屏-计算页.html:132-140` 把四格写成**同一类** `.calc-tile`
+        // （底 = bg-surface-2、无阴影），`:145` 要求 idle 四格**值字色一律** ink-faint。
+        // 改前这里两行把上面 forEach 刚做好的两件事各**反着**做了一遍（v1 的 resetIdle 语义）：
+        //   ① `background = null` 本意是「清掉 done 态标的红框」，但它把 XML 的 `calc_tile_bg`
+        //      面**一并永久清掉** ⟹ idle 该格裸在画布上（深色下 canvas 与 surf2 差 16/19/23 级，看得见）。
+        //      改为**还原原始 Drawable 实例**（bind 期存下的 [statLiqBg0]）：红框照样清得掉、面也回来了。
+        //      ⚠ 用存下来的实例而不是复述资源名 —— 与 save_btn 的 `saveBtnBg0` 同一手法。
+        //   ② `statVals["liq"]?.setTextColor(colorInk)` 把刚染的 faint **覆盖回 ink** ⟹ 删掉；
+        //      上面的 forEach 已经把它染成 faint，正是稿要的。
+        // ⚠ **只动 idle 路径**：done 的 ink/red 规则（`:1390` 的 liq 红/ink、roe 的 colorTeal、
+        //   grids/eqb 的 colorInk）与 [markLiqBad] 的红框逻辑**一字未动**；
+        //   done 路径的 `statLiqCard.background = null`（onCalc 成功路径）也**保留原样** ——
+        //   本次验收要求 done 态契约不变，那张格在 done 仍无面（**登记残留**，见 t9 报告 §7）。
+        if (::statLiqCard.isInitialized && statLiqBg0 != null) statLiqCard.background = statLiqBg0
         // §1.1 失败/清场场景:待存结果作废,按钮回disabled
         saveIdle()
     }
@@ -1320,8 +1409,29 @@ private fun autoGridN(pl: Double, ph: Double): Int? {
             // ⚠ 旧行为（idle + 净收益「--」+ 其余结果全部归零 + 藏掉四格与折叠口 + return）
             //   已按用户裁定删除：爆仓价高于目标值是**结论**不是输入非法，归零等于把结论藏起来。
             //   完整理由见上方 liqOverCap 处的注释。
-            statLiqCard.background = null
-            statVals["liq"]!!.setTextColor(ink)
+            // ⚠⚠ 2026-10-17 t12 · **done 态「爆仓价」格补回 surface-2 灰面**（用户拍板）。
+            //   改前这里是**无条件** `statLiqCard.background = null` —— 它把 XML 的
+            //   `calc_tile_bg` 面清掉，于是 done 态那张格裸在卡白上，与其余三格不一致
+            //   （稿 `:132-140` 把四格写成同一类 `.calc-tile`，底一律 bg-surface-2）。
+            //   改为：**正常态还原原始面**（bind 期存下的 [statLiqBg0]，与 idle 路径同一手法）。
+            //   ⚠⚠ **红框分支保持原样、且不再被抹掉** —— 这是本次顺带修掉的一处**既有 bug**：
+            //     上面 L1390 的 [markLiqBad] 刚把红框画好（透明底 + 红描边），旧代码在这一行
+            //     又无条件 `= null` 把它抹了 ⟹ **红框从来没显示过**，与本文件 L1380-1381 自己写的
+            //     「只把三处染红提醒：爆仓价数字、**爆仓卡边框**、顶部 StateLine」直接矛盾。
+            //     现在 over 分支**不碰 background** ⟹ 红框按既有逻辑（markLiqBad）显示出来。
+            //   ⚠ [markLiqBad] 本体（:2000 附近）与它的 `:1974` 红框逻辑**一字未动**。
+            if (!liqOverCap && ::statLiqCard.isInitialized && statLiqBg0 != null) {
+                statLiqCard.background = statLiqBg0
+            }
+            // ⚠⚠ 2026-10-16 t5 · **把 idle 的 faint 占位色还原成墨色**。
+            //   idle() 现在把七个 statVals 全部染成 colorFaint（稿 :145 idle 四格字色）。
+            //   其中 grids / eqb / pos / sell / cost / ccy 六格**没有别的赋值点** ——
+            //   它们的颜色本来就只来自 XML 的 ?attr/colorInk ⟹ 不在这里还原，
+            //   点一次「计算」出来的 done 态会带着 faint 的占位色，即 done 态回归。
+            //   ⚠ 必须放在 roe / liq 两格各自的赋值**之前**：那两格下面会覆盖成
+            //     涨跌色（roe）或墨色/红（liq），顺序反了会把它们的颜色冲掉。
+            //   （原先这里那行 `statVals["liq"]!!.setTextColor(ink)` 被本行覆盖，已合并删除。）
+            statVals.values.forEach { it.setTextColor(ink) }
             // t141:值不带 USD(稿里 USD 在行内单位/见底权益副标);减号用 U+2212 真减号
             if (::calcHeroBox.isInitialized) calcHeroBox.visibility = View.VISIBLE
                 t227SetResultArea(true)
@@ -2260,144 +2370,112 @@ private fun recLoad() {
     }
 
     /**
-     * t130:按稿 L245-247 重写。
-     * 文字:active `fontWeight 600`;未选中 `400` + `--ink3`。
-     * 顶条:active 主色;未选中透明。
-     * ⚠️ App 的 attr 里**没有 `colorInk3`**,最接近的是 `colorFaint`(最浅文字色),
-     *    故未选中用 `colorFaint` —— 语义对应稿的 `--ink3`。见 notes 的偏差说明。
+     * t130 按稿 L245-247 写；2026-10-16 t59 换成**方向 B §2.4-3.1** 的形态（**执行用户改判**）。
      *
-     * ⚠️ t41 修正:选中态字色**不是四个一律 `--ink`**,稿是**分 tab 的**。逐字:
-     *   稿 `color: k==='list' ? (cur===k?'var(--ac)':'var(--ink3)')
-     *                      : (cur===k?'var(--ink)'  :'var(--ink3)')`
-     *   ⟹ **选中「自选」= 紫 `--ac`**(与它自己的顶条同色,表示「你在这」),
-     *      行情/计算/设置选中 = `--ink`。
-     * 改前这里对四个 tab 都给 `ink`,自选页选中态与稿不符。
-     * ⚠️ 顶条本来就是主色、不动 —— 变的只有**文字**那一处。
+     * ⚠⚠ **裁定沿革（本仓惯例：裁定写进注释 ⟹ 改判必须写清，否则后人照旧注释改回去）**
+     *   · 2026-10-03 用户裁定①：选中态**字色统一成黑**
+     *     （原话「为什么字是紫色的，其他的字都是黑色的」→「统一成黑」）
+     *     ⟹ 当时四个 tab 选中字色一律 `colorInk`。
+     *   · 2026-10-03 用户裁定②：顶条由「tab 宽 × 44% 居中」改为**整条铺满的上划线**
+     *     （原话「为什么行情上面的紫色条不一样，**我需要覆盖在上划线的形式**」）。
+     *   · **2026-10-16 用户明确改判为方向 B 的「主色浅底药丸 + 主色字」** ⟹
+     *     裁定②的「整条上划线」**已失效**：药丸取代上划线，四个 `tab_*_bar` 改当药丸
+     *     （底 = `@drawable/tab_pill`，几何在 activity_main.xml）；
+     *     裁定①的「统一成黑」也被取代：选中字色 = `colorAccentText`（方向 B 的 accent）。
+     *   ⟹ **上面两条 2026-10-03 的注释描述的是历史、不是现在的行为**，别照它们改回去。
      *
-     * ⚠⚠ 2026-10-03 **用户裁定统一成黑**（原话：「为什么字是紫色的，其他的字都是黑色的」
-     *   → 「统一成黑」）。现在四个 tab 选中态字色**一律 `colorInk`**，
-     *   `primary` 只剩给**顶条**用（顶条本身四个 tab 都是主色，没动过）。
-     *   ⟹ 这**偏离稿** v2.html:846-847 那个 `k==='list'` 三元分支。
-     *   ⚠ 上方那段 t41 的说明**描述的是稿的行为、不是现在的 App 行为**，别照它改回去。
-     *   ⚠ 回稿：把 `set(tabFavLabel, ..., "fav", ink)` 的 `ink` 换回 `primary` 一处即可。
+     * 现在的取值（方向 B §2.4-3.1 逐条）：
+     *   选中 = 底 `tab_pill`（`colorAccentSoft` + r999 药丸）+ 字 `colorAccentText` + 字重 600(BOLD)
+     *   未选 = 无底 + 字 `colorFaint`（= `--ink-faint`，方向 B 的第三档墨色）+ 400
+     *   药丸的**几何**（宽 = tab 宽 − 16dp、高 32dp、与标签同心）全在 `activity_main.xml`；
+     *   本函数只决定**哪一项选中**，底 / 字色 / 字重三件一处给（「同一件事只留一个主人」）。
+     *   ⚠ 字重 600：本仓 minSdk 26，`Typeface.create(…, 600, …)` 是 API 28+
+     *     ⟹ 按 FavPanel.kt:447-450 的既有处置统一退化为 `Typeface.BOLD`(700)。
+     *
+     * ⚠ t41 那段「选中自选 = 紫 `--ac`、其余 = `--ink`」是**稿的行为**（v2.html:846-847 的
+     *   `k==='list'` 三元分支），2026-10-03 起就不是 App 行为；2026-10-16 改判后四个 tab
+     *   统一走 accent，与稿的「自选特殊」仍不同 —— **用户裁定优先于稿**。
+     *
+     * ⚠ 底栏标签字号**保持 `fs_title`(16sp)**：这是 t416 依 v1 稿 L246 `fontSize:T.title`
+     *   特意恢复的（并删掉了 t102 那个压成 12sp 的运行期覆盖）。方向 B 原型的底栏标签是
+     *   `--fs-note`(12px) —— 那是**另一层改动**（会推翻 t416），不在本任务范围，已登记。
      */
     private fun paintTabs() {
-        val ink = attrColor("colorInk")
-        val ink3 = attrColor("colorFaint")
-        val primary = attrColor("colorPrimary")
-        /** @param sel 选中态字色。稿对不同 tab 给不同值,见上方注释。 */
+        val accent = attrColor("colorAccentText")
+        val faint = attrColor("colorFaint")
+        /** @param sel 选中态字色。2026-10-16 起四个 tab 一律 accent（见上方裁定沿革）。 */
         fun set(l: TextView, b: View, key: String, sel: Int) {
             val on = tab == key
-            l.setTextColor(if (on) sel else ink3)
+            l.setTextColor(if (on) sel else faint)
             l.setTypeface(null, if (on) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL)
-            b.setBackgroundColor(if (on) primary else android.graphics.Color.TRANSPARENT)
+            // 底：选中 = 药丸 drawable（主题化，吃 colorAccentSoft）；未选 = 清掉底（0 = 无背景）
+            b.setBackgroundResource(if (on) R.drawable.tab_pill else 0)
         }
-        set(tabFavLabel, tabFavBar, "fav", ink)       // ⚠ 改前是 primary(紫)
-        set(tabMktLabel, tabMktBar, "mkt", ink)
-        set(tabCalcLabel, tabCalcBar, "calc", ink)
-        set(tabSetupLabel, tabSetupBar, "setup", ink)
-        syncTabBars()
+        set(tabFavLabel, tabFavBar, "fav", accent)
+        set(tabMktLabel, tabMktBar, "mkt", accent)
+        set(tabCalcLabel, tabCalcBar, "calc", accent)
+        set(tabSetupLabel, tabSetupBar, "setup", accent)
     }
 
     /**
-     * G5 · 底栏指示条按稿 L247 的百分比算宽，不写死 dp。
+     * ⚠ 2026-10-16 t59：**`syncTabBars()` 已删除**（连同它的 OnLayoutChange 监听与 paintTabs() 调用点）。
      *
-     * 稿 L247 逐字：`left:'28%', right:'28%'` ⟹ 宽 = tab 宽 × (1−0.28−0.28) = **44%**。
+     * 它原来干的事：按稿 L247 的 `left:'28%', right:'28%'` 算「tab 宽 × 44%」再居中设给指示条；
+     * 2026-10-03 用户把语义改成「整条铺满」后，公式退化为 `w = tabFav.width`（全宽）。
      *
-     * ⚠ 改前 XML 写死 `44dp`，并在注释里写「用 44% 宽居中等价实现」——**那句是假的**：
-     *   本机屏宽 1080px/density440 = 392.727dp，tab = 392.727/4 = 98.1818dp，
-     *   稿的 44% = **43.2000dp**，而写死的是 44dp ⟹ **大了 0.80dp（+1.85%）**。
-     *   A.1 复核 agent 独立量到同一结论（bar 实测 44.00dp = 44.815%）。
+     * **为什么现在不需要了**（验收点名要说明的「处置 + 理由」）：药丸的宽度 = 宿主 FrameLayout
+     *   的**内容盒**（padding = `space_2`）⟹ 用 `layout_width="match_parent"` 在布局里**声明式**
+     *   表达即可，百分比/实测宽度那套运行期算法整条退役。**删除**而不是保留的理由：留着就是
+     *   「同一件事两个主人」（布局说 match_parent、Kotlin 又按实测宽覆盖一遍），本仓已多次踩过。
      *
-     * 为什么不用写死 43dp：Android 的 `layout_marginStart/End` **不支持百分比**，
-     * 只能走「算」这条路。写死 43dp 只在本机这一档屏宽上成立，换机型又偏；
-     * 按**实测 tab 容器宽 × 0.44** 才在任何屏宽上都对。
-     *
-     * 只在宽度真的变了时才 requestLayout（避免布局回环）。
+     * ⚠ 历史（别再回头试）：
+     *   · 2026-10-03 之前：`w = tabFav.width * 0.44f`（稿的 28%/28% 内缩，屏上一小截短紫条）；
+     *   · 2026-10-03 用户裁定：**整条铺满 tab 宽**（原话见 paintTabs() 的裁定沿革）；
+     *   · **2026-10-16 用户改判药丸** ⟹ 全宽上划线退役，宽度交回布局。
+     *   · 上移量那条一并成为历史：`translationY="-13.6dp"` 曾让紫条整个消失（截图不可信、无法定位），
+     *     负 margin 在 Android 上**静默不生效**（fav_head 那次踩过，uiautomator 还照报正常 bounds）。
+     *     药丸靠 `layout_gravity="center"` 与标签同心，**不需要任何偏移量**。
+     *   · 连带约束也随上划线一起失效：旧注释说「FrameLayout 的 paddingTop 与标签的 paddingTop
+     *     不能同时留」—— 那是为了让指示条落在灰线上。现在两者都归宿主 padding（标签自身 paddingTop
+     *     已删），不存在叠加问题。
      */
-    /** tab 顶条(紫)与上方灰线的对齐说明 —— 本轮**没有任何上移量**，全靠改布局结构。
-     * 几何事实:tabbar 容器 background = tabbar_top_line(layer-list: 1dp colorBorder, gravity=top)
-     *   ⟹ 灰线在容器的 **y=0**；改前每个 tab 的 FrameLayout 带 paddingTop=12.4dp，
-     *     而 bar 用 layout_gravity="top"（在 FrameLayout 里指**内容区**顶，即 padding 之内）
-     *     ⟹ bar 落在 y=12.4dp，比灰线**低 12.4dp** —— 用户说「越来越往下」的原因。
-     *
-     * 最终做法（**不是**负偏移）:把 paddingTop 从 FrameLayout **挪到标签 TextView 上**
-     *   （脚本 .tmp/fix_tabbar.py）⟹ FrameLayout 内容区顶 == 容器顶 == 灰线所在 y，
-     *   bar 用 layout_gravity="top" 就**天然**落在灰线上。
-     *
-     * ⚠ 两条错路，别再试:
-     *   ① 负 margin —— Android 不支持（本项目 fav_head 那次负 margin 静默不生效，
-     *     uiautomator 仍照报正常 bounds，极易误判成生效了）。
-     *   ② translationY="-13.6dp" —— 实测紫条**整个消失**、底部背景色也变了，
-     *     截图不可信、无法定位。绘制偏移这条路不可靠。
-     *
-     * ⚠ 结构改动的连带约束:FrameLayout 的 paddingTop 与标签的 paddingTop **不能同时留**，
-     *     否则 12.4 + 12.4 = 24.8dp，标签会比原来低一截。 */
 
     /**
-     * 同步四个 tab 顶条(紫)的宽度与上移量。
+     * 主题三段的两态 —— 2026-10-16 t50 换成**方向 B §2.4-3.6** 的取值：
+     *   选中 = **抬起的药丸**：底 seg_sel（`colorSurfaceRaised`，浅 #FFFFFF / 深 #272E38）
+     *          + elev_1（浅 2dp / 深 0）+ 字 `colorInk` + 600 —— **不再占主色实底**
+     *   未选 = 透明底 seg_unsel + 字 `colorSub` + 400
+     *   按压 = 字色转 `colorInk`（语言层 theme.css §6.4 末行 `.gc-seg__btn:active { color: var(--ink) }`；
+     *         底与圆角都不变 ⟹ 用 ColorStateList 表达，不换 drawable）
      *
-     * ⚠⚠ 2026-10-03 **用户裁定改语义**：顶条由「tab 宽 × 44% 居中」改为**整条铺满 tab 宽**。
-     *   用户原话：「为什么行情上面的紫色条不一样，我需要覆盖在上划线的形式」
-     *   改前 w = tabFav.width * 0.44f（照稿 L247 `left:'28%', right:'28%'`），屏上是一小截短紫条。
-     *   ⟹ 改后 w = tabFav.width 全宽，且 activity_main.xml 里四个 bar 的
-     *      layout_gravity 由 "top|center_horizontal" 改为 "top"（去掉居中，靠满宽铺）。
-        //   ⚠ 这**偏离稿**：稿 L247 明确是 28%/28% 内缩。产品裁定，不是移植对齐。
-     *      要回稿：把这里的全宽换回 tabFav.width * 0.44f、四个 gravity 改回
-     *      "top|center_horizontal"、XML 宽度改回 42dp。
-     *   ⚠ 上移量(TAB_BAR_LIFT_DP)同样偏离稿：稿的顶条本就在 tab 容器**内**，
-     *      没有与上边框「重合」这回事。
-     */
-    // ⚠ 2026-10-03：上移**不再用 translationY**。试过 translationY="-13.6dp"，
-     //   结果紫条整个消失、且底部背景色都变了（当时抓的截图不可信，无法定位）——
-     //   绘制偏移这条路**不可靠，别再回头试**。
-     //   现在改成把 paddingTop 从 tab 的 FrameLayout **挪到标签 TextView 上**
-     //   （脚本 .tmp/fix_tabbar.py 干的），于是 FrameLayout 内容区顶 == 容器顶 == 灰线所在 y，
-     //   bar 用 layout_gravity="top" 就**天然**落在灰线上，不需要任何负偏移。
-     //   ⚠ Android 不支持负 margin（本项目 fav_head 那次已踩过：负 margin 静默不生效，
-     //     uiautomator 还照报正常 bounds，极易误判为"生效了"）。
-     // ⚠ 改结构的连带点：FrameLayout 的 paddingTop 与标签的 paddingTop **不能同时留**，
-     //     否则 12.4 + 12.4 = 24.8dp，标签会比原来低一截。
-
-    /** 同步四个 tab 顶条(紫)的宽度。 */
-    private fun syncTabBars() {
-        val w = tabFav.width
-        if (w <= 0) return                      // 还没测量出来，等 OnLayoutChange 兜底
-        for (b in listOf(tabFavBar, tabMktBar, tabCalcBar, tabSetupBar)) {
-            val lp = b.layoutParams
-            if (lp.width != w) { lp.width = w; b.layoutParams = lp }
-        }
-    }
-
-    /**
-     * 稿 L254-264 Seg 的两态, 稿 L260-261 逐字:
-     *   选中 = 决策紫实底 + ACC 字 + 字重 600
-     *   未选中 = 透明底 + ink2 字 + 字重 400
+     * ⚠ **U-9 本轮关闭**（交接 §5.1-⑥「同一件事两个主人」）：
+     *   `page_settings.xml` 里三个 Button 的 `android:textColor` / `android:textStyle` **已删**，
+     *   改前是「XML 写死一套 + 这里覆写一套」。此后
+     *   **背景 + 字色 + 字重 + 抬升四件只有本函数一处主人**（唯一真相）。
      *
-     * B-29 改前用 btn_primary / btn_ghost: 那两个 drawable 各自带圆角 8,
-     * btn_ghost 还另带 1px 描边, 再叠上 XML 里段间的 4dp 缝 —— 真机是三个并排小按钮。
-     * 稿是**一个**容器描边 + borderRadius 8 + overflow:hidden 让三段相接(新 drawable
-     * seg_frame / seg_sel / seg_unsel, 圆角与裁切由 page_settings.xml 的
-     * background + clipToOutline 负责)。
+     * 抬升为什么在这里设：drawable 画不了阴影（t49 的 seg_sel.xml 文件头逐字说明），
+     *   由宿主 View 消费 `elev_1` —— 而「哪一段是选中」只有本函数知道 ⟹ 只能在这里设。
+     *
      * ⚠ themeFollow/Light/Dark 声明成 View, 强转 Button 只在这一处发生,
      *   把 XML 里的 <Button> 换成别的类型会 ClassCastException。
      */
     private fun paintThemeSeg() {
         val pairs = listOf(themeFollow to "follow", themeLight to "light", themeDark to "dark")
-        // t10 (2026-10-02) ② 照稿 L864 的 ACC: 稿的 ACC = THEMES[theme].v.onFill,
-        //   浅 #fff / 深 oklch(0.160 0.012 265)=#0B0D13, **每套主题各一个值**(稿 L88 / L99)。
-        // 改前这里取共享 token colorOnPrimary, 两套主题都是纯白 ⟹ 深色下「深色」二字
-        //   是 #FFFFFF 压 #987DEF = 3.22:1, 不过 AA 4.5; 稿的深墨是 6.03:1。
-        // ⚠ 只在这一处局部取 onFill, **没有改 colorOnPrimary**(9 处共享, 见 draftOnFill())。
-        val onPrimary = draftOnFill()
-        val ink2 = attrColor("colorSub")
+        val ink = attrColor("colorInk")
+        val inkSub = attrColor("colorSub")
+        val elev1 = resources.getDimension(R.dimen.elev_1)
         for ((v, m) in pairs) {
             val btn = v as android.widget.Button
             val on = mode == m
             btn.setBackgroundResource(if (on) R.drawable.seg_sel else R.drawable.seg_unsel)
-            btn.setTextColor(if (on) onPrimary else ink2)
+            // 常态 = 选中 ink / 未选 inkSub；**按压两者都转 ink**（方向 B 的按压语汇，见上）
+            val rest = if (on) ink else inkSub
+            btn.setTextColor(android.content.res.ColorStateList(
+                arrayOf(intArrayOf(android.R.attr.state_pressed), intArrayOf()),
+                intArrayOf(ink, rest)))
             btn.setTypeface(null, if (on) android.graphics.Typeface.BOLD
                               else android.graphics.Typeface.NORMAL)
+            btn.elevation = if (on) elev1 else 0f
         }
     }
 
@@ -2667,21 +2745,12 @@ private fun recLoad() {
         else R.style.Theme_GridCalc_Light)
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
-        // 指示条按稿 L247 的 44% 算宽；首次进入时 tab 还没测量，
-        // 故挂一个布局监听兜底触发一次 syncTabBars()（measure 完成后自然回调）。
-        // ⚠ 这个 listener 的签名返回 **void**, 不是 Int:
-        //   javap 'android.view.View$OnLayoutChangeListener' 读 platforms/android-36/android.jar,
-        //   得到的是 `void onLayoutChange(View, int x8)`, 框架根本不取返回值。
-        //   t426 在这里写的「lambda 必须返回 Int」是**错的**; 照那个说法写的
-        //   `if (…) v.requestLayout() else 0`, 那个 `0` 是死代码
-        //   (kotlinc 报 The expression is unused)。t427 按真实签名改成什么都不返回,
-        //   顺带去掉那次多余的 requestLayout:
-        //   syncTabBars() 真改了宽度时 setLayoutParams 自己会向上请求。
-        //   (t426 那次编译事故与本签名无关; 老坑另算:
-        //    `gradlew | Select-String` 管道的退出码不能当 gradle 的判据, 要看 `e: ` 与 BUILD FAILED。)
-        findViewById<View>(R.id.tab_fav)?.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
-            syncTabBars()
-        }
+        // ⚠ 2026-10-16 t59：原来这里挂了一个 `addOnLayoutChangeListener` 兜底触发 `syncTabBars()`
+        //   （指示条按稿 44% 算宽，首次进入时 tab 还没测量）。**本轮药丸改由布局声明式给宽**
+        //   （`layout_width="match_parent"` + 宿主 padding）⟹ 监听与 syncTabBars() 一并删除。
+        //   两处老坑仍留在 git 历史里，别重犯：① `View.OnLayoutChangeListener` 的签名返回 **void**
+        //   （t426 以为要返回 Int，那个 `else 0` 是死代码）；② `gradlew | Select-String` 管道的
+        //   退出码**不能**当 gradle 的判据，要看 `e: ` 与 `BUILD FAILED`。
 
         // ⚠ t416 **删掉了**这一行原来的 t102FixNavLabels()。
         //   它在运行期把四个底栏标签覆盖成 note 档 12sp,而稿 L246 逐字是
@@ -2978,6 +3047,9 @@ ladderNote = calcPage.findViewById(R.id.ladder_note)
         // 稿③LINK爆仓上限卡:第二行灰字「目标上限 X」+×解除
         // (稿capX: LKcap=null;paintCap;去红;清错;calc())
         statLiqCard = calcPage.findViewById(R.id.stat_liq_card)
+        // t9: 存下「爆仓价」格的**原始面**。必须在这里取 —— 本页有几处 `statLiqCard.background = null`
+        //     （capX 解除上限、onCalc 成功路径、restoreCalc），那些是不可逆的，取晚了就只能存到 null。
+        statLiqBg0 = statLiqCard.background
         statTiles = calcPage.findViewById(R.id.stat_tiles)
         statCap = calcPage.findViewById(R.id.stat_cap)
         statCapv = calcPage.findViewById(R.id.stat_capv)
@@ -3124,6 +3196,14 @@ ladderNote = calcPage.findViewById(R.id.ladder_note)
         //   而 thumbTintList 同 API 生效 ⟹ 病在 drawable 侧, 只能换轨道本身。
         //   绑定时设一次即可, 之后两态由 selector 的 state_checked 自己切, 不用每次重设。
         autoSw.setTrackDrawable(resources.getDrawable(R.drawable.switch_track, theme))
+        // 2026-10-16 t50 · 方向 B §2.4-3.7 / §5.3-M10 的滑块几何 —— **装机实测 + 平台边界如实登记**：
+        //   轨道 44×26.9dp（布局给 44×26；多出的 0.9dp 是平台 Switch 的最小高度）✓
+        //   滑块 19.6dp（规格 20）✓
+        //   **开态位移实测 19.3dp（规格 16）** ✗ —— 滑块直径与位移 Android 不暴露尺寸 API，
+        //   平台按 thumb 固有尺寸与两侧内缩算；唯一能调它的 `Switch.setThumbOffset` 已在
+        //   **API 31 被移除**（本仓 compileSdk 33 ⟹ 编译期就 Unresolved reference，实测确认），
+        //   `android:thumbOffset` 同批废弃 ⟹ **要精确到 16dp 只能换自绘 thumb drawable**
+        //   （drawable 层，不在本任务 inScope）。差值 3.3dp 只影响滑块停靠的内缩，不影响两态可辨。
         t211PaintSwitch(autoSw, autoSw.isChecked)
         autoSw.setOnCheckedChangeListener { _: android.widget.CompoundButton, on: Boolean ->
             prefs().edit().putBoolean(PREF_AUTO_REFRESH, on).apply()

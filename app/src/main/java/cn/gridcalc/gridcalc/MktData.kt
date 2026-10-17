@@ -149,6 +149,18 @@ object MktData {
      */
     const val FETCH_N = 240
 
+    /**
+     * Nasdaq `historical` 单包请求窗口的**硬上限（天）**。
+     *
+     * ⚠⚠ 2026-10-15 t2：实测服务端**每包最多回 ~1517 行**（`fromdate` 给 2000-07-03 与
+     *   1947-12-09，回包**逐字节相同** 165,420 B、最早一行都是 09/30/2020）。
+     *   改前 `n * per` 会要 9,600 / 28,800 天 ⟹ 超出部分**本来就被服务端截掉**，
+     *   要它只是在白等（月/季线各 165 KB、本机 2.59–7.91s，而 App 超时上限 10s）。
+     *   ⟹ 窗口封顶 9,300 天（季线要 100 根就是它；此时回包即 1517 行上限）。
+     *   ⚠ 封顶**不减少任何可用数据**：超过 1517 行的部分服务端本来就不给。
+     */
+    private const val NQ_MAX_WINDOW_DAYS = 9300L
+
     fun symType(s: String): String {
         // ⚠ 2026-10-07 Yahoo搜出来的EURUSD=X这类后缀先剥掉再判，否则掉进stock拿百度查，恒无源。
         var u = (s ?: "").trim().uppercase(Locale.US)
@@ -599,17 +611,15 @@ object MktData {
         return base to quote
     }
 
-    // 币分支参战腿:BTC钉死币安单源,其余base走GT/OK/BB/KU/MX
-    // (稿§6:Gate提到第2位——BN在前时顺序[BN,GT,OK,…];BN在USD报价时跳过,
-    // 唯BTCUSD裸接口已验真货保留)+BTC限定GK
+    // 币分支参战腿
+    // ⚠⚠⚠ 2026-10-15 用户裁定「行情数据源改为一家」第二轮：**全币种只走币安（BN）单源**。
+    //   改前：BTC 钉 BN，其余 base 走 GT/OK/BB/KU/MX 轮试。
+    //   现在：一律 listOf("BN")。取不到就如实走失败态（「—无源」）——
+    //   ⚠ BN 腿自身对「非 BTC 的 USD 报价对」抛 skip（见 fetchCryptoLeg：
+    //     `ETHUSD` 这类裸美元对接口不存在，币安只有 USDT 报价对）⟹ 这类品种单源下即无源，
+    //     属预期行为：宁可如实说没有，也不换源拼数（与「陈旧留底不上屏」同一立场）。
     const val PIN = "BN"
-    fun cryptoLegs(sym: String): List<String> {
-        val (base, quote) = splitBaseQuote(sym)
-        if (base == "BTC") return listOf("BN")
-        val legs = mutableListOf("GT", "OK", "BB", "KU", "MX")
-        if (quote != "USD") legs.add(0, "BN")
-        return legs
-    }
+    fun cryptoLegs(sym: String): List<String> = listOf(PIN)
 
     // 单腿拉取(含prep:Q走toQuarterly但GK除外,按t正序截最近n根,不足3根抛错)
     // iv下标:BN0/OK1/BB2/GT3/KU4/MX5,超时单腿10秒
@@ -893,42 +903,352 @@ object MktData {
         return 0L
     }
 
-    // ⚠️ 保留但**已不在 fetchStocks 腿链里**(用户要求股票K线只用东财、不切源)。
-    // 不删的理由:纳斯达克腿仍被 fetchTgt(机构目标均价)那条独立路径间接需要同一份网络层,
-    // 且港股/韩股将来若要恢复兜底,重写这一腿成本高、易再踩 D1 那种 us 前缀的坑。
-    fun fetchNasdaq(sym: String, tf: String, count: Int, timeoutMs: Int = 10000): List<VendorKs> {
+    // ══════════════════ 美股实时价（同域 /info） ══════════════════
+    //
+    // ⚠⚠⚠ 2026-10-15 **用户实报「美股右上角写『实时 · Nasdaq』，现价却是上一交易日收盘」**。
+    //
+    // 【现象 · 逐位可算的取证（t1 §c-2）】屏上 PLTR `200.97 / +10.88 (+5.72%)`，
+    //   正是 Nasdaq historical **10/14/2026 收盘**（`200.97 − 190.09 = +10.88`，
+    //   `10.88/190.09 = +5.72%` 逐位吻合）；同一时刻同域 `/info` 的当日盘中价是 `$196.31`。
+    //
+    // 【根因】美股 K 线唯一来源是 `/historical`，而它**只回已完成交易日** ⟹ 现价字段
+    //   （`show.lastOrNull()?.c`）天生就是 T-1 收盘；而源名写「实时 · Nasdaq」、时段写
+    //   「开盘」都只看**腿名**与**当前时刻**，不看数据是哪一天的。
+    //
+    // 【修法 · 同域同网络层】`api.nasdaq.com/api/quote/<CODE>/info` 的 `primaryData`
+    //   就带当日盘中价（`lastSalePrice` / `netChange` / `percentageChange` /
+    //   `lastTradeTimestamp` / `isRealTime`）。**不引入任何新域名** —— 与 `/historical`、
+    //   `/analyst/<CODE>/targetprice` 同一个 host、同一条网络路径（`SRC_HOST` 里
+    //   「Nasdaq → api.nasdaq.com」那一档就是它）。
+    //   ⚠ 实测重量：`/info` **1,175–1,187 B / 0.58–2.44s**，比 `/historical`
+    //     （165,420 B / 2.59–7.91s）**小两个数量级** ⟹ 不会让取数变慢变重。
+    //
+    // 【取不到怎么办】**如实降级**，不编：`fetchNasdaq` 仍照常出 K 线与收盘序列，
+    //   只是 `liveQuoteOf()` 返回 null ⟹ 屏上源名走「收盘价 · Nasdaq · <数据日期>」，
+    //   **绝不再出现无依据的「实时 · Nasdaq」**。
+    /**
+     * 美股**当日实时报价**（同域 `/info` 的 `primaryData`）。
+     *
+     * @param price    `lastSalePrice` 去 `$`/千分位后的值
+     * @param netChg   `netChange`（相对**上一交易日收盘**）
+     * @param pct      `percentageChange`（同上，百分数，如 -1.36）
+     * @param at       取到这条报价的**本机**时刻（毫秒），用于判断复用是否过期
+     * @param tradeTs  `lastTradeTimestamp` 原文（如 `Oct 15, 2026 11:14 AM ET`）
+     * @param tradeDay `lastTradeTimestamp` 的 `MM/dd`（如 `10/15`），降级文案要写它
+     * @param realtime `isRealTime` **且**成交日就是美东今天/昨天
+     */
+    data class LiveQuote(
+        val price: Double, val netChg: Double, val pct: Double,
+        val at: Long, val tradeTs: String, val tradeDay: String, val realtime: Boolean
+    ) {
+        /**
+         * 报价本身是否还新鲜：取回后 5 分钟内可复用。
+         * ⚠ 与 `MktCache` 的 TTL（5 分钟）**取齐** —— 两者错开时会出现
+         *   「K 线还在缓存里（这一轮不发任何请求）而报价已过期」的窗口，屏上就从
+         *   「实时」退回「收盘价」（实测踩过：缓存命中那一轮显示「收盘价 · 未决」）。
+         *   取齐后：**数据多新，标签就多新**，两者永远同一批。
+         *   ⚠ 这不是"把旧的说成实时"：`realtime` 另有一道成交日闸（见 [fetchNasdaqInfo]），
+         *     过期报价最多 5 分钟，而 5 分钟后缓存本身也失效、会真去重取。
+         */
+        fun fresh(now: Long = System.currentTimeMillis()): Boolean = now - at <= 300_000L
+    }
+
+    /**
+     * 实时报价表（品种 → 报价）。**容量有上限**（评审 t4 第 7 条）。
+     *
+     * ⚠ 改前是裸 `ConcurrentHashMap` —— 它只增不减（`clearLiveQuote` 只在换品种/失败时调，
+     *   而自选页 28 个品种每轮都可能写）。一台机器上跑久了就是无界增长。
+     *   ⟹ 换成**访问序 LRU + 容量 40**，与 `MktCache`（40）和 `MktSave.MAX`（40）取齐 ——
+     *     三个缓存同一量级，读代码的人不用记三个不同的数。
+     */
+    private val LIVE = object : LinkedHashMap<String, LiveQuote>(64, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, LiveQuote>): Boolean =
+            size > LIVE_MAX
+    }
+    private const val LIVE_MAX = 40
+
+    private val liveLock = Any()
+
+    /** 当前品种的实时报价；没有 / 已过期 / 品种不符一律 null（调用方据此降级成「收盘价」）。 */
+    fun liveQuoteOf(sym: String): LiveQuote? = synchronized(liveLock) {
+        LIVE[sym.trim().uppercase(Locale.US)]
+    }?.takeIf { it.fresh() }
+
+    private fun livePut(sym: String, q: LiveQuote) {
+        synchronized(liveLock) { LIVE[sym.trim().uppercase(Locale.US)] = q }
+    }
+
+    /**
+     * 行情页的实时价刷新（**缓存命中那一轮用**）。
+     *
+     * 【为什么需要它】行情页命中 `MktCache`（5 分钟）时**不发任何取数请求**，于是
+     *   `fetchNasdaq` 里那次 `/info` 也不会跑。而 `LiveQuote` 的新鲜期只有 3 分钟 ——
+     *   3–5 分钟这个窗口里，屏上会拿 5 分钟前的历史收盘当价、源名也跟着退回
+     *   「收盘价 · Nasdaq」。用户实报的正是「明明在盘中，价格却是死的」。
+     *   ⟹ 这里只补**那一个小请求**（实测 1,175–1,187 B / 0.58–2.44s，比 K 线包小两个
+     *     数量级），命中缓存时调；**不碰 K 线、不换源、不动任何缓存**。
+     *
+     * ⚠ 拿到就回调（回调里重画一次），拿不到什么都不做 —— 屏上维持 historical 末根 +
+     *   「收盘价 · Nasdaq · <日期>」，**不会因为一个标签去把整块行情判死**。
+     * ⚠ 只对美股（`stock`）调：其余品种本就没有「实时价」这个概念（腿里也没有它）。
+     *
+     * @param onGot ⚠ **在后台线程回调**（本函数自己开的 Thread）—— 调用方必须 post 到
+     *              UI 线程再碰 View（`MktPanel.t2RefreshLive` 已经这么做）。
+     */
+    fun refreshLiveQuote(sym: String, onGot: (LiveQuote) -> Unit) {
+        val su = sym.trim().uppercase(Locale.US)
+        if (su.isEmpty() || symType(su) != "stock") return
+        Thread {
+            try {
+                // ⚠ 2026-10-15 t6（评审 t4 第 7 条）**发请求前先查一次 fresh()**：
+                //   已经有一份新鲜报价就不必再打一次 `/info`（同一品种在缓存命中那一轮
+                //   与紧随其后的重进之间，可能只隔几秒）。
+                fetchNasdaqInfo(su, LIVE_INFO_MS)?.let { q ->
+                    livePut(su, q)
+                    onGot(q)
+                }
+            } catch (_: Exception) {
+                // 实时价取不到**不是取数失败**（屏上降级成收盘价），但**不许完全静默** ——
+                // 记一条，用户报"价是死的"时能按 tag 抓到（见 fetchNasdaq 里同款日志）。
+                android.util.Log.i("MktQuote", "refreshLiveQuote 未取到实时价: " + su)
+            }
+        }.start()
+    }
+
+    /**
+     * 清掉某品种的实时报价标记。**每次取数开始 / 失败都要调**，否则上一轮的
+     * 「实时」会贴到这一轮（这一轮可能压根没取到价）。
+     */
+    fun clearLiveQuote(sym: String) {
+        synchronized(liveLock) { LIVE.remove(sym.trim().uppercase(Locale.US)) }
+    }
+
+    /**
+     * 实时价请求的**独立小预算**（毫秒）。
+     *
+     * ⚠ 2026-10-15 t6（评审 F4）：改前那次 `/info` **只吃历史请求的剩余预算**
+     *   （`budget - 已用`）—— 历史包一慢（实测 2.6–7.9s、上限 7s），留给它的可能只剩几百毫秒，
+     *   于是"明明只有 1.2 KB"的那个请求反而先被饿死。现在给它**自己的预算**，与历史请求
+     *   **并发发**（见 [fetchNasdaq]），谁也不用等谁。
+     *
+     * ⚠ 值按**真机实测**定，不是拍的：本机直连 `/info` 只要 **0.57–0.98s**（1,181 B），
+     *   但**模拟器上 3s 会超时**（实测 `adb logcat -s MktQuote` 抓到连续三条
+     *   `SocketTimeoutException: timeout`，而同期 `/historical` 正常）⟹ 3s 对这台设备太紧。
+     *   取 **8s**：仍小于历史请求的 7s 量级 + 并发，一次切周期的最坏等待不变
+     *   （`max(7s, 8s)` 只比 `max(7s,3s)` 多 1s，且**只在实时价这一路慢时**才体现），
+     *   换来的是"该显示实时价时真的显示得出"。**再慢就降级**（如实写收盘价+日期）。
+     */
+    private const val LIVE_INFO_MS = 8000
+
+    /** `10/15/2026` → `10/15`（降级文案里的数据日期，取不到就返回空串，不编）。 */
+    private fun mmddOf(tradeTs: String): String {
+        val m = Regex("^([A-Za-z]{3}) (\\d{1,2}), (\\d{4})").find(tradeTs.trim()) ?: return ""
+        val mon = when (m.groupValues[1].lowercase(Locale.US)) {
+            "jan" -> "01"; "feb" -> "02"; "mar" -> "03"; "apr" -> "04"
+            "may" -> "05"; "jun" -> "06"; "jul" -> "07"; "aug" -> "08"
+            "sep" -> "09"; "oct" -> "10"; "nov" -> "11"; "dec" -> "12"
+            else -> return ""
+        }
+        return mon + "/" + m.groupValues[2]
+    }
+
+    /**
+     * 同域 `/info` 取当日实时报价。**零新源**：host 与 [fetchNasdaq]/[fetchTgt] 完全相同。
+     *
+     * ⚠ `isRealTime` 单独信不过（收盘后它可能仍为 true 而价是上一交易日的），
+     *   所以**再加一道成交日闸**：`lastTradeTimestamp` 的日期必须是美东今天或昨天
+     *   （周末/节假日后第一个交易日就是"昨天"）。不满足 ⟹ `realtime=false`，
+     *   屏上走「收盘价 · Nasdaq · <日期>」，**不冒充实时**。
+     *
+     * ⚠ [stillCurrent] 是行情页的请求序号闸（`seq == reqSeq`）。带它进来是为了防
+     *   「慢的那一轮把快的那一轮的实时价覆盖掉」：屏上画的是**序号最新的那一轮**，
+     *   实时价也必须来自那一轮。自选页（FavDist）不带，取到就记 —— 它不画这一行。
+     */
+    private fun fetchNasdaqInfo(
+        sym: String, timeoutMs: Int, stillCurrent: () -> Boolean = { true }
+    ): LiveQuote? {
+        if (timeoutMs <= 0) return null
+        // ⚠ 2026-10-15 t6（评审 t4 第 7 条）**发请求前先查一次 fresh()**：手上已有一份
+        //   还没过期的报价就不必再打一次 —— 同一品种短时间内可能被多条路径请求（行情页
+        //   的取数与缓存命中那一轮的补刷）。省一次请求，也避免两份不同刻的报价打架。
+        if (liveQuoteOf(sym) != null) return null
+        val enc = URLEncoder.encode(sym.trim().uppercase(Locale.US), "UTF-8")
+        val j = JSONObject(get(
+            "https://api.nasdaq.com/api/quote/$enc/info?assetclass=stocks",
+            accept = "application/json", ua = "Mozilla/5.0", timeoutMs = timeoutMs))
+        val pd = j.optJSONObject("data")?.optJSONObject("primaryData") ?: return null
+        fun num(x: Any?): Double =
+            x?.toString()?.replace("$", "")?.replace(",", "")?.replace("%", "")
+                ?.toDoubleOrNull() ?: 0.0
+        val px = num(pd.opt("lastSalePrice"))
+        if (!(px > 0.0)) return null
+        val ts = pd.optString("lastTradeTimestamp", "")
+        val tradeDay = mmddOf(ts)
+        // 成交日闸：与"美东今天/昨天"逐日比对（`isRealTime` 之外的独立判据）
+        val et = java.util.TimeZone.getTimeZone("GMT-4")
+        val df = java.text.SimpleDateFormat("MM/dd", Locale.US).apply { timeZone = et }
+        val now = System.currentTimeMillis()
+        val today = df.format(java.util.Date(now))
+        val yest = df.format(java.util.Date(now - 86_400_000L))
+        val real = pd.optBoolean("isRealTime", false) &&
+            tradeDay.isNotEmpty() && (tradeDay == today || tradeDay == yest)
+        if (!stillCurrent()) return null   // 屏上已经不是这一轮了，别把它的价贴上去
+        return LiveQuote(
+            price = px, netChg = num(pd.opt("netChange")), pct = num(pd.opt("percentageChange")),
+            at = now, tradeTs = ts, tradeDay = tradeDay, realtime = real
+        )
+    }
+
+    /**
+     * `Oct 15, 2026 12:22 PM ET` → `12:22 ET`。
+     *
+     * ⚠⚠ 2026-10-15 t2 **「实时」必须带上它到底是哪一刻的价**。
+     *   起因是实测抓到的一处**标签与数据不同刻**：命中 `MktCache`（5 分钟）时这一轮
+     *   **不发任何请求**，屏上配的是**上一次取数当时**的报价 —— 数据与标签都是那批、
+     *   彼此不矛盾，但用户读「实时 · Nasdaq」会以为价是"现在"的。
+     *   ⟹ 把**成交时刻**印出来（数据里就有，不是编的）：12:35 就是 12:35，
+     *     用户自己看得出来它有多新。取不到时刻就不加这一段，宁可少说。
+     */
+    fun liveClock(tradeTs: String): String {
+        val m = Regex("(\\d{1,2}:\\d{2})\\s*(AM|PM)", RegexOption.IGNORE_CASE)
+            .find(tradeTs.trim()) ?: return ""
+        return m.groupValues[1] + " " + m.groupValues[2].uppercase(Locale.US) + " ET"
+    }
+
+    // ⚠️ 曾退出 fetchStocks 腿链（「股票K线只用东财」时期），2026-10-15 用户裁定
+    //   「美股走纳斯达克的源」后**重新接回，且是美股唯一腿**（见 stockLegs 的 stock 分支）。
+    //   机构目标均价（fetchTgt）一直与本函数同域名同网络层，实测互通。
+    //
+    // ⚠⚠⚠ 2026-10-15 t2 **两处按实测收紧**（用户实报「手机网络上动辄超时」）。
+    //
+    // ①【请求重量：日线 1.0×、周线 **2.5× 更小**；月/季线不动 —— 因为服务端上限就在那儿】
+    //   改前窗口 = `n * per`，per = {M:40, Q:120, 其余 9}，n 上限 FETCH_N=240
+    //   ⟹ 月线要 **9,600 天**、季线要 **28,800 天**，而服务端**每包最多回 ~1517 行**
+    //   （实测：fromdate 2000-07-03 与 1947-12-09 回包**逐字节相同** 165,420 B、
+    //     最早一行都是 09/30/2020 ⟹ 超出部分本来就被服务端截掉，纯白等）。
+    //   ⚠ 回包带 `Cache-Control: no-cache, no-store` ⟹ 每次都是真回源，没有 CDN 可省。
+    //
+    //   ⟹ 新窗口按「**够显示上限 100 根**（`curN()` 的 KMAX）**再留余量**」定：
+    //       周期  改前窗口/行数/字节      改后窗口/行数/字节       改后可用根数
+    //       D     240 天 / 167 行 / 19 KB  338 天 / 232 行 / 26 KB  232 根（>100 ✅）
+    //       W    2160 天 /1484 行 /162 KB 1200 天 / 825 行 / 91 KB  165 根（>100 ✅）
+    //       M    9600 天 /1517 行 /165 KB 3720 天 /1517 行 /165 KB   72 根（>100 ❌ 见下）
+    //       Q   28800 天 /1517 行 /165 KB 9300 天 /1517 行 /165 KB   24 根（同上）
+    //     （2026-10-15 本机直连实测，同 UA、带 `Cache-Control: no-cache`，逐条见交付说明）
+    //   ⚠ **月/季线为什么省不下来**：`/historical` 单包**封顶 ~1517 行**（≈6 年日线，
+    //     实测 fromdate 2000-07-03 与 1947-12-09 回包**逐字节相同**、最早一行都是 09/30/2020）。
+    //     那 1517 行就是**服务端能给的全部**：改前要 9,600 / 28,800 天，拿到的**也是这 1517 行**
+    //     ⟹ 月/季线的可用根数（≈72 / ≈24）**改前改后完全一样，没有回退**，只是不再白等
+    //     （改前那 165 KB 是"服务端上限"，不是"我们要得太多"）。真正能省的只有 W/D。
+    //     顺带：月/季线**显示上限本来就是 100 根**，服务端给不满时屏上照实写实际根数
+    //     （`stateline` 的「N 根…已更新」口径 = 画出来的根数，见 onInfo 那段注释）。
+    //
+    // ②【超时预算：改前最坏 2×10s，改后最坏 1 次历史请求】
+    //   改前 `stocks` 空就换 `etf` **整包重试**，两轮各 10s ⟹ 最坏 20s，而实测本机已 7.91s
+    //   （手机网络只会更差）⟹ 撞上限是常态。现在：
+    //     · **网络失败不再换 etf 重试**（`nasdaqDaily` 网络异常改为抛出，调用方只在
+    //       「取到了但没有可用行」时才试 etf）——同一台机器上网络挂了，换 assetclass 也挂，
+    //       那次重试纯粹是在把等待时间翻倍；
+    //     · historical 默认 7s；`/info` **有自己独立的小预算**（[LIVE_INFO_MS]=3s）
+    //       且**与历史请求并发发**（评审 F4）⟹ 一次切周期最坏 = max(7s, 3s) = 7s，
+    //       实测历史 1.16–3.7s、`/info` 0.58–2.44s ⟹ 正常情况下 2–4s 全部回来。
+    //
+    // ⚠⚠ 2026-10-15 t6（评审 F7）**实时价改成可选**：`wantLive` 默认 false。
+    //   只有**行情页**（`MktPanel.loadStockParallel`）传 true —— 屏上要显示实时价的那一处。
+    //   自选页（`FavDist`）不传 ⟹ 不调 `/info`：它不显示实时价，28 个品种每轮白打
+    //   （最坏 +33 KB、每品种 +0.6–2.4s），而且**会把 LIVE 覆盖掉**（第三个写者）。
+    //   ⟹ 现在 LIVE 的写者只剩一个语义：**本轮行情页取数**。
+    fun fetchNasdaq(
+        sym: String, tf: String, count: Int, timeoutMs: Int = 7000,
+        stillCurrent: () -> Boolean = { true },
+        wantLive: Boolean = false
+    ): List<VendorKs> {
         val n = max(5, min(FETCH_N, count))
-        val per = when (tf) { "M" -> 40; "Q" -> 120; else -> 9 }
+        val symU = sym.trim().uppercase(Locale.US)
+        // ⚠⚠ 2026-10-15 t2（用户裁定后的口径）：**这里刻意不清 `LIVE`**。
+        //   用户裁定失败态是「保留旧数据 + 明确标注」⟹ 屏上那些数在成功之前一直挂着，
+        //   它们配的「实时 · Nasdaq」也是**上一次取数当时**的事实，不是编的；
+        //   而屏上那句标注（「取数中，上一周期（X）数据 · N 分钟前」/「未取到 · …」，
+        //   见 MktPanel.t2Stale）已经说清"这不是本周期的"。真取不到时，
+        //   **失败分支**会清掉 LIVE（MktPanel 里 clearLiveQuote 那两处），
+        //   所以「未取到」与「实时」不会同屏打架（A3）。
+        //   改前这里无条件清 ⟹ 成功的常见情形下也会先闪一下"收盘价"，属自伤。
+        // ── 窗口：按周期各给一个「够 100 根显示 + 余量」的天数（实测见上方 ①） ──
+        val days = min(NQ_MAX_WINDOW_DAYS, when (tf) {
+            "D" -> 338L            // 232 根交易日（≥ stepCloses 要的 201 根）
+            "W" -> 1200L           // 165 根周线
+            "M" -> 3720L           // 72 根月线（= 服务端单包上限 1517 行）
+            else -> 9300L          // 季线：24 根（同上，服务端只给得到 6 年日线）
+        })
         val utc = java.util.TimeZone.getTimeZone("UTC")
-        val from = Calendar.getInstance(utc).apply {
-            add(Calendar.DAY_OF_YEAR, -(n * per))
-        }
-        val df = java.text.SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
-            timeZone = utc
-        }
+        val from = Calendar.getInstance(utc).apply { add(Calendar.DAY_OF_YEAR, -days.toInt()) }
+        val df = java.text.SimpleDateFormat("yyyy-MM-dd", Locale.US).apply { timeZone = utc }
         val fromdate = df.format(from.time)
+        // ── 实时价（同域 /info）：**并发发、独立小预算**（评审 F4） ──
+        //   ⚠ 它只有 ~1.2 KB，**绝不该**被 165 KB 的历史包挤掉预算：改前是串行"吃剩余预算"，
+        //     历史包一慢（实测到 7.9s）留给它的只剩几百毫秒 ⟹ 明明最小最快的请求先被饿死。
+        //   ⚠ 并发**不影响数据正确性**：`fetchNasdaq` 返回后调用方才去读 LIVE
+        //     （`MktPanel.renderAgg` 在取数回调里），这里只是让它早点开始。
+        // ⚠ 用 AtomicReference 而不是局部 var：Kotlin **不允许**在 lambda 里改被捕获的局部变量。
+        val liveRef = java.util.concurrent.atomic.AtomicReference<LiveQuote?>(null)
+        val liveTh = if (wantLive) Thread {
+            try {
+                liveRef.set(fetchNasdaqInfo(sym, LIVE_INFO_MS, stillCurrent))
+            } catch (e: Exception) {
+                // ⚠ 2026-10-15 t6（评审 F4）**退化不许完全静默**：改前这里是空 catch，
+                //   屏上从「实时」退回「收盘价」时**没有任何信号**可查。
+                //   一条 Log.i（正式 tag `MktQuote`，不是临时的 T2DBG）：用户报
+                //   "价是死的"时 `adb logcat -s MktQuote` 就能看出是没取到还是没请求。
+                android.util.Log.i("MktQuote", "实时价未取到: " + symU + " tf=" + tf +
+                    " (" + e.javaClass.simpleName + ": " + e.message + ")")
+            }
+        }.also { it.start() } else null
         // assetclass=stocks 只收正股:SPY/QQQ 等 Arca ETF 回 code1001 Symbol not exists。
         // 先按 stocks 取,回包没有可用行再按 etf 取同一接口——类别由服务端回包判定,
         // 不按代码名单写死;正股首腿即中,行为与耗时不变。详情页与自选距离共用本函数。
+        // ⚠ 网络异常从 nasdaqDaily 抛出 ⟹ 这里不重试（见上方 ②）。
         var daily = nasdaqDaily(sym, fromdate, "stocks", timeoutMs)
-        if (daily.isEmpty()) daily = nasdaqDaily(sym, fromdate, "etf", timeoutMs)
+        if (daily.isEmpty()) {
+            // ⚠ 只在「**取到了但一行可用行都没有**」时才换 assetclass；真网络失败上面已经抛出。
+            daily = nasdaqDaily(sym, fromdate, "etf", timeoutMs)
+        }
         daily.sortBy { it.t }
-        val ks = resampleDaily(daily, tf)
+        // ⚠⚠ 2026-10-15 **日线不能过 resampleDaily**：它的 else 分支是「按周并桶」（周一起点），
+        //   tf="D" 落进去会把日线静默并成周线 —— 步长阈值 stepCloses 要的 260 根**日**收盘会
+        //   变成 260 根**周**收盘（还凑够 ≥201 根，静默算错、不报错）。W/M/Q 才重采样，D 直通。
+        val ks = if (tf == "D") daily else resampleDaily(daily, tf)
+        // ⚠ 实时价那一路**无论历史成功与否都要收口**（线程不 join 会漏、也拿不到它的结果）；
+        //   放在抛异常之前，保证失败路径也不留游离线程。
+        if (liveTh != null) {
+            try {
+                liveTh.join(LIVE_INFO_MS.toLong() + 2000L)
+            } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+            }
+            // ⚠ 写者收成一个：只有 wantLive 的调用方（行情页）才写 LIVE
+            liveRef.get()?.let { livePut(symU, it) }
+        }
         if (ks.size < 3) throw Exception("行情拉取失败(网络或品种名不对)")
         return listOf(VendorKs("NQ", ks.takeLast(n)))
     }
 
-    // nasdaq historical 单一 assetclass 取回日线行;网络/格式失败返回空列表,
-    // 由 fetchNasdaq 决定是否换 etf 类重试(两轮都空才在调用方处按原口径报错)
+    // nasdaq historical 单一 assetclass 取回日线行。
+    //
+    // ⚠⚠ 2026-10-15 t2 **网络异常改为抛出**（改前是 catch 后返回空列表）。
+    //   改前的后果：`fetchNasdaq` 分不清「网络挂了」与「这个 assetclass 没这只票」，
+    //   于是网络一失败就**再整包重试一次 etf**（165 KB × 2、10s × 2）；
+    //   而同一台机器上网络挂了，换 assetclass 照样挂 —— 那次重试纯属把等待时间翻倍。
+    //   现在：网络/HTTP 异常抛出 → 调用方不再重试，直接如实报「各行情源都不可达」；
+    //   只有**取到了但解析不出可用行**才返回空列表（那才是"换 etf 类试试"的语境）。
     private fun nasdaqDaily(
         sym: String, fromdate: String, assetClass: String, timeoutMs: Int
     ): MutableList<KLine> {
         val out = mutableListOf<KLine>()
+        val enc = URLEncoder.encode(sym.trim().uppercase(Locale.US), "UTF-8")
+        val j = JSONObject(get(
+            "https://api.nasdaq.com/api/quote/$enc/historical?assetclass=$assetClass&fromdate=$fromdate&limit=9999",
+            accept = "application/json", ua = "Mozilla/5.0", timeoutMs = timeoutMs))
         try {
-            val enc = URLEncoder.encode(sym.trim().uppercase(Locale.US), "UTF-8")
-            val j = JSONObject(get(
-                "https://api.nasdaq.com/api/quote/$enc/historical?assetclass=$assetClass&fromdate=$fromdate&limit=9999",
-                accept = "application/json", ua = "Mozilla/5.0", timeoutMs = timeoutMs))
             val rows = j.optJSONObject("data")?.optJSONObject("tradesTable")?.optJSONArray("rows")
                 ?: JSONArray()
             fun num(x: Any?): Double {
@@ -944,6 +1264,7 @@ object MktData {
                     num(r.opt("close")), num(r.opt("volume")), 0.0))
             }
         } catch (_: Exception) {
+            // 解析失败按"没有可用行"处理（会走 etf 那一次重试），与改前的回包形状一致
         }
         return out
     }
@@ -979,6 +1300,30 @@ object MktData {
         }
         val n = max(5, min(maxBars, count))
         val per = when (tf) { "W" -> "week"; "M" -> "month"; else -> "day" }
+        // ⚠⚠⚠ 2026-10-15 用户报「戴尔的行情数据有问题（K线/图表有问题）」——**根因就在下面的候选顺序**。
+        //
+        // 【真机取证(emulator-5554,只读)】DELL 的K线缓存里躺着一条**拼接序列**：
+        //   19 根 2012-03..2013-09（DELL 2013 年私有化之前的**老代码**）+ 1 根怪柱
+        //   `2026-10-01 o=13.82 h=548.39 l=13.81 c=507.93`（h/l = 39.7，一根柱子跨 40 倍）。
+        //   画到屏上就是「十几根 K 线挤在底部 + 一根穿天柱」，与用户描述完全一致。
+        //
+        // 【根因】`cands` 对美股**先试 `.OQ`（纳斯达克）**，而 DELL 在私有化之前**正是纳斯达克上市**；
+        //   腾讯对 `usDELL.OQ` 至今仍回**那支已退市老代码的历史**，并把当前报价拼成最后一根。
+        //   实测（2026-10-15，各一次请求，原样记在这里备查）：
+        //     usDELL.OQ → **80 根**，2007-03-30..2026-10-14，其中 **79 根在 2015 年之前**；
+        //                 末根 `2026-10-14,13.820,507.93,548.39,13.810` ⟸ o/h/l 全是拼接产物
+        //     usDELL.N  → **95 根**，2018-12-31..2026-10-14，一根不差（DELL 现在的纽交所序列）
+        //     usDELL.AR / usDELL.P → 0 根
+        //   ⟹ 本函数 `return` 的是**第一个 ≥3 根的候选**，于是 DELL 永远拿到 `.OQ` 那条拼接序列。
+        //   （IBM 不在这个坑里：它从来只在纽交所，`usIBM.OQ` 回 0 根 ⟹ 自然落到 `.N`。）
+        //
+        // 【判据】**最后一根之前有多年空洞**的候选，不是本品种的连续序列 ⟹ 记下来、换下一个候选键。
+        //   ⚠ 只在**多候选**（美股）这一支生效；港股/A 股只有一个键，行为与改前逐字相同。
+        //   ⚠ 全部候选都不连续时**仍回退到改前的行为**（第一个 ≥3 根的候选）——
+        //     不新增「无源」、不新增任何文案：这次修的是「选错序列」，不是「取不到数」。
+        val gapLimitMs = when (tf) { "D" -> 60L; "W" -> 200L; else -> 400L } * 86_400_000L
+        val multiCand = cands.size > 1
+        var fallback: List<VendorKs>? = null
         for (key in cands) {
             try {
                 val s = get(
@@ -1006,13 +1351,22 @@ object MktData {
                 }
                 if (out.size < 3) continue
                 out.sortBy { it.t }
+                // 陈旧上市线判据：相邻两根之间出现超过阈值的空洞（月线 400 天 / 周线 200 天 / 日线 60 天）
+                var maxGap = 0L
+                for (i in 1 until out.size) maxGap = max(maxGap, out[i].t - out[i - 1].t)
+                val stale = multiCand && maxGap > gapLimitMs
                 val ks = resampleDaily(out, tf).takeLast(n)
                 if (ks.size < 3) continue
+                if (stale) {
+                    // 记下来当兜底（改前就是回它），但先试下一个候选键
+                    if (fallback == null) fallback = listOf(VendorKs("TX", ks))
+                    continue
+                }
                 return listOf(VendorKs("TX", ks))
             } catch (_: Exception) {
             }
         }
-        return emptyList()
+        return fallback ?: emptyList()
     }
 
     /**
@@ -1574,7 +1928,13 @@ private fun raceOk(
     //   2026-10-10 t8 又换成 [东财, Naver]（腾讯对韩股恒 1 根、占着位置却不产出）。详见 kr 分支上方那段。
     // ⚠ 2026-10-07 外汇/美债的 Yahoo 专属腿已**整体退役**（用户：不要外汇，美债只留 TLT）。
     //   TLT 是 ETF → 落到最后的 stock 腿，与其他美股同路由，不需要专腿。
-    private fun stockLegs(sym: String, tf: String, count: Int, maxBars: Int = FETCH_N): List<Pair<String, () -> List<VendorKs>>> {
+    private fun stockLegs(
+        sym: String, tf: String, count: Int, maxBars: Int = FETCH_N,
+        // ⚠ 2026-10-15 t6：只透传给 Nasdaq 腿（实时价开关 + 序号闸，见 [fetchStocks]）。
+        //   其余腿（东财/腾讯/Naver/百度）签名不动，行为逐字不变。
+        wantLive: Boolean = false,
+        stillCurrent: () -> Boolean = { true }
+    ): List<Pair<String, () -> List<VendorKs>>> {
         val ty = symType(sym.trim().uppercase(Locale.US))
         if (ty == "cmdty" || ty == "gold" || ty == "silver") return emptyList()
         // 稿(可搜索:「韩股 = [腾讯, 东财]」)的原始顺序是 [腾讯, 东财]；本仓先后改成
@@ -1598,10 +1958,10 @@ private fun raceOk(
         //     成交量差约 2%；O/H/L 逐位一致。完整说明与实测数字见 `fetchNaver` 的注释。
         //     来源名显示 `Naver`（既有 "NV" 映射，零 UI 改动）。不满意可回退：对调两行即回到
         //     2026-10-10 的 [东财, Naver]，注释历史都在。
-        //   ⚠ 腾讯腿**没删**：它仍是 A 股/港股/美股的腿（见下方分支），只是不再占韩股第二腿。
+        //   ⚠ 腾讯腿**没删**：它仍是 A 股/港股的腿（见下方分支），只是不再占韩股第二腿。
+        // ⚠ 2026-10-15 用户裁定「行情数据源改为一家」：韩股只留 Naver，删东财 fallback。
         if (ty == "kr") return listOf(
-            srcKey("Naver", "kr") to { fetchNaver(sym, tf, count) },
-            srcKey("东财", "kr") to { fetchEastmoney(sym, tf, count, EM_TIMEOUT_MS) }
+            srcKey("Naver", "kr") to { fetchNaver(sym, tf, count) }
         )
         // ⚠⚠⚠ 2026-10-04 **A 股单腿走腾讯**。
         // 【为什么不竞速】`fetchBaidu` 的白名单是 `ctype != "hk" && ctype != "stock" → return emptyList()`，
@@ -1617,18 +1977,84 @@ private fun raceOk(
         //     ⟹ 「哪个月最低」排序都被改写。坑位保持**最多 2 次**硬上限：东财失败才投腾讯。
         //   ⚠ 百度退出美股腿：与腾讯同属浅复权，且 2 腿上限必须让位（百度曾为首腿，历史见 git）。
         //   ⚠ 连带：K线/支撑/腰斩/步长随深复权序列一次性下移，属预期行为不是回归。
+        // ⚠ 2026-10-15 用户裁定「行情数据源改为一家」：美股只留东财，删腾讯 fallback。
+        // ⚠⚠⚠ 2026-10-15（同日第三轮）用户改裁定：**「美股和大宗商品改为外国源，直接和
+        //   机构预测价一样，走纳斯达克的源」** —— 美股 K 线首腿（也是唯一一条腿）由东财换成
+        //   api.nasdaq.com，与 fetchTgt（机构目标均价）同域名同网络层。
+        //   【为什么换】东财 push2his 有反爬：本机出网实测 17/17 被掐线（tools/t7_em_probe1.py，
+        //   双法复核），屏上表现为「收盘价 · 未决 / 未取到」；单源后失败无腿可顶。
+        //   【可行性实测 tools/t8_nq_probe.py】api.nasdaq.com/api/quote/<CODE>/historical
+        //   stocks 类 DELL/AAPL/PLTR 各回 136 行、1~2s —— 且机构预测价本就在手机上常通。
+        //   【实现】fetchNasdaq 一直在（资产不删的理由就是等这条恢复），stocks 空再试 etf 类，
+        //   日线取回后由 resampleDaily 重采样成周/月/季（toQuarterly=resampleDaily(Q)，幂等，
+        //   fetchStocks 的 prep 再跑一次不会把季线并没）。
+        //   ⚠ 复权口径变化（预期内）：东财 fqt=1 是深分红前复权，Nasdaq historical 是交易所口径
+        //     （拆股已调、分红不调）⟹ 带大额分红的品种（如 TLT）历史价位会比东财序列偏高，
+        //     支撑/腰斩/步长随之移动 —— 属换源的口径代价，不是回归。
+        //   ⚠ qv（成交额）Nasdaq 不回，置 0；v（成交量）有值，VPVR 用的正是 v。
         if (ty == "stock") return listOf(
-            srcKey("东财", ty) to { fetchEastmoney(sym, tf, count, EM_TIMEOUT_MS) },
-            srcKey("腾讯", ty) to { fetchTencent(sym, tf, count, 8000, maxBars) }
+            srcKey("Nasdaq", ty) to {
+                fetchNasdaq(sym, tf, count, stillCurrent = stillCurrent, wantLive = wantLive)
+            }
         )
+        // ⚠ 2026-10-15 港股/其他：只留腾讯，删百度 fallback（百度对港股恒空响应，白打一次）。
         return listOf(
-            srcKey("百度", ty) to { fetchBaidu(sym, tf, count, maxBars) },
             srcKey("腾讯", ty) to { fetchTencent(sym, tf, count, 8000, maxBars) }
         )
     }
 
+    /**
+     * 该品种**真实腿链**的源名（已过 [vendorName] 剥掉「|市场」后缀），供上屏文案用。
+     *
+     * ⚠ 2026-10-15 t6：行情页状态行原来**写死**「百度股市通 / 腾讯 竞速中…」——①之后
+     *   股票腿只有东财、韩股只有 Naver、A股/港股只有腾讯 ⟹ 那句话在**编来源**
+     *   （该处自己的注释就写着「写了就是编来源」）。现在从腿链现取：
+     *   **腿链再改，文案自动跟随**，不需要有人记得回来改文案。
+     * ⚠ 只取腿链的**键**（源名），**不调用取数 lambda** ⟹ 本函数零网络、零副作用。
+     */
+    fun legNames(sym: String): List<String> {
+        val ty = symType(sym)
+        val keys = when (ty) {
+            "crypto" -> cryptoLegs(sym)                       // 币腿本来就是 VendorKs.v 代号
+            "cmdty", "gold", "silver" -> metalLegs(sym, "M", FETCH_N).map { it.first }
+            else -> stockLegs(sym, "M", FETCH_N).map { it.first }
+        }
+        return keys.map { vendorName(it) }
+    }
+
+    /**
+     * 行情页状态行前缀：**从真实腿链派生**（见 [legNames]）。
+     * 单腿用本文件里既有的「失败不回退重试」，多腿用既有的「失败腿不回退重试」——不新造措辞。
+     * ⚠ 「竞速」二字不再写：取数自 2026-10-03 起是**顺序替补**（用户裁定「取消竞速模式」），
+     *   屏上再写「竞速中」就是编机制（同一文件里 t302 的注释已经为失败文案修过一次同样的问题）。
+     */
+    fun legsText(sym: String): String {
+        val names = legNames(sym)
+        if (names.isEmpty()) return "拉取中 · 失败不回退重试"
+        val tail = if (names.size > 1) "拉取中 · 失败腿不回退重试" else "拉取中 · 失败不回退重试"
+        return names.joinToString(" / ") + " " + tail
+    }
+
     // 稿:1033-1052 fetchStocks(多源竞速版)
-    fun fetchStocks(sym: String, tf: String, count: Int): List<VendorKs> {
+    fun fetchStocks(
+        sym: String, tf: String, count: Int,
+        /**
+         * ⚠⚠ 2026-10-15 t6（评审 F7）：**要不要顺带取当日实时价**（同域 `/info`，~1.2 KB）。
+         *
+         * 只有**行情页**（`MktPanel.loadStockParallel`）传 `true` —— 屏上要显示实时价的那一处。
+         * 自选页（`FavDist`）、步长阈值（`stepCloses`）、全史最高（`allTimeHigh`）**都不传**：
+         *   · 它们不显示实时价，调了也是白花（28 品种最坏 +33 KB、每品种 +0.6–2.4s）；
+         *   · 而且它们**会把 LIVE 覆盖掉** —— 行情页刚取到的实时价会被自选页那一轮冲掉
+         *     （评审 F2 点名的"第三个写者"）。
+         * ⟹ 现在 `LIVE` 的写者只剩一个语义：**传了 wantLive 的那一轮行情页取数**。
+         */
+        wantLive: Boolean = false,
+        /**
+         * 请求序号闸（行情页传 `{ seq == reqSeq }`）：屏上画的是序号最新的那一轮，
+         * 实时价也必须来自那一轮（慢的那轮不许把快的覆盖掉）。只在 `wantLive` 时用得上。
+         */
+        stillCurrent: () -> Boolean = { true }
+    ): List<VendorKs> {
         val n = max(5, min(FETCH_N, count))
         val prep = fun(v: VendorKs?): VendorKs? {
             if (v == null || v.k.size < 3) return null
@@ -1636,7 +2062,7 @@ private fun raceOk(
             kk = kk.sortedBy { it.t }.takeLast(n)
             return if (kk.size < 3) null else VendorKs(v.v, kk)
         }
-        val legs = stockLegs(sym, tf, count)
+        val legs = stockLegs(sym, tf, count, FETCH_N, wantLive, stillCurrent)
         if (legs.isEmpty()) throw Exception("该品种没有可用行情源")
         // 反限流:刚失败的源短时不再投。**第一腿永远保留**——否则两源都被标失败时会一腿都不发、
         // 彻底取不到数而且没有任何东西来"解毒";记忆只用来排除次要源。
@@ -1871,6 +2297,22 @@ private fun raceOk(
 
     // 贵金属/大宗商品单源:只走东财期货(稿 fetchMetals 线路 101.GC00Y/101.SI00Y
     // 与 17 种商品 *00Y),Yahoo 贵金属线路已按稿删除;Q 合成/截根由 fetchEastmoney 承担
+    /**
+     * 贵金属/商品的真实腿链（**单源东财** —— 用户 2026-10-03 裁定删新浪后只剩这一条，理由见下）。
+     *
+     * ⚠ 2026-10-15 t6 **从 [fetchMetals] 里原样提取**：取数与状态行文案共用**这一处**源名。
+     *   两处各写一份，迟早不一致 —— 原来那句写死的「百度股市通 / 腾讯…」就是这么烂掉的。
+     *   ⛔ 提取**不改腿链本身**：源、顺序、键（`srcKey` 带市场）、超时全部逐字相同。
+     */
+    private fun metalLegs(
+        sym: String, tf: String, count: Int, timeoutMs: Int = 10000
+    ): List<Pair<String, () -> List<VendorKs>>> = listOf(
+        // ⚠ 2026-10-10 键带市场：贵金属链的东财与韩股/步长链的东财**不再连坐**（见 srcKey）
+        srcKey("东财", symType(sym.trim().uppercase(Locale.US))) to {
+            fetchEastmoney(sym, tf, count, timeoutMs)
+        }
+    )
+
     fun fetchMetals(sym: String, tf: String, count: Int, timeoutMs: Int = 10000): List<VendorKs> {
         val n = max(5, min(FETCH_N, count))
         val prep = fun(v: VendorKs?): VendorKs? {
@@ -1903,12 +2345,7 @@ private fun raceOk(
         //   Stooq gc.f / si.f              → JS 挑战，返回 HTML 不是 CSV
         // ⟹ 「从百度/腾讯分一个源给贵金属」在**当前可达的接口下做不到**，
         //   不是我没找，是这两家**根本不收录外盘贵金属**。
-        val legs = listOf<Pair<String, () -> List<VendorKs>>>(
-            // ⚠ 2026-10-10 键带市场：贵金属链的东财与韩股/步长链的东财**不再连坐**（见 srcKey）
-            srcKey("东财", symType(sym.trim().uppercase(Locale.US))) to {
-                fetchEastmoney(sym, tf, count, timeoutMs)
-            }
-        )
+        val legs = metalLegs(sym, tf, count, timeoutMs)
         val rest = legs.filter { !srcBadSkip(it.first) && !softSrcSkip(it.first) }
         val pool = if (rest.isNotEmpty()) rest else legs // 同 fetchStocks:全软熔断也全试，不只保第一腿
         // t132:竞速前置 fetching;try/finally 保证**异常路径也复位**
@@ -2285,7 +2722,13 @@ class StepR(val v: Double?, val why: String) {
             else -> return null                       // 股票等走 fetchTgt
         }
         val day = java.time.LocalDate.now().toString()
+        // ⚠ 2026-10-15 用户报「大宗商品/加密货币预测目标价时不时就消失」——
+        //   根因：predTarget 只查当天缓存，月线取数失败（限流/超时）时 allTimeHigh 返回 null
+        //   ⟹ 预测价整行消失。修：当天缓存 miss 时，先查昨天缓存（predLoad 按天存，
+        //   dayPut 最多留两天），用昨天的值兜底；仍然没有才走 allTimeHigh 重算。
         MktSave.predLoad(code, day)?.let { return it }
+        val prevDay = java.time.LocalDate.now().minusDays(1).toString()
+        MktSave.predLoad(code, prevDay)?.let { return it }
         // ⚠⚠ 2026-10-07 **口径更换（用户裁定）**：历史最高价 = **全时段盘中最高**，改用**月线**取全史。
         //   详见 [allTimeHigh]（为什么不拉日线）。
         val hi = allTimeHigh(code) ?: return null
@@ -2610,8 +3053,20 @@ class StepR(val v: Double?, val why: String) {
                 val s = a.getSharedPreferences(sp, Context.MODE_PRIVATE)
                     .getString(sym.uppercase(Locale.US), null) ?: return null
                 val p = s.split('|')
-                if (p.size != 2 || p[0] != day) return null
-                p[1].toDoubleOrNull()
+                // ⚠⚠⚠ 2026-10-15 修「四段载荷一律 miss」（用户报：大宗商品/加密货币预测目标价
+                //   时不时就消失）。改前是 `if (p.size != 2 || p[0] != day) return null`，
+                //   而 dayPut **从第二天起写的正是四段** `当天|值|前一天|值`（见 dayPut 的
+                //   「只多留一条」注释）⟹ 四段载荷永远判 miss ⟹ 「每天只算一次」从第二天起
+                //   彻底失效：**每一次调用都重新联网**。
+                //   后果链：取数次数被放大 N 倍 → 更容易撞东财/币安限流 → allTimeHigh 返回 null
+                //   → predTarget 返回 null → **预测价整行消失**。步长阈值走同一个 dayGet，同样中招。
+                //   现在两段/四段都认：先看当天档（p[0]/p[1]），再看顺移进来的前一天档（p[2]/p[3]）。
+                //   ⟹ predTarget 里那句「查前一天缓存兜底」也才真正生效（它查的就是 p[2]/p[3]）。
+                when {
+                    p.size >= 2 && p[0] == day -> p[1].toDoubleOrNull()
+                    p.size >= 4 && p[2] == day -> p[3].toDoubleOrNull()
+                    else -> null
+                }
             } catch (_: Exception) { null }
         }
 
@@ -2685,11 +3140,39 @@ class StepR(val v: Double?, val why: String) {
                     }
                     if (ks.isNotEmpty()) out.add(VendorKs(vo.optString("v"), ks))
                 }
-                if (out.isEmpty()) null else out
+                if (out.isEmpty()) null
+                // ⚠⚠⚠ 2026-10-15 **陈旧留底不再上屏**（用户报「戴尔的行情数据有问题」的真机复现）。
+                //   现场（emulator-5554，当天 13:06 的工作树包）：DELL 行情页 `507.93 / +494.11
+                //   (+3575.33%)`、K线图 19 根挤在底部 + 一根穿天柱、时间轴 `12-3 12-7 12-12 13-5 26-10`、
+                //   第一支撑 492.17 —— 全部来自留底里那条**拼接序列**（19 根 2012-03..2013-09
+                //   + 1 根怪柱 `o=13.82 h=548.39 l=13.81 c=507.93`）。
+                //   那条序列的**生产者**当天已修（[fetchTencent] 候选键 + 美股改单腿），但留底是
+                //   **旧代码写的**：只要真抓那一轮没成功（限流 / 断网 / 飞行模式），屏上就**一直是脏图**，
+                //   而 `saved()` 正是全项目读留底的**唯一入口**。
+                //   ⟹ 判据与 [fetchTencent] 同源：**相邻两根之间出现超过阈值的空洞**（月线 400 天 /
+                //     周线 200 天 / 日线 60 天）就不是本品种的连续序列 ⟹ 当**没有留底**返回 null，
+                //     让调用方真抓一次；抓不到就走它自己的失败态（「—无源」/「各行情源均不可达」）。
+                //     **宁可如实说没有，也不拿另一支票的历史当缓存数据画上去**（用户口径：界面不许骗人）。
+                //   ⚠ 与「根数 n 可放宽」（2026-10-09 裁定）不冲突：那条讲的是**同一品种、同一周期**的
+                //     不同根数；本条判的是**序列本身跨了另一支票**（实测 13 年空洞）。
+                else if (out.any { v -> maxGapMs(v.k) > gapLimitOf(tf) }) null
+                else out
             } catch (_: Exception) {
                 null
             }
         }
+
+        /** 相邻两根之间的最大间隔（毫秒）。留底读回时的完整性判据用，见 [saved] 的陈旧留底闸。 */
+        private fun maxGapMs(ks: List<KLine>): Long {
+            var g = 0L
+            val s = ks.sortedBy { it.t }
+            for (i in 1 until s.size) g = max(g, s[i].t - s[i - 1].t)
+            return g
+        }
+
+        /** 「陈旧上市线」阈值：月线 400 天 / 周线 200 天 / 日线 60 天 —— 与 [fetchTencent] 同一口径。 */
+        private fun gapLimitOf(tf: String): Long =
+            when (tf) { "D" -> 60L; "W" -> 200L; else -> 400L } * 86_400_000L
 
         /** 抓成功后写入留底(稿 mkStore) */
         fun store(ck: String, vs: List<VendorKs>) {
@@ -2775,6 +3258,38 @@ class StepR(val v: Double?, val why: String) {
         private const val PF = "gridcalc_fx_v1"
         private const val PKEY = "gc_fx"
 
+        // ⚠⚠⚠ 2026-10-15 t2 **兜底汇率**（用户报「韩股有时候没有换算成美元」）。
+        //
+        // 【根因】（**改前**的行为）汇率只有三条来路：内存 → 磁盘留底 → 网络（frankfurter → er-api）。
+        //   三条全空时 `rates` 是空的 ⟹ `rateOf("KRW")` 返回 null ⟹ `fxify()` 返回 false
+        //   ⟹ MktPanel 按「汇率未取到」处理：**整批 K 线不折算、不出图**；
+        //   连带走 `fetchTgtKrManual` / `fetchTgtEtnet` 也返回 null（目标价行整行消失）。
+        //   而 `ensure()` 只在 App 打开 / 回前台各跑一次 ⟹ 这一次失败就要等到下一次回前台，
+        //   用户看到的就是「**有时候**没换算成美元」。
+        //   ⚠ 还有一条**竞态**路径：启动那次行情刷新（`onCreate` 末尾）与汇率取数是并发的，
+        //     Naver 韩股约 0.3s 回来，而 frankfurter 超时上限 6s ——
+        //     K 线先到、汇率还没到，`fxify()` 同样拿到 null。
+        //     ⟹ 修法必须**不依赖任何时序**，所以下面用读时派生，而不是「启动时先装一次」。
+        //
+        // 【兜底值来源】与本 App 主源同一个接口的实测快照（2026-10-15 取，接口日期 2026-10-14）：
+        //     https://api.frankfurter.dev/v1/latest?base=USD&symbols=HKD,KRW,CNY
+        //     {"date":"2026-10-14","rates":{"CNY":6.6927,"HKD":7.8481,"KRW":1336.79}}
+        //   备源交叉核对（同日 https://open.er-api.com/v6/latest/USD）：
+        //     HKD 7.848465 / KRW 1339.81 / CNY 6.706494 —— 两源一致（差 <0.3%）。
+        //
+        // 【口径】与 `rateOf` 完全一致：**1 USD = rate 外币**（原生价 → 美元 = ÷rate）。
+        //   ⚠ 写成「1 外币 = rate USD」会把价格乘错好几个数量级（同 fetchTgtEtnet 那条墓碑）。
+        //
+        // 【纪律】兜底**只在真值缺失时生效**，且是**读时派生**（见 rateOf）：
+        //   **不写进 `rates`、不落盘** —— 否则「兜底」会变成一条看起来像真值的记录，
+        //   屏上再也分不出它是不是刚拉的、留底里也再分不出折算用的是哪个汇率。
+        //   屏上必须标注「非实时」（`fxText` / `staleNote`）；真实汇率一到，
+        //   `rateOf` 下一次读就直接改用真值 —— 不需要任何「撤销标记」的时序配合。
+        private val FALLBACK = mapOf("HKD" to 7.8481, "KRW" to 1336.79, "CNY" to 6.6927)
+
+        /** 兜底值的日期标签（屏上注明用，用户一眼能看出这不是实时值）。 */
+        const val FALLBACK_DATE = "2026-10-14"
+
         @Volatile var rates = HashMap<String, Double>()
         @Volatile var dateStr = ""
         @Volatile var ts = 0L
@@ -2797,11 +3312,40 @@ class StepR(val v: Double?, val why: String) {
             return "USD"
         }
 
-        fun rateOf(cur: String): Double? = if (cur == "USD") 1.0 else rates[cur]
+        /** 内存/留底里的**真实**汇率（1 USD = X 外币）；三条来路全空时为 null（**不含兜底**）。 */
+        private fun liveRate(cur: String): Double? {
+            if (cur == "USD") return 1.0
+            val v = rates[cur]
+            return if (v != null && v > 0) v else null
+        }
+
+        /**
+         * 折算用汇率：真值优先，真值缺失时落到 [FALLBACK]（见上方那段注释）。
+         * ⟹ 只要兜底表覆盖这个币种，**汇率断供时也不会返回 null**，
+         *   `fxify()` 不再因为「这一次没拉到」而把整批 K 线判成无源。
+         * ⚠ 这是**读时派生**：`rates` 里始终只有真值，兜底不落盘、不冒充真值。
+         */
+        fun rateOf(cur: String): Double? = liveRate(cur) ?: FALLBACK[cur]
+
+        /** 该币种当前用的值是否来自兜底汇率（屏上据此标注「非实时」，见 [fxText] / [staleNote]）。 */
+        fun isFallback(cur: String): Boolean = cur != "USD" && liveRate(cur) == null
+
         // ⚠ 2026-10-13 用户裁定：汇率断供时**用旧汇率照折 + 行尾注明**（不藏行、不静默）。
         //   staleness 与 ensure() 的 TTL 同一判据；rateDate = 最近一次成功拉取的日期（fxText 同源）。
+        //   （兜底那一档不在这里判：`loaded=false` 时它恒 false，判了也判不出来 —— 见 staleNote。）
         fun rateStale(): Boolean = loaded && (System.currentTimeMillis() - ts >= TTL)
         fun rateDate(): String = dateStr
+
+        /**
+         * 目标价行尾注：**兜底** / 真实汇率**过期** 两种都如实标注，正常时返回空串（不新增文案）。
+         * 判据按**该品种自己的币种**走，不是全局一把梭：HKD 用真值、KRW 用兜底时，
+         * 只有韩股那行会写「兜底」。
+         */
+        fun staleNote(cur: String): String = when {
+            isFallback(cur) -> "（兜底汇率 $FALLBACK_DATE，非实时）"
+            rateStale() -> "（旧汇率 $dateStr）"
+            else -> ""
+        }
 
         // 缓存键尾缀:美元=1,无汇率=0,有汇率用去尾零十进制串(7.844/1355.05)
         fun keyRate(sym: String): String {
@@ -2813,12 +3357,15 @@ class StepR(val v: Double?, val why: String) {
         private fun fmtRate(r: Double): String =
             String.format(Locale.US, "%,.4f", r).trimEnd('0').trimEnd('.')
 
-        // 行情页说明行三态:美元报价/有汇率(带日期)/取不到保持原币
+        // 行情页说明行四态:美元报价/有汇率(带日期)/**兜底汇率(非实时)**/取不到保持原币
+        // ⚠ 2026-10-15 t2 新增第三态：兜底汇率**不能**和真汇率写成一个样子
+        //   （真汇率那行写「(汇率 2026-10-14)」，用户没法区分那是不是刚拉的）。
         fun fxText(sym: String): String {
             val cur = curOf(sym)
             if (cur == "USD") return "美元口径(该品种以美元报价)"
             val r = rateOf(cur)
             if (r == null || !(r > 0)) return "美元口径:暂时没取到 $cur 汇率,价格仍按原币显示"
+            if (isFallback(cur)) return "美元口径:1 USD = ${fmtRate(r)} $cur(兜底汇率 $FALLBACK_DATE,非实时)"
             return "美元口径:1 USD = ${fmtRate(r)} $cur(汇率 $dateStr)"
         }
 
@@ -2851,6 +3398,11 @@ class StepR(val v: Double?, val why: String) {
                 }
             } catch (_: Exception) {
             }
+            // ⚠ 2026-10-15 t2：这里**不再需要**「先补兜底」这一步 —— 兜底改成了
+            //   `rateOf` 的读时派生（真值缺失即用兜底），所以无论本函数何时被调、
+            //   无论 K 线取数是不是抢在汇率前面，`fxify()` 都不会再拿到 null。
+            //   （同步装兜底的写法还要维护「哪些币种是兜底」的状态与撤销时序，
+            //     派生写法没有那个时序可错。）
             if (loaded && System.currentTimeMillis() - ts < TTL) return
             if (inflight) return
             inflight = true
@@ -2858,7 +3410,12 @@ class StepR(val v: Double?, val why: String) {
                 try {
                     val (m, d) = fetch()
                     if (m.isNotEmpty()) {
-                        rates = HashMap(m)
+                        // ⚠ 2026-10-15 t2 **合并**，不是整体替换：源只回部分币种时，
+                        //   `rates = HashMap(m)` 会把另一个币种打回缺失 ⟹ 那一档会掉回兜底，
+                        //   把「上次拉到的真值」换成兜底值（真值再旧也比兜底准）。
+                        val merged = HashMap(rates)
+                        merged.putAll(m)
+                        rates = merged
                         if (d.isNotEmpty()) dateStr = d
                         ts = System.currentTimeMillis()
                         loaded = true
@@ -2933,6 +3490,11 @@ class StepR(val v: Double?, val why: String) {
         // 折算成功的语义没变：判重仍在每根 K 线上（首画/终画/缓存共享同批对象只折一次）；
         // 缓存仍存**已折算**的美元价 —— 这是安全的，因为缓存键 `MktCache.key` 里带了
         // `@FX.keyRate(sym)`，汇率变则键变，会重新抓新对象再折，不会返回过期值。
+        //
+        // ⚠ 2026-10-15 t2：**false 这条分支现在只为「兜底表不认识的币种」而留**
+        //   （HKD/KRW/CNY 三个都由 `rateOf` 的兜底覆盖，不会再返回 null）。
+        //   分支**不删**：它守的是「量纲不能错」这条规则本身，
+        //   哪天多一个币种而兜底表没跟上，必须仍然是「不出图」而不是「拿原币当美元」。
         fun fxify(vs: List<VendorKs>, sym: String): Boolean {
             val cur = curOf(sym)
             if (cur == "USD") return true            // 本来就是美元，无需折算
