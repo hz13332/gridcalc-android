@@ -1,8 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- t254 稿 L807: 取消按钮 1px 描边 + 圆角 8 -->
+<!-- 取消（次）按钮底：1px 描边 + 圆角。
+     2026-10-16 t49 · 方向 B §2.4-3.5 次档 + §2.3 圆角：
+       圆角 8 → **10dp**；描边由 colorBorder 换成 **colorControlOutline**
+       （与 btn_ghost 同口径：colorBorder 压画布 1.35:1 不过 3:1，
+       control-outline 压卡面 4.65:1 / 3.96:1，压画布 4.18:1 —— 本机复算，双双过 3:1）。
+       底仍透明：它压在面板的卡片面上（bg-surface），不另加一层底。 -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">
     <solid android:color="@android:color/transparent" />
-    <stroke android:width="1dp" android:color="?attr/colorBorder" />
-    <corners android:radius="8dp" />
+    <stroke android:width="1dp" android:color="?attr/colorControlOutline" />
+    <corners android:radius="10dp" />
 </shape>

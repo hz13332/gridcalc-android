@@ -1,9 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- t316 #143 稿 L741-742: 保存按钮未保存态也是 8dp 圆角 + 主色实底 + 白字。
-     改前 page_calc.xml 用 ?attr/colorPrimary 直挂背景 = 纯 ColorDrawable, 矩形;
-     已保存态 MainActivity 早就用 GradientDrawable + cornerRadius 8, 两态不对称。 -->
+<!-- 保存按钮（未保存态）底。
+     2026-10-16 t49 · 方向 B §2.4-3.5 按钮三档（主档）+ §2.3 圆角：
+       主档 = **实底 colorAccentFill + colorOnPrimary 字 + r10**
+       （改前：colorPrimary 实底 + 8dp ⟹ 主色一个值同时当文字与实底，正是 F-5 根因）。
+     圆角 8 → **10dp**（-r-input；方向 B 的按钮与输入面同档）。
+     ⚠ 已保存态由 MainActivity 用 GradientDrawable 画 —— 那边要同步改成 r10 与 accentFill，
+       属 .kt（本轮 outOfScope），已登记在交付报告的「待下一轮」清单里。 -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">
-    <solid android:color="?attr/colorPrimary" />
-    <corners android:radius="8dp" />
+    <solid android:color="?attr/colorAccentFill" />
+    <corners android:radius="10dp" />
 </shape>

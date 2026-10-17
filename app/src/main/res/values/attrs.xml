@@ -28,11 +28,19 @@
          都不是一个「档位」。(它离稿的 bg 只有 65 / 35, 但 bg 已经由 colorCanvas 占着,
          所以它仍然没有自己的对照物, 只是背景上抬起一档的面。)
          **别把它当成稿的 panel, 也别为了「对齐稿」去改它的值。**
-         活引用只有两处, 而这两个面在稿里都不存在:
-         drawable/card_bg.xml —— 只被两个 PopupWindow 当背景
-         (FavPanel 的搜索建议浮层 / MktPanel 的 win 浮层); 稿里没有 PopupWindow
-         MktView 的十字光标价签字色 —— 稿里没有十字光标控件
-         (全文只有 L70 配色说明提过一次「十字光标」, 是借色说明, 不是控件) -->
+         ⚠ 本条旧文「活引用只有两处」**2026-10-16 t1 已作废**(与代码不符, 只改注释不动色值)。
+          旧的第二处(十字光标价签字色)仍成立: MktView 的十字光标价签, 稿里没有该控件
+          (全文只有 L70 配色说明提过一次「十字光标」, 是借色说明, 不是控件)。
+          作废的是第一处「drawable/card_bg.xml —— 只被两个 PopupWindow 当背景」:
+           · FavPanel 的搜索建议 2026-10-06 起改**内联容器**(page_fav.xml:302 fav_sug_box) ⟹ 不再是浮层;
+           · MktPanel 的 winPop 是**未创建的死变量**(MktPanel.kt:177 只声明, 全文件无赋值) ⟹ 没有浮层;
+           · 实测 card_bg 现有 **9 处活引用**, 全是**屏内卡片**
+             ⚠【2026-10-16 t5 · 计数与行号改准】上一版写「8 处」+ `page_calc.xml x3(:74 / :583 / :722)`:
+               `:583` / `:722` 两个行号**已不存在**; 而 t2 的 D5 给参数区**新增了一张外层卡**
+               (page_calc.xml:260) ⟹ 现在共 **9 处**。下列行号是 **t5 收工时的最终状态**重数:
+              page_fav.xml x3(搜索卡 :202 / 候选容器 :311 / 列表卡 :1336)、
+              page_calc.xml **x4**(:74 / :260 / :625 / :763)、page_settings.xml x2(:87 / :239)。
+          ⟹ card_bg = 屏内卡底, 与浮层无关(方向 B 的卡 = 稿的 bg-surface + r-card + elev-1)。 -->
     <attr name="colorCard" format="color" />
     <!--      colorSurf2 已下线 (2026-09-30), **别补回来**。
          它是 App 自有的第二级表面色, 稿里没有对照物(稿的 panel 对应的是 colorInput)。
@@ -52,20 +60,21 @@
          把这张对应表写在这里，是因为**不写就不可查** —— 下一个改主题的人 grep 不到
          稿的第三档墨色名，就不知道它对应谁。加一个零引用的 colorInk3 才是真引入死代码。
 
-           主题   稿的墨色      App 的 attr     hex        实算 L    稿的 L    差
-           浅色    ink (第一档)    colorInk      #1B1E25  0.235     0.235    +0.000
-           浅色    ink2(第二档)    colorSub      #53575F  0.456     0.455    +0.001
-           浅色    ink3(第三档)    colorFaint    #686C74  0.531     0.530    +0.001
-           深色    ink (第一档)    colorInk      #E7E9EF  0.934     0.935    -0.001
-           深色    ink2(第二档)    colorSub      #9CA0A8  0.705     0.705    +0.000
-           深色    ink3(第三档)    colorFaint    #70747D  0.559     0.560    -0.001
-           最大偏差 0.001 ⟹ 六档全部逐档吻合（hex 取整的固有误差 ≤0.002）
+           方向-B CSS 变量名（XML 注释限制下省略前缀）↔ App 当前 themes.xml 实值（v2 六档墨色；OKLab L）
+            主题   方向-B token             App attr  themes.xml hex  OKLab L  与原型/themes.xml
+           浅色    ink (第一档)    colorInk      #10151C         0.193907   同值，Δ=0.000
+           浅色    ink-sub (第二档)  colorSub      #4A5563         0.445303   同值，Δ=0.000
+           浅色    ink-faint(第三档) colorFaint    #646E7C         0.534757   同值，Δ=0.000
+           深色    ink (第一档)    colorInk      #E9EDF3         0.944786   同值，Δ=0.000
+           深色    ink-sub (第二档)  colorSub      #AAB4C2         0.766479   同值，Δ=0.000
+           深色    ink-faint(第三档) colorFaint    #818C9B         0.636179   同值，Δ=0.000
+           最大偏差 0.000 ⟹ 六档逐位等于方向-B 原型与 themes.xml（按显示精度）
 
          换算（Björn Ottosson 的 OKLCH → sRGB）：
              lms = [v**3 for v in M_LAB2LMS · lab]   ← **立方，不是立方根**
              → M_LMS2RGB · lms → gamma
-         自检：白(255,255,255) / 黑 / oklch(.5,0,0)≈#636363
-         结论：**数值逐档吻合，命名是 App 自家的** —— 这是命名债，不是视觉债。
+          自检：白(255,255,255) / 黑 / oklch(.5,0,0)≈#636363
+          结论：**数值逐档吻合，命名是 App 自家的** —— 这是命名债，不是视觉债。
          ════════════════════════════════════════════════════════════════════ -->
     <attr name="colorInk" format="color" />
     <attr name="colorSub" format="color" />
@@ -103,4 +112,101 @@
     <!--     colorOnPrimary: 主色实底之上的字色, 稿里没有独立 token(稿直接写白字)。
          两套主题都是纯白 #FFFFFF。 -->
     <attr name="colorOnPrimary" format="color" />
+
+    <!-- ════════════════════════════════════════════════════════════════════
+         【v2 · 方向 B「分层卡片」的 20 色 token】—— 2026-10-16 t49 落地
+         规格: design/四屏视觉改版/交接_方向B.md §2.1(色表) / §2.5(改名表) / §5.3-M1。
+         下面这张表与上面那张(稿 → App)同构: **不写就不可查** —— 下一个改主题的人
+         grep 不到方向 B 的 CSS 变量名, 就会以为「看着像」就是「就是」。
+
+           方向 B 变量        App attr              变化
+           bg-canvas          colorCanvas           值换 (#F1F4F8 / #0E1116)
+           bg-surface         colorCard             值换 (#FFFFFF / #161B22)
+           bg-surface-2       colorSurface2          **新增**(v1 的 colorInput 是同一角色的旧名, 见下)
+           bg-surface-3       colorSurface3          **新增**(第 4 级面: 深色选中药丸 / 已加入行)
+           (选中药丸底)        colorSurfaceRaised     **新增**: 浅=surface / 深=surface-3, 见该 attr 注释
+           border             colorBorder            值换 (#DCE3EB / #2A313B)
+           border-strong      colorBorderStrong      **新增**(手势条 / 强分隔)
+           ink / ink-sub / ink-faint  colorInk / colorSub / colorFaint   值全换
+           accent(当文字)      colorAccentText        **新增**: 与实底角色分开, 见下
+           accent-fill        colorAccentFill        **新增**(按钮 / 开态轨道 / 选中药丸实底)
+           accent-pressed     colorAccentPressed     **新增**
+           accent-soft        colorAccentSoft        **新增**(带 alpha: tab 选中底 / chip)
+           on-accent          colorOnPrimary         值不变 (#FFFFFF 两套)
+           up / down          colorTeal / colorRed   值换, **语义不翻转**(涨绿跌红)
+           track-off          colorTrackOff          **新增**
+           thumb-off          colorThumbOff          **新增**
+           control-outline    colorControlOutline    **新增**(无文字控件的边界色)
+           (危险实底之上的字色) colorOnDanger          **新增**, 见该 attr 注释
+
+         ⚠ **colorPrimary / colorPrimaryPressed 保留**(旧名, 全仓 300+ 处引用, 本轮不动
+           layout/.kt): colorPrimary 取「当文字用的蓝」(= accent-text), 实底场景改用
+           colorAccentFill —— 这正是 v1 F-5 的根因(一个值同时当文字和实底, 深色里必有一头不过线)。
+         ⚠ **colorInput** 同理保留: 它与 colorSurface2 **同值同角色**(内嵌面), 是改名过渡期的旧名;
+           新 drawable 一律用 colorSurface2, 等 layout 迁移完再删 colorInput。
+         ════════════════════════════════════════════════════════════════════ -->
+
+    <!--     colorSurface2: 内嵌面(输入 / 分段轨道 / 表头带 / 徽标底) —— 方向 B §2.1 第 2 级面。
+         值: 浅 #EDF1F6 / 深 #1E242D。**与 colorInput 同值**: colorInput 是 v1 的旧名,
+         布局里还有引用所以留着; 新 drawable 一律引本 attr(见 seg_box / seg_frame / skl / toast_bg)。 -->
+    <attr name="colorSurface2" format="color" />
+    <!--     colorSurface3: 更深的内嵌面 —— 方向 B §2.1 第 3 级面(面层从 v1 的 3 级变 4 级)。
+         值: 浅 #E2E8F0 / 深 #272E38。
+         用途(§2.1 用途列 + theme.css §6.4): 深色下**选中药丸**的底、已加入行、按压底。 -->
+    <attr name="colorSurface3" format="color" />
+    <!--     colorSurfaceRaised: 「抬起的面」—— 分段器**选中段药丸**的底。
+         ⚠ 为什么单出一个 attr, 而不是复用 colorCard: 方向 B theme.css L519-528 规定
+         选中药丸 **浅色取 surface(#FFFFFF) / 深色取 surface-3(#272E38)** —— 同一角色在
+         明暗两态取自**不同的阶梯**。App 是运行时切主题(两个 style 同在 values/themes.xml),
+         drawable 只能吃 ?attr/, 没有 -night 限定符可分文件 ⟹ 必须有一个跨主题的映射 attr。
+         (直接复用 colorCard 的话, 深色药丸 = #161B22 压 #1E242D 轨道 = 1.05:1, 选中段会读成「一个洞」。) -->
+    <attr name="colorSurfaceRaised" format="color" />
+    <!--     colorBorderStrong: 强分隔 / 手势条 —— 方向 B §2.1(第 6 行)。
+         值: 浅 #C6D0DC / 深 #3A434F。**colorBorder 是装饰性行分隔**(不承担边界职责),
+         需要「看得见的边界」时用它或 colorControlOutline。 -->
+    <attr name="colorBorderStrong" format="color" />
+    <!--     colorAccentText: 主色**当文字 / 图标 / 描边** —— 深色必须够亮(方向 B §2.1 注: 8.22:1; 本机复算 8.99:1)。
+         值: 浅 #2A5BD7 / 深 #8FB2FF。
+         ⚠ **主色为什么拆两个 token**(方向 B §2.1 逐字): 深色下「当文字用的蓝」要够亮,
+         「当实底用的蓝」要够深(白字压它 4.80:1)—— 一个值在深色里同时满足两者做不到,
+         这正是 v1 F-5 的同源问题。 ⟹ 文字/描边引本 attr, 实底引 colorAccentFill。 -->
+    <attr name="colorAccentText" format="color" />
+    <!--     colorAccentFill: 主色**当实底**(主按钮 / 开态开关轨道 / 选中药丸实底 / 图表命中柱)。
+         值: 浅 #2A5BD7 / 深 #3D6BE0。之上配 colorOnPrimary(白字): 浅 5.87:1 / 深 4.80:1(§2.1)。 -->
+    <attr name="colorAccentFill" format="color" />
+    <!--     colorAccentPressed: 主色实底的**按压态** —— 方向 B §2.1。
+         值: 浅 #1E47B0 / 深 #2F55B8。
+         (v1 的 colorPrimaryPressed 用的是「主色 60% 不透明叠画布」的合成口径, 方向 B 改成
+          一个真实的深色 token ⟹ 本条取代那条口径; colorPrimaryPressed 保留给未迁移的 .kt。) -->
+    <attr name="colorAccentPressed" format="color" />
+    <!--     colorAccentSoft: 主色**浅底**(tab 选中药丸 / 状态 chip) —— 方向 B §2.1, 带 alpha。
+         值: 浅 rgba(42,91,215,.10) = #1A2A5BD7 / 深 rgba(143,178,255,.14) = #248FB2FF
+         (App 惯例: alpha 写在最前两位, 与既有 colorTealBg 的 #1F0AA182 同格式)。 -->
+    <attr name="colorAccentSoft" format="color" />
+    <!--     colorTrackOff: 开关**关态轨道**底 —— 方向 B §2.1 + theme.css §6.5。
+         值: 浅 #E2E8F0 / 深 #1E242D(与 colorSurface3/colorSurface2 同值, 但角色独立:
+         轨道色将来若要单独调, 不该牵动面层)。 -->
+    <attr name="colorTrackOff" format="color" />
+    <!--     colorThumbOff: 开关**关态滑块**色 —— 方向 B §2.1 + §2.4-3.7。
+         值: 浅 #333C48 / 深 #C3CBD6。
+         ⚠ 消费方是 MainActivity.t211PaintSwitch(Kotlin 侧 thumbTintList, 本轮 outOfScope)
+         ⟹ 本 attr 在 XML 里**暂时零引用**, 如实登记(见交付报告「零引用登记」)。
+         开态滑块 = colorOnPrimary(白), 已由 .kt 侧给值, 不另出 token。 -->
+    <attr name="colorThumbOff" format="color" />
+    <!--     colorControlOutline: **无文字控件**的边界色(开关轨道 / 自带底色的输入控件本体)
+         —— 方向 B §2.1 + §2.4-3.7 / §6.1-①。
+         值: 浅 #6B7684 / 深 #6E7A88; 压自身底色实算 **3.74:1**(浅, 压关态轨道 #E2E8F0) /
+         **3.57:1**(深, 压 #1E242D)、压卡面 4.65 / 3.96 ⟹ 双双 ≥3:1(本机复算)。
+         ⚠ 这是本轮**收掉 v1 继承低对比边界**的关键值: v1 的次按钮描边用 colorBorder,
+         压画布只有 1.35:1(浅) / 1.32:1(深) —— 本 attr 替代之后过线(见 btn_ghost/panel_btn_line)。 -->
+    <attr name="colorControlOutline" format="color" />
+    <!--     colorOnDanger: **危险实底(跌红)之上的字色** —— v1 F-5 同族的最后一处
+         (交接 §5.1-②: panel_btn_danger 深色白字只有 3.76:1, 不过 AA)。
+         值: 浅 #FFFFFF(白字压 #C0362F = 5.51:1) / 深 **#0A0D12 深墨**(压方向 B 深色 down 变量
+         #FF7A72 = **7.67:1**; 若仍压 v1 的 #E94C44 则 5.17:1)。
+         ⚠ **不许动共享的 colorOnPrimary**(它是主色实底的字色, 两套主题都必须是白)。
+         ⚠ 采用方 = res/layout/panel_clear.xml:94(现在是 ?attr/colorOnPrimary) ——
+         **layout 不在 t49 的 inScope**, 故本轮只落 token; 在 layout 采用之前, 深色「清空」
+         按钮的白字仍是 3.76:1, **如实登记为未闭合缺口**(不写成已验证)。 -->
+    <attr name="colorOnDanger" format="color" />
 </resources>

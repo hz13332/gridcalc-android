@@ -1,16 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 稿 L258-261 Seg 选中段: background var(ac) 决策紫, 无描边无圆角
-     (圆角由容器 overflow:hidden 切, 段自己不能圆)。
-     pressed 对应稿 L14 .segsw:active{opacity:.6}。 -->
-<selector xmlns:android="http://schemas.android.com/apk/res/android">
-    <item android:state_pressed="true">
-        <shape android:shape="rectangle">
-            <solid android:color="?attr/colorPrimaryPressed" />
-        </shape>
-    </item>
-    <item>
-        <shape android:shape="rectangle">
-            <solid android:color="?attr/colorPrimary" />
-        </shape>
-    </item>
-</selector>
+<!-- 分段器**选中段**（抬起的药丸）。
+     2026-10-16 t49 · 方向 B §2.4-3.6 逐字：「选中 = **抬起的药丸**（bg-surface，
+     深色 bg-surface-3）+ elev-1 + ink/600 —— **不占主色实底**」。
+       ⟹ 底 = colorSurfaceRaised（浅 #FFFFFF / 深 #272E38 的跨主题映射，见 attrs.xml 该条注释）、
+          圆角 r999、**不再用主色实底**（改前是 colorPrimary 实心紫 + 8dp 直角块）。
+     抬升：§2.3 的 elev-1（浅色真阴影 / 深色 none）—— 由宿主 View 消费 elev_1，drawable 画不了阴影。
+     ⚠ 为什么这里**没有** selector：方向 B 的按压反馈是**字色**（theme.css §6.4 末行
+       `.gc-seg__btn:active { color: var(-ink) }`），底与圆角都不变 ⟹ 本 drawable 不需要
+       按压态（改前的 pressed → colorPrimaryPressed 是主色实底，方向 B 明确不用）。
+       按压态的**字色**落在语言层 / 布局侧（下一步）。 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="?attr/colorSurfaceRaised" />
+    <corners android:radius="999dp" />
+</shape>

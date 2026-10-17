@@ -1,17 +1,26 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- 输入 / 内嵌面（含聚焦态）。
+     2026-10-16 t49 · 方向 B §2.4-3.8「输入 / 内嵌面」+ §2.3 圆角：
+       常态：底 = colorSurface2（= bg-surface-2）、描边 1dp = colorBorder、圆角 **8 → 10dp**（-r-input）。
+       聚焦：底抬到 colorCard（= bg-surface）、描边换 colorAccentText（= -accent）—— 逐字照
+             「聚焦 = 描边 accent + 底 surface」。
+     ⚠ §2.4-3.8 的「容器描边 transparent / 控件本体描边 control-outline」两类分写：
+       本 drawable 是**控件本体**那一类（自带底色的输入面），所以描边是**看得见的**，
+       不写 transparent —— 写 transparent 会被对比度闸读成「描边 = 自身底色」= 1.00:1。
+       聚焦态的描边用 accent（浅色 #2A5BD7 压卡片面 #FFFFFF = 5.87:1，本机复算）。 -->
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:state_focused="true">
         <shape android:shape="rectangle">
-            <solid android:color="?attr/colorInput" />
-            <stroke android:width="1dp" android:color="?attr/colorPrimary" />
-            <corners android:radius="8dp" />
+            <solid android:color="?attr/colorCard" />
+            <stroke android:width="1dp" android:color="?attr/colorAccentText" />
+            <corners android:radius="10dp" />
         </shape>
     </item>
     <item>
         <shape android:shape="rectangle">
-            <solid android:color="?attr/colorInput" />
+            <solid android:color="?attr/colorSurface2" />
             <stroke android:width="1dp" android:color="?attr/colorBorder" />
-            <corners android:radius="8dp" />
+            <corners android:radius="10dp" />
         </shape>
     </item>
 </selector>

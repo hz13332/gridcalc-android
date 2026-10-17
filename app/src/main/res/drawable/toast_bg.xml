@@ -1,8 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- t254 稿 L817: 底部 toast 底色 取稿的 panel 色 = App 的 colorInput + 1px 描边 + 圆角 8 -->
+<!-- 底部 toast 底。
+     2026-10-16 t49 · 方向 B §2.3 圆角 + §2.1 面层命名：
+       圆角 8 → **12dp**（-r-card）；
+       底由 colorInput 换成 **colorSurface2**（同一个角色、方向 B 的名字；
+       colorInput 是 v1 旧名，留给未迁移的 layout）；描边仍 colorBorder。 -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">
-    <solid android:color="?attr/colorInput" />
+    <solid android:color="?attr/colorSurface2" />
     <stroke android:width="1dp" android:color="?attr/colorBorder" />
-    <corners android:radius="8dp" />
+    <corners android:radius="12dp" />
 </shape>

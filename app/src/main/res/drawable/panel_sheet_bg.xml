@@ -1,11 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- t254 稿 L803: 面板底 圆角 16 16 0 0, 只圆上面两角; 背景取稿的 bg 色(=colorCanvas) -->
+<!-- 底部面板（sheet）底：只圆上面两角。
+     2026-10-16 t49 · 方向 B §2.3 圆角 + §2.4-3.2 卡：
+       圆角 16 → **12dp**（-r-card；方向 B 只用 12/10/999）。
+       底 由 colorCanvas 换成 **colorCard**（= bg-surface）—— 面板是**浮在画布之上的卡**
+       （对应 §2.3 的 elev-3 弹层），不是画布本身；深色下它落在阶梯第 1 级 #161B22，
+       与画布 #0E1116 拉开一档（层次靠色调阶梯，不靠阴影）。 -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">
-    <solid android:color="?attr/colorCanvas" />
+    <solid android:color="?attr/colorCard" />
     <corners
-        android:topLeftRadius="16dp"
-        android:topRightRadius="16dp"
+        android:topLeftRadius="12dp"
+        android:topRightRadius="12dp"
         android:bottomLeftRadius="0dp"
         android:bottomRightRadius="0dp" />
 </shape>

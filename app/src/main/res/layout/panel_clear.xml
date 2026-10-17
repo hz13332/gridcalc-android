@@ -80,6 +80,13 @@
                 android:textColor="?attr/colorSub"
                 android:textSize="@dimen/fs_title" />
 
+            <!-- ⚠ 2026-10-16 t49（方向 B token 层的收尾）：危险实底（跌红）之上的字色改接
+                 **?attr/colorOnDanger**（浅 #FFFFFF / 深 #0A0D12 深墨）。改前挂的是
+                 ?attr/colorOnPrimary（两套主题都是白）—— 深色白字压方向 B 的 down #FF7A72
+                 只有 2.54:1、压 v1 的 #E94C44 也只有 3.76:1，均不过 AA 4.5；换深墨后压
+                 #FF7A72 = **7.67:1**（本机复算）。依据：交接_方向B.md §5.1-② / 裁定书 F-5 同族。
+                 **共享的 colorOnPrimary 一字未动**（它仍是主色实底的字色，两套都必须是白）。
+                 ⚠ 本文件其余部分留给 t53（计算屏拆 B1），本任务只改这一处字色引用。 -->
             <TextView
                 android:id="@+id/panel_ok"
                 android:layout_width="0dp"
@@ -91,7 +98,7 @@
                 android:paddingTop="13.4dp"
                 android:paddingBottom="13.4dp"
                 android:text="清空"
-                android:textColor="?attr/colorOnPrimary"
+                android:textColor="?attr/colorOnDanger"
                 android:textSize="@dimen/fs_title"
                 android:textStyle="bold" />
         </LinearLayout>

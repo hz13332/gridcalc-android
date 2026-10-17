@@ -1,14 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- G6 稿 L243: 底部导航 tab 容器 borderTop 1px solid var(line)
-     (稿的 line 色 ⟷ App 的 colorBorder, 与 fav_row_line 同一套映射)。
-     ⚠ 注释里不能出现两个连字符, 稿的 CSS 变量正好有两个 ⟹ 上面写成 var(line)。
-     ⚠ tabbar 在 activity_main.xml, 本轮不可改 ⟹ 盒子做成 drawable 由 MktPanel 的 init 挂上去。
-     layer-list: 底层仍是 colorCanvas(与布局里原来的 background 同色, 底色不丢),
-     顶层是压在【上】边的那 1px 线; 与 fav_row_line(下边线)同构, 边从 bottom 换到 top。 -->
+<!-- 底部导航 tab 容器：底色 + 压在【上】边的 1px 分隔线（layer-list）。
+     2026-10-16 t49 · 方向 B §2.4-3.1 脚手架：底栏 = **bg-surface + 1px -border 顶边**。
+       底层由 colorCanvas 换成 **colorCard**（= bg-surface）—— 底栏是抬起的卡面，
+       不是画布（v1 与画布同色 ⟹ 底栏与内容区读不出分界）。
+       顶层 1px 线仍 colorBorder（= -border）。
+     ⚠ tabbar 在 activity_main.xml（本轮 outOfScope），盒子由 MktPanel 的 init 挂上去；
+       底栏高 61px 与「选中 = 主色浅底药丸」属 M6，也在下一轮（layout + Kotlin）。 -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item>
         <shape android:shape="rectangle">
-            <solid android:color="?attr/colorCanvas" />
+            <solid android:color="?attr/colorCard" />
         </shape>
     </item>
     <item android:gravity="top" android:height="1dp">

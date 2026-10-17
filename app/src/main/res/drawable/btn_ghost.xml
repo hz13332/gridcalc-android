@@ -1,16 +1,27 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- 次按钮（两态）—— 也承行情「确认 / 缩放」与计算「清空记录」那几处控件边界。
+     2026-10-16 t49 · 方向 B §2.4-3.5 次档 + §6.1-① ：
+       次档 = **卡片底（bg-surface）+ 1px 描边 + ink + r10**（改前：透明底 + colorBorder 描边 + 8dp）。
+       ⚠ **描边由 colorBorder 换成 colorControlOutline**：这是本轮收掉「v1 继承的低对比控件边界」
+         的关键一步 —— colorBorder 压画布只有 1.35:1（浅）/ 1.32:1（深），
+         colorControlOutline 压**本按钮自己的卡面**是 4.65:1（浅 #6B7684/#FFFFFF）/ 3.96:1（深 #6E7A88/#161B22），
+         压画布 4.18:1（浅）⟹ 双双过 3:1（WCAG 1.4.11 非文字对比度；本机复算）。
+         交接 §6.1-① 明写「要收掉属 token 层改动（把次按钮描边从 border 换成 control-outline）」。
+       按压 = 降一级面（bg-surface → bg-surface-2）；方向 B §2.4-3.5 只规定三档常态，
+         按压取「降一级面」与分段器同口径。 -->
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:state_pressed="true">
         <shape android:shape="rectangle">
-            <solid android:color="?attr/colorBorder" />
-            <corners android:radius="8dp" />
+            <solid android:color="?attr/colorSurface2" />
+            <stroke android:width="1dp" android:color="?attr/colorControlOutline" />
+            <corners android:radius="10dp" />
         </shape>
     </item>
     <item>
         <shape android:shape="rectangle">
-            <solid android:color="@android:color/transparent" />
-            <stroke android:width="1dp" android:color="?attr/colorBorder" />
-            <corners android:radius="8dp" />
+            <solid android:color="?attr/colorCard" />
+            <stroke android:width="1dp" android:color="?attr/colorControlOutline" />
+            <corners android:radius="10dp" />
         </shape>
     </item>
 </selector>

@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 底栏**选中态药丸**（方向 B §2.4-3.1 脚手架 · M6）。
+     2026-10-16 t59：**执行用户 2026-10-16 的改判** ——
+       2026-10-03 用户裁定的是「整条主色上划线」（原话见 MainActivity.paintTabs() 的注释），
+       2026-10-16 用户明确改判为**主色浅底药丸 + 主色字**（方向 B 的形态）。
+     2026-10-16 t63：补上**按压态**（t59 漏做 —— 语言层 M8 / 交接 §4.1-⑤ 的按压态清单里明写含「底栏项」）：
+       原型 theme.css 脚手架段逐字 `.gc-tabbar__item:active` 的底换成 **bg-surface-2 变量**
+       ⟹ 本文件由单 shape 改成 **state list**：
+          按下 = `colorSurface2`（= 方向 B 的 bg-surface-2 角色）底 + r999；
+          常态 = `colorAccentSoft`（= 方向 B 的 accent-soft 角色）底 + r999。
+       ⚠ **两态都保留 r999**：按压只换底色，不换形状（形状一变就是另一个控件）。
+       ⚠ **只作用于选中项**：本 drawable 只在选中时被 `paintTabs()` 挂上（未选 = `setBackgroundResource(0)`，
+         无底）⟹「按下变 surface2」天然只发生在选中项 —— 与原型「只给选中那一项 active 底色」同口径。
+         若给未选项也挂底，按一下就会冒出一个药丸，那不是选中态（故不加）。
+       ⚠ 按压态能生效的前提（读代码可核，本任务**不需要改 .kt/.xml**）：四个 tab 的点击监听挂在
+         宿主 FrameLayout 上（MainActivity.kt:2766-2769 `setOnClickListener`），而
+         `ViewGroup.dispatchSetPressed()` 会把 pressed 传给**不可点击的子 view** ——
+         本药丸 View 既非 clickable 也非 longClickable ⟹ `state_pressed` 能传到它自己的 drawable 上。
+     ⚠ 本文件注释里**不写 CSS 变量名**（形如「两个连字符 + 名字」那种写法）—— XML 注释体不允许连续
+       两个连字符，写了整份资源解析失败（t50 在 page_settings.xml 上踩过、t63 第一版又踩了一次，
+       本文件是第三次；一律写成「X 变量 / X 角色」）。
+     底 = colorAccentSoft（= 方向 B 的 accent-soft：浅 #1A2A5BD7 ≈ 10% 主色 / 深 #248FB2FF ≈ 14%），
+       圆角 999dp ⟹ Android 自动夹到半高 = 胶囊（与原型 borderRadius:999 同口径）。
+     承载者 = activity_main.xml 的四个 `tab_*_bar`（**沿用既有 id 与元素，不新增 view**）。
+     ⚠ 药丸**只管底**：字色（选中 colorAccentText / 未选 colorFaint）与字重由
+       MainActivity.paintTabs() 一处给（「同一件事只留一个主人」）。
+     ⚠ **不画描边**：语言层 §2.4-3.1 的药丸是「浅底 + 主色字」，没有边；
+       药丸 vs 底栏底色是**面层差**（浅 1.16:1 / 深 1.31:1），不是控件边界 ——
+       选中态的可辨识性由**字色**（浅 5.07:1 / 深 6.27:1，均 ≥4.5:1）与**字重**（600 vs 500）承担。
+       队长 2026-10-16 裁定：药丸是「**控件内部的选中态指示，不是控件边界**」，3:1 那条口径不适用于它。 -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 按压：换内嵌面（bg-surface-2 角色），形状（r999）不变 -->
+    <item android:state_pressed="true">
+        <shape android:shape="rectangle">
+            <solid android:color="?attr/colorSurface2" />
+            <corners android:radius="999dp" />
+        </shape>
+    </item>
+    <!-- 常态：主色浅底药丸 -->
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="?attr/colorAccentSoft" />
+            <corners android:radius="999dp" />
+        </shape>
+    </item>
+</selector>

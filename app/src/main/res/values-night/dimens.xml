@@ -1,19 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  深色版与浅色版**数值完全相同**：字号不随主题变，这是刻意的——
-  同一份排版在明暗下必须等宽，否则切主题会重排。
-  颜色差异一律走 colors.xml 的 colorFaint/colorSub，不在字号上做手脚。
+  2026-10-16 t49：**删掉排版覆盖**（方向 B §5.2-A / 交接 §5.3-M2）。
+  改前这个文件把 space_1..4/6/8 与 fs_* 又抄了一遍（4/8/12/16/24/32 与 30/21/16/12），
+  而 values 那边是 3.8/7.6/11.4/15.3/19.1/22.9/30.5 与 28.6/20/15.3/11.4 ——
+  **明暗两套排版**（旧注释说「数值完全相同」，实际并不相同），切主题会重排。
+  方向 B 明暗共用同一套字号 / 间距，深色差异一律由**色调阶梯**承担（§2.1 + §2.3）。
+
+  ⟹ 这里只留**深色确实不同**的那一类：**抬升**。
+     §2.3 规定深色 elev-* **全部 none** —— 层次走 4 级色调阶梯 + 1px 分隔，
+     **不许把浅色的阴影直接搬过来**（M5 逐字：深色不许把浅色 elevation 搬过去）。
+     所以四个 elev_* 归零；其余 dimen 一律不再覆盖，深色自动吃 values 的值。
 -->
 <resources>
-    <dimen name="space_1">4dp</dimen>
-    <dimen name="space_2">8dp</dimen>
-    <dimen name="space_3">12dp</dimen>
-    <dimen name="space_4">16dp</dimen>
-    <dimen name="space_6">24dp</dimen>
-    <dimen name="space_8">32dp</dimen>
-
-    <dimen name="fs_hero">30sp</dimen>
-    <dimen name="fs_data">21sp</dimen>
-    <dimen name="fs_title">16sp</dimen>
-    <dimen name="fs_note">12sp</dimen>
+    <dimen name="elev_1">0dp</dimen>
+    <dimen name="elev_2">0dp</dimen>
+    <dimen name="elev_3">0dp</dimen>
+    <dimen name="elev_row">0dp</dimen>
 </resources>

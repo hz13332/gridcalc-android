@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 计算屏「参数格」**输入控件本体**的两态（保证金 / 最高价 / 网格数量 / 最低价 / 触发价 / 每格数量 / 杠杆倍率）。
+     2026-10-16 t53 · 方向 B 交接 §2.4-3.8「输入 / 内嵌面」——**两类分开写**：
+       · **容器**（本屏参数网格的两列、四格）拿 bg-surface-2 + r10 的面（drawable/calc_tile_bg）；
+       · **控件本体**（本文件）常态**不画底**、聚焦才出框：
+           聚焦 = 底 colorCard（等于 bg-surface）+ 描边 1dp colorAccentText（等于 accent）+ r10
+                 —— 逐字照「聚焦 = 描边 accent + 底 surface」。
+       ⟹ 参数格的可见面由**容器**给，输入框本身只在编辑时亮出一个框。
+
+     ⚠ 为什么常态是透明而不是像 input_bg 那样自带 surface-2 底：本页输入框的宽度是**运行期**的
+       （MainActivity.t429EditWidth92 获焦时把它压到 92dp、失焦时按 weight 撑满），
+       自带底色会让它变成「一行里飘着一个 92dp 的灰盒子」——装机实测踩过这个坑，已改回容器给面。
+       这与 §2.4-3.8 的分类也一致：calc-field 那一类在原型里是**容器**，描边 transparent。
+
+     ⚠ 常态那一支**不写 stroke 元素**（不是 width=0dp 的透明描边）：写透明描边会让对比度闸
+       把描边读成「等于自身底色」= 1.00:1。聚焦态用 colorAccentText：浅 #2A5BD7 压 #FFFFFF
+       = 5.87:1、深 #8FB2FF 压 #161B22 = 7.4:1（本机复算），两态都远超 3:1。
+
+     ⚠ 与 t49 的边界：本文件是**计算屏专属**（calc 前缀）。t49 的 18 个共享 drawable 一个未动；
+       旧件 res/drawable/calc_field.xml（圆角 6dp、常态全透明、聚焦用 colorPrimary + colorInput）
+       在本屏已零引用（§5.1-③ 要求把 6/8 两种输入圆角一次收齐到 10dp）。该文件在 res/drawable 下、
+       不在 t53 的 inScope，**未删**，只在此登记。 -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_focused="true">
+        <shape android:shape="rectangle">
+            <solid android:color="?attr/colorCard" />
+            <stroke android:width="1dp" android:color="?attr/colorAccentText" />
+            <corners android:radius="10dp" />
+        </shape>
+    </item>
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="@android:color/transparent" />
+        </shape>
+    </item>
+</selector>

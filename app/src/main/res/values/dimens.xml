@@ -1,36 +1,63 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  t102 第1步：全 App 字号收敛到 **4 档**。相邻差 ≥3sp，最小 12sp。
-  病因不是字小，是「每个字都不一样大」——迁移前散着 10/10.5/11/12/13/14/15/16/17/18/19/26/30/34 十四档，
-  相邻常只差 1sp，眼睛建立不起主次（用户原话：全是小子铺满了像蚂蚁一样）。
+  2026-10-16 t49：字号 / 间距整表换成 **方向 B「分层卡片」** 的刻度
+  （规格 design/四屏视觉改版/交接_方向B.md §2.2 字表 / §2.3 间距表 / §5.3-M2/M3）。
+  改前是 v1 稿的 28.6 / 20 / 15.3 / 11.4 与 3.8 / 7.6 / 11.4 / 15.3 / 19.1 / 22.9 / 30.5
+  （外加 21 / 1.9 两个单列特例）—— 那些值带着 v1 稿 oklch 换算的痕迹，不是一套刻度；
+  方向 B 给的是**整数刻度**，且明暗共用一套（见 values-night/dimens.xml 的说明）。
 
-  移植契约：design/…/redesign/handoff-to-code.md §2 字号行高表。
-    hero  30  唯一主角数字 —— **全 App 只允许 2 处**：行情页现价、计算页净收益
-    data  21  列表主角数字 —— 自选「距支撑」列，一屏只能有一个
-    title 16  品种名 / 页面标题 / 次级数字
-    note  12  代码 / 市场 / 单位 / 时效 / 注释（下限，不可再低）
+  字（4 档 + 脚手架 1 档，§2.2）：
+    fs_hero   30   lh 1.12   w700   主角数字（行情现价 / 计算净收益）
+    fs_data   20   lh 1.20   w600   数据档（自选「距支撑」）
+    fs_title  16   lh 1.35   w600   正文档（行标签 / 品种名 / 列表值）
+    fs_note   12   lh 1.45   w500   注脚档（分组标题 / 列头 / 徽标 / 代码）
+    fs_micro  11   lh 1.30   ——     **脚手架专用**（状态栏 / 底栏），不进屏内容
+  行高按 §2.2 的 lh 倍数换算成 sp 一并落表（lh_*），消费方 = 屏任务（android:lineHeight）。
+
+  间距（7 档，§2.3）：space_1…7 = 4 / 8 / 12 / 16 / 20 / 24 / 32 dp，主力 12 / 16。
 -->
 <resources>
-    <!-- 排版节奏：handoff §3，只用这 6 档 -->
-    <dimen name="space_1">3.8dp</dimen>
-    <dimen name="space_2">7.6dp</dimen>
-    <dimen name="space_3">11.4dp</dimen>
-    <dimen name="space_4">15.3dp</dimen>
-    <!-- t297: 补齐六档的空档(4/8/12/16/_/24/32), 20dp 供折叠口用(稿 L690/L694)。 -->
-    <dimen name="space_5">19.1dp</dimen>
-    <dimen name="space_6">22.9dp</dimen>
-    <!-- t297: 稿 L767 分组标题 margin:'22px 0 2px' —— 22/2 不在六档里, 单列。 -->
-    <dimen name="sec_top">21dp</dimen>
-    <dimen name="sec_bot">1.9dp</dimen>
-    <dimen name="space_8">30.5dp</dimen>
+    <!-- 排版节奏：方向 B §2.3 —— 只用这 7 档 -->
+    <dimen name="space_1">4dp</dimen>
+    <dimen name="space_2">8dp</dimen>
+    <dimen name="space_3">12dp</dimen>
+    <dimen name="space_4">16dp</dimen>
+    <dimen name="space_5">20dp</dimen>
+    <dimen name="space_6">24dp</dimen>
+    <dimen name="space_7">32dp</dimen>
+    <!-- 墓碑别名（**新代码不许再用**，只为不让既有布局解析失败）：
+         space_8 = 旧 30.5dp，不在新刻度里 ⟹ 并入 space_7（32dp）。既有布局仍有 3 处引用。
+         sec_top / sec_bot = 旧 21 / 1.9dp（v1 稿 L767 的 margin:'22px 0 2px' 单列特例）——
+           新刻度没有 21 与 1.9 ⟹ 就近并入 space_5（20dp）/ space_1（4dp）。既有布局各 2 处引用。 -->
+    <dimen name="space_8">@dimen/space_7</dimen>
+    <dimen name="sec_top">@dimen/space_5</dimen>
+    <dimen name="sec_bot">@dimen/space_1</dimen>
 
-    <!-- 4 档字号 -->
-    <dimen name="fs_hero">28.6sp</dimen>
+    <!-- 字号：4 档 + 脚手架 1 档（方向 B §2.2） -->
+    <dimen name="fs_hero">30sp</dimen>
     <dimen name="fs_data">20sp</dimen>
-    <dimen name="fs_title">15.3sp</dimen>
-    <dimen name="fs_note">11.4sp</dimen>
-    <!-- 自选三列宽:距支撑是唯一主角,明显拉开(handoff §3.1「用宽度差把主角隔出来」) -->
-    <!-- t336 稿 L348 GRIDC=92px 1.2fr 0.88fr 0.88fr：首列固定 92px, 后三列按分数分剩余。上面那三行固定宽已删。 -->
+    <dimen name="fs_title">16sp</dimen>
+    <dimen name="fs_note">12sp</dimen>
+    <dimen name="fs_micro">11sp</dimen>
+    <!-- 行高：按 §2.2 的 lh 倍数换算（30×1.12 / 20×1.20 / 16×1.35 / 12×1.45 / 11×1.30） -->
+    <dimen name="lh_hero">33.6sp</dimen>
+    <dimen name="lh_data">24sp</dimen>
+    <dimen name="lh_title">21.6sp</dimen>
+    <dimen name="lh_note">17.4sp</dimen>
+    <dimen name="lh_micro">14.3sp</dimen>
+
+    <!-- 抬升（§2.3 / §5.3-M5）：浅色 4 级真阴影；**深色全 0**（见 values-night/dimens.xml）。
+         消费方 = 屏任务（android:elevation / View.setElevation）。
+         elev_row 是「列表卡分片」专用（CSS 侧用负 spread 去上溢，Android 侧取同一档 2dp）。 -->
+    <dimen name="elev_1">2dp</dimen>
+    <dimen name="elev_2">4dp</dimen>
+    <dimen name="elev_3">8dp</dimen>
+    <dimen name="elev_row">2dp</dimen>
+
+    <!-- ⚠ 几何真值**不属视觉 token**，不随方向换（交接 §2.5 注 + §2.4-3.4）：
+         自选四列宽 = 代码常量（FavPanel.kt 的 COL_* 稿单位 88/88/76/56）+ space-between，
+         col_symbol / col_gap 是 v1 遗留的名字（当前**零引用**），保留只为钉住
+         「别把代码真值当视觉 token 改掉」这一条。 -->
     <dimen name="col_symbol">87.8dp</dimen>
     <dimen name="col_gap">9.5dp</dimen>
 </resources>

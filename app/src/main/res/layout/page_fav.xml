@@ -179,9 +179,19 @@
                  下沿本来就留 11px;App 这边只有左右内缩、**没有下边距**,所以贴住了。
                  补 space_3(12dp) 与稿的 11px 差 1dp,在 density 2.75 下是 3px。 -->
 
-            <TextView
+            <!-- ⚠⚠ 2026-10-16 t51 · 方向 B §2.4-3.2「搜索块 = surface 卡 + r12 + elev-1」。
+                 这里重新**包一层卡**（t102 当年去掉大圆角卡片容器，是 v1「无卡片 + 发丝」的口径；
+                 方向 B 的分组语汇又回到卡片 —— 这是本轮的语言改动，不是回退 t102 的判据）。
+                 · 底 = card_bg（colorCard + **r12**，**无描边** —— t49 换档 r12；1dp stroke 已由
+                   2026-10-16 t1「方案 A」按用户拍板删除，本行原写的「+ 1dp colorBorder」已过期）
+                 · 抬升 = elev_1（浅色 2dp 真阴影 / 深色 0dp，values-night 里归零）
+                 · 内边距 = space_4(16) —— 与列表卡的行内边距**同值**，
+                   于是「搜索框边框」与「列头文字」都落在 16(卡外缩) + 16(卡内缩) = 32dp 的同一条基线上。
+                 ⚠ 原来那两处 16dp 是各自的外缩（EditText 的 marginStart/End），现在归卡的内边距，
+                   下面三个子元素的左右 margin 全部归零（否则叠加成 32+16）。 -->
+            <LinearLayout
 
-                android:layout_width="wrap_content"
+                android:layout_width="match_parent"
 
                 android:layout_height="wrap_content"
 
@@ -189,11 +199,27 @@
 
                 android:layout_marginEnd="@dimen/space_4"
 
-                android:layout_marginBottom="4.8dp"
+                android:background="@drawable/card_bg"
+
+                android:elevation="@dimen/elev_1"
+
+                android:orientation="vertical"
+
+                android:padding="@dimen/space_4">
+
+            <TextView
+
+                android:layout_width="wrap_content"
+
+                android:layout_height="wrap_content"
+
+                android:layout_marginBottom="@dimen/space_3"
 
                 android:text="搜索添加"
 
-                android:textColor="?attr/colorSub"
+                android:textColor="?attr/colorFaint"
+
+                android:textStyle="bold"
 
                 android:textSize="@dimen/fs_note" />
 
@@ -230,13 +256,9 @@
 
                 android:layout_height="45.8dp"
 
-                android:layout_marginStart="@dimen/space_4"
-
-                android:layout_marginEnd="@dimen/space_4"
-
                 android:layout_marginBottom="@dimen/space_3"
 
-                android:background="@drawable/fav_search_box"
+                android:background="@drawable/input_bg"
 
                 android:hint="BTC / AAPL / 黄金"
 
@@ -286,13 +308,11 @@
 
                 android:layout_height="wrap_content"
 
-                android:layout_marginStart="@dimen/space_4"
-
-                android:layout_marginEnd="@dimen/space_4"
-
-                android:background="@drawable/fav_sug_bg"
+                android:background="@drawable/card_bg"
 
                 android:clipToOutline="true"
+
+                android:elevation="8dp"
 
                 android:orientation="vertical"
 
@@ -306,6 +326,20 @@
                        （FavPanel.showResults 末尾），排在后面，不会盖住这条发丝。
                      ⚠ 本容器与下面那层 LinearLayout 仍**不加**任何 touch/clickable 属性
                        （见上方 2026-10-11 手势修复的警告段）。 -->
+
+                <!-- 抬起阴影（2026-10-14 用户裁定，移植对照表 §D3 到此结案）：
+                     稿 A 版容器的层次 = 90% alpha + shadow-lift（0 10px 26px rgba(104,108,116,.30)）。
+                     alpha 那层按 §1.1 实测塌缩成实色 token（每通道差 ≤2/255，视觉零差异，不算损失）；
+                     阴影那层 D3 原判「**或不加**（层次已由描边 + 顶边发丝 + 行态换色承担）」+
+                     「建议先不加，实机看一眼再决定」。实机看下来：容器 colorCard #FFFFFF 对画布
+                     colorCanvas #F9FAFD 只有 **1.03:1**，等于同色，只剩一条描边在报边界、没有体积感
+                     ⟹ 按 D3 首选补 `android:elevation`（阴影在 Android 上的唯一正路）。
+                     ⚠ 档位来历：先落 D3 写的 2dp，实机看下来**太淡**（用户原话「太淡了，加浓加浓」）
+                       ⟹ 2026-10-14 同轮提到 **8dp**。要再浓/再淡就改这一个数。
+                     ⚠ 与稿的差距必须知道：elevation 的阴影比稿的 26px lift 更"贴边、更短"；
+                       且**深色主题画布 #0A0D12 上黑阴影几乎不可见**（实测只压暗 1/255），只有浅色主题明显。
+                     ⚠ 轮廓取 fav_sug_bg 的 r10（ViewOutlineProvider.BACKGROUND 是默认值），
+                       不需要额外 setOutlineProvider；阴影靠父容器的边距空间绘制（本容器左右各 space_4）。 -->
 
                 <View
 
@@ -432,13 +466,17 @@
 
              选中=主色实底白字,未选中=描边/次色。诚实性由这里承担。 -->
 
-        <View
-
-            android:layout_width="match_parent"
-
-            android:layout_height="1dp"
-
-            android:background="?attr/colorBorder" />
+        <!-- 墓碑 · 2026-10-14：这里原本有一条**满宽 1dp colorBorder 分隔条**（无 id 的裸 View，
+             位置在 列头 正上方）。用户实报「app 那里有条线，稿子没有」—— 真机取证：
+             该 View 的 bounds = [0,1037][1080,1040]，而候选容器 fav_sug_box 的底边正好是 1037
+             ⟹ 候选层展开时这条线**与候选卡的底边重合**，且卡只有 42..1038 宽，线满屏
+             ⟹ 卡两侧各露出一截、卡底像被横切一刀。
+             【为什么稿里没有】稿 index.html:327-331 是「搜索框 → 列头(favhead) → favList」直连，
+             中间没有任何分隔条；A 版原型的候选卡下面接的也是 `.list`（`.list-head` 只带**底线**）。
+             【为什么它是孤儿】它的来历是给**已删除的「源状态行 + 状态芯片」那块**收边
+             （那块的 fav_srcrow/fav_srcdetail 现已恒 GONE，见 FavPanel.kt 的 show(...,false)）。
+             源行没了，这条线就只剩"压在候选卡底边上"这一个可见后果 ⟹ 整块删除，不留死代码。
+             ⚠ 列头**自己的底线**（fav_row_line，运行时 y=1125-1127）**不动** —— 那条稿里有。 -->
 
 
 
@@ -453,6 +491,11 @@
                  ⚠ 列宽 88/88/76/56 与行内 FavPanel.kt 的 COL_NAME/COL_DIST/COL_GAIN/COL_RATIO
                    是**同一个数**，改一处必须改另一处 —— 「表头 ⟷ 行内右缘逐像素相等」这条不变量靠它。
                    dimens.xml 本轮不在改动范围内，故这里写字面 dp。 -->
+            </LinearLayout>
+
+            <!-- 列表卡 = 分片（方向 B §2.4-3.2 / theme.css §6.1b）：本列头是**首片**（上圆角 12），
+                 行是后续片（中片 r0 / 末片下圆角 12，片间底发丝、末片不画）——
+                 片位在 FavPanel.submitRows() 里按 index 分配（只有全量换数据时才知道末片是谁）。 -->
             <LinearLayout
 
         android:id="@+id/fav_head"
@@ -461,16 +504,18 @@
 
                 android:layout_height="wrap_content"
 
-                android:background="@drawable/fav_row_line"
+                android:layout_marginStart="@dimen/space_4"
+
+                android:layout_marginEnd="@dimen/space_4"
 
                 android:gravity="start|center_vertical"
                 android:orientation="horizontal"
 
-                android:paddingLeft="15.3dp"
-                android:paddingTop="3.8dp"
+                android:paddingLeft="@dimen/space_4"
+                android:paddingTop="@dimen/space_3"
 
-                android:paddingRight="15.3dp"
-                android:paddingBottom="7.6dp">
+                android:paddingRight="@dimen/space_4"
+                android:paddingBottom="@dimen/space_2">
 
                 <!-- 稿 v2.html:1021 「名称」列名：T.note(12px) / var(ink3)（变量名的两个前导减号在 XML 注释里不可写）。
                      横向内边距 16dp 与行容器(稿 v2.html:1189 padding '13px 16px 14px')相同，
@@ -480,6 +525,7 @@
                     android:layout_height="wrap_content"
                     android:text="品种"
                     android:textColor="?attr/colorFaint"
+                    android:textStyle="bold"
                     android:textSize="@dimen/fs_note" />
                 <!-- 间隙 1（space-between） -->
                 <View
@@ -514,7 +560,7 @@
 
                     android:text="距支撑 ▲▼"
 
-                    android:textColor="?attr/colorSub"
+                    android:textColor="?attr/colorFaint"
 
                     android:textSize="@dimen/fs_note" />
 
@@ -551,7 +597,7 @@
 
                     android:text="收益率 ▲▼"
 
-                    android:textColor="?attr/colorSub"
+                    android:textColor="?attr/colorFaint"
 
                     android:textSize="@dimen/fs_note" />
 
@@ -586,9 +632,9 @@
 
                     android:paddingRight="0dp"
 
-                    android:text="收益比 ▲▼"
+                    android:text="距离比 ▲▼"
 
-                    android:textColor="?attr/colorSub"
+                    android:textColor="?attr/colorFaint"
 
                     android:textSize="@dimen/fs_note" />
 
@@ -1281,11 +1327,23 @@
 
             android:layout_height="wrap_content"
 
-            android:paddingLeft="15.3dp"
+            android:layout_marginStart="@dimen/space_4"
 
-            android:paddingRight="15.3dp"
+            android:layout_marginEnd="@dimen/space_4"
 
-            android:paddingBottom="7.6dp"
+            android:layout_marginTop="@dimen/space_2"
+
+            android:background="@drawable/card_bg"
+
+            android:elevation="@dimen/elev_1"
+
+            android:paddingLeft="@dimen/space_4"
+
+            android:paddingRight="@dimen/space_4"
+
+            android:paddingTop="@dimen/space_3"
+
+            android:paddingBottom="@dimen/space_3"
 
             android:fontFeatureSettings="tnum"
 

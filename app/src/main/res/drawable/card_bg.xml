@@ -1,7 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- 卡底（**屏内卡片**专用：page_fav x3 / page_calc x4 / page_settings x2，共 9 处活引用）。
+     ⚠【2026-10-16 t5 · 计数改准】本条上一版写「page_calc x3 … 共 8 处」——
+       那是 t1 时刻的数；t2 的 D5 给参数区**新增了一张外层卡**（page_calc.xml:260），
+       现在是 **9 处**。按 t5 收工时的最终状态重数（非注释行 grep @drawable/card_bg）：
+         page_calc.xml   :74 / :260 / :625 / :763            （4）
+         page_fav.xml    :202 / :311 / :1336                 （3）
+         page_settings.xml :87 / :239                        （2）
+       R.drawable.card_bg 在 Kotlin 里 **0 处**。只改注释，色值/属性/结构一字未动。
+     2026-10-16 t49 · 方向 B §2.3 圆角 + §2.4-3.2 卡：
+       圆角 **10dp → 12dp**（-r-card = 12；方向 B 全方向只用 12/10/999 三个圆角）。
+       底 = colorCard（= 方向 B 的 bg-surface：浅 #FFFFFF / 深 #161B22）。
+     2026-10-16 t1 · **方案 A（用户拍板）：删掉 1dp 描边**。
+       依据 `方向-B\theme.css:435-437`：卡 = 稿的 bg-surface + r-card + elev-1，**无描边**
+       （方向 B 的边界靠「面层阶梯 + 抬升」分，不靠发丝）。
+       后果：9 处卡各少上/下两条发丝；自选候选层由「行线(n−1) + 卡描边×4」回到「只有行线(n−1)」。
+         （计数同本条头部：t5 收工时的最终状态 = 9 处。）
+       ⚠ **不是浮层底**：搜索建议浮层 2026-10-06 起改内联容器（page_fav.xml:302 fav_sug_box）；
+         MktPanel 的 winPop 是**未创建的死变量**（.kt:177 只声明，全文件无赋值，无浮层）。
+         ⟹ 本件零浮层依赖，改它不会让任何浮层丢边界。
+     抬升：卡对应 §2.4-3.2 的 elev-1（浅色真阴影 / 深色 none）—— 阴影由宿主 View 的
+       android:elevation 消费 elev_1（见 values/dimens.xml），drawable 本身画不了阴影。
+       ⚠ 自选候选容器（page_fav.xml:314）的 elevation=8dp 是用户 2026-10-14 裁定「太淡了加浓加浓」，**不许动**。 -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">
     <solid android:color="?attr/colorCard" />
-    <stroke android:width="1dp" android:color="?attr/colorBorder" />
-    <corners android:radius="10dp" />
+    <corners android:radius="12dp" />
 </shape>

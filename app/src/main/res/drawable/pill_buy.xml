@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- 买药丸（带 alpha 的浅底）。
+     2026-10-16 t49 · 方向 B §2.3 圆角：药丸一律 **r999**（改前 13dp 是 v1 的「半高近似」）。
+     ⚠ 语义：colorTealBg 挂在**买**上（涨/买 = 绿系），不许与卖侧对调。 -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">
     <solid android:color="?attr/colorTealBg" />
-    <corners android:radius="13dp" />
+    <corners android:radius="999dp" />
 </shape>

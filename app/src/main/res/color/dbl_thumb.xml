@@ -1,7 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- B-44 稿 L269: 滑块 background: on ? ACC : ink3 ⟹ 打开=白钮, 关掉=ink3 灰钮。
-     ⚠ 注释正文里不能出现连续两个连字符, 稿的 CSS 变量写法正好有两个, 上面一律用中文名。 -->
+     ⚠ 注释正文里不能出现连续两个连字符, 稿的 CSS 变量写法正好有两个, 上面一律用中文名。
+
+     2026-10-16 t53 · 方向 B §2.4-3.7 开关 + §5.1-① F-5 站点：
+       开态 = **colorOnPrimary**（等于方向 B 的 on-accent 角色；attrs.xml 的 v2 对照表逐字：
+              on-accent 到 colorOnPrimary，两套主题都是白）。白钮压 t49 的轨道实底
+              colorAccentFill：浅 5.87:1 / 深 4.80:1 ⟹ 双双过 AA。
+              ⚠ 这一处**不改 token**：F-5 的根因是「主色一个值同时当文字与实底」，
+                已由 t49 把**轨道实底**换成 colorAccentFill 收掉；滑块继续取 on-accent 就是对的。
+       关态 = colorFaint 改成 **colorThumbOff**（方向 B 新增的关态滑块角色，
+              浅 #333C48 / 深 #C3CBD6；与设置屏 t211PaintSwitch 的取值同族，
+              三屏开关滑块从此同一套）。
+     ⚠ 消费方是 android:thumbTint（page_calc.xml 的 dbl_btn）—— 仍是**唯一主人**，
+       本文件不新增 Kotlin 依赖。 -->
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:state_checked="true" android:color="?attr/colorOnPrimary" />
-    <item android:color="?attr/colorFaint" />
+    <item android:color="?attr/colorThumbOff" />
 </selector>

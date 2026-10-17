@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- 卖药丸（带 alpha 的浅底）。
+     2026-10-16 t49 · 方向 B §2.3 圆角：药丸一律 **r999**（改前 13dp）。
+     ⚠ 语义：colorBlueBg 名字里的 blue 其实是**紫**（v1 从十字光标借来的 #9B7DFF），
+       挂在**卖**上 —— 别按名字理解成「蓝 = 跌」（见 attrs.xml 该条注释）。 -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">
     <solid android:color="?attr/colorBlueBg" />
-    <corners android:radius="13dp" />
+    <corners android:radius="999dp" />
 </shape>
