@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.StateListDrawable
 import android.os.Handler
 import android.os.Looper
 import android.text.Editable
@@ -225,6 +226,18 @@ class FavPanel(
     private val favSlTxtV: android.widget.TextView? = page.findViewById(R.id.fav_sl_txt)
     // t8 照稿 A1③：屏底「距支撑 实时 N / 无源 N」计数行（稿 v2.html:1641-1644）。
     private val favCountV: android.widget.TextView? = page.findViewById(R.id.fav_count)
+
+    // 列头带 = 列表卡的**首片**（方向 B §2.4-3.2 / theme.css §6.1b）：
+    //   surface-2 实底 + **上圆角 12** + 底发丝；抬升 elev_row（浅色真阴影 / 深色 0dp）。
+    // ⚠ 为什么不写在 page_fav.xml 的 android:background：XML 的 background 只吃**一个** drawable，
+    //   而「实底 + 上圆角 + 底发丝」这个组合在 res/drawable/ 里不存在（该目录不在 t51 的 inScope）
+    //   ⟹ 与行片一样在代码里拼（见 headBg / sliceBg，逐值等价于「新开一张分片 drawable」）。
+    // ⚠ 用户 2026-10-14 明确「列头**自己的底线**不动」—— 底线照旧保留，只是从 fav_row_line
+    //   （透明底 + 底线）换成「实底 + 底线」，线本身的位置/粗细/颜色都没变。
+    private val favHeadV: View? = page.findViewById<View>(R.id.fav_head)?.apply {
+        background = headBg()
+        elevation = dimenPx(R.dimen.elev_row).toFloat()
+    }
     // t8 照稿 A1·副标「N 个品种 · 全部美元口径」（见 paintFavSubtitle 的注释）。
     private val favSubtitleV: android.widget.TextView? = page.findViewById(R.id.fav_subtitle)
 
@@ -359,9 +372,98 @@ class FavPanel(
                 setConfirm(s)
                 true
             }
+            // 方向 B §2.4-3.2 / theme.css §6.1b「列表卡 = 分片」的片位分配：
+            //   首片（列头带，在 page_fav.xml 里）给上圆角；**末片（本循环最后一行）给下圆角**；
+            //   中片 r0；片间分隔 = 每片的 border-bottom，**末片不画**。
+            //   ⚠ 片位只在全量换数据时确定（增删行会换末片是谁）⟹ 背景在这里按 index 重挂，
+            //     不能在 createRowShell 里挂死。抬升 elev_row 也一并挂（浅色真阴影 / 深色 0dp）。
+            val isLast = r === newRows.last()
+            sh.root.background = sliceBg(isLast)
+            sh.root.elevation = dimenPx(R.dimen.elev_row).toFloat()
             bindRowShell(sh, r, pendingSyms.contains(r.it.s), confirmSym == r.it.s)
             shells[r.it.s] = sh
             favList.addView(sh.root)
+        }
+    }
+
+    /**
+     * 列表卡的一片：**实底（colorCard）+ 底发丝（colorBorder）**，末片改成**下圆角 + 不画线**。
+     *
+     * 为什么用代码拼而不是换 drawable：`fav_row_line` 只有「透明底 + 底发丝」，没有实底；
+     * 而「实底 + 底发丝」与「实底 + 下圆角 + 无线」这两个组合在 `res/drawable/` 里都不存在
+     * （该目录不在 t51 的 inScope）⟹ 用 LayerDrawable + GradientDrawable 在代码里拼，
+     * 与「新开两张分片 drawable」逐值等价（下一轮可原样收回）。
+     * 色全走 ?attr/；主题切换走 recreate()，整批重建，不留旧色。
+     */
+    private fun sliceBg(last: Boolean): android.graphics.drawable.LayerDrawable {
+        val card = act.attrColor("colorCard")
+        val line = act.attrColor("colorBorder")
+        val body = GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            setColor(card)
+            // 末片给下圆角（r-card = 12），中片 r0；上圆角恒 0（上圆角归列头带）
+            cornerRadii = if (last) floatArrayOf(0f, 0f, 0f, 0f, dp(12f), dp(12f), dp(12f), dp(12f))
+                          else floatArrayOf(0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f)
+        }
+        if (last) return android.graphics.drawable.LayerDrawable(arrayOf(body))
+        val rule = GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            setColor(line)
+        }
+        return android.graphics.drawable.LayerDrawable(arrayOf(body, rule)).apply {
+            // 底发丝：贴片底、高 1dp、满宽（与 fav_row_line 的形态一致）
+            setLayerHeight(1, dp(1f).toInt())
+            setLayerGravity(1, Gravity.BOTTOM)
+        }
+    }
+
+    /**
+     * **B5 的「字距 + 列宽」方案**：字号不动（= token 值），只调字距；字距也不够时按**实测宽度**
+     * 做确定性横向压缩。
+     *
+     * 为什么这样写（三条都踩过）：
+     *  ① **不许用 autoSizeText**：本机闪退，2026-10-05 已永久弃用。
+     *  ② **不许用 ellipsize**：用户 2026-10-07 裁定「不要再剪掉单位」——宁可压字形，不许出现省略号。
+     *  ③ **不许改列宽**：COL_* 与 page_fav.xml 的列头是同一个数（「表头 ⟷ 行内右缘逐像素相等」不变量）。
+     *
+     * 做法：`measureText` 量出真实宽度（含字距项 —— `letterSpacing` 是 em 单位，且 **不计入**
+     * `paint.measureText`，必须自己加 `letterSpacing × textSize × (n-1)`），
+     * 只有在超宽时才设 `textScaleX`（View 级横向缩放，**不是字号**）。
+     * 正常值（7 字以内）实测不超宽 ⟹ `textScaleX` 恒 = 1，行为与「什么都不做」完全一致。
+     */
+    private fun fitTextScale(tv: TextView, avail: Int) {
+        val t = tv.text?.toString().orEmpty()
+        if (t.isEmpty()) return
+        // 字距三档：短值 -0.02em（v1 既有值）；8 字 -0.05em；9 字以上 -0.09em（挤的是数字间空白）
+        tv.letterSpacing = when {
+            t.length <= 7 -> -0.02f
+            t.length == 8 -> -0.05f
+            else -> -0.09f
+        }
+        tv.textScaleX = 1f
+        if (avail <= 0) return
+        val p = tv.paint
+        val w = p.measureText(t) + tv.letterSpacing * tv.textSize * (t.length - 1).coerceAtLeast(0)
+        // ⚠ 留 4% 余量：`paint.measureText` 与最终排版之间还有 hinting/取整的差，
+        //   贴着 avail 压会「差一像素仍然裁掉最后一个字符（真机实测：`+22.63%` 的 % 被吃掉）」。
+        if (w > avail * 0.96f) tv.textScaleX = (avail * 0.96f / w).coerceIn(0.55f, 1f)
+    }
+
+    /** 列头带（列表卡的**首片**）：surface-2 实底 + 上圆角 12 + 底发丝。见 favHeadV 的注释。 */
+    private fun headBg(): android.graphics.drawable.LayerDrawable {
+        val body = GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            setColor(act.attrColor("colorSurface2"))
+            // 角序：左上 / 右上 / 右下 / 左下，每角一对半径
+            cornerRadii = floatArrayOf(dp(12f), dp(12f), dp(12f), dp(12f), 0f, 0f, 0f, 0f)
+        }
+        val rule = GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            setColor(act.attrColor("colorBorder"))
+        }
+        return android.graphics.drawable.LayerDrawable(arrayOf(body, rule)).apply {
+            setLayerHeight(1, dp(1f).toInt())
+            setLayerGravity(1, Gravity.BOTTOM)
         }
     }
 
@@ -370,8 +472,7 @@ class FavPanel(
     private fun updateDist(s: String, d: DistR?) {
         val r = rowData.find { it.it.s == s } ?: return
         r.d = d
-        val distPct = if (d != null && d.ok) d.pct else null
-        r.ratio = ratioOf(distPct, r.m)
+        r.ratio = ratioOf(d)
         shells[s]?.let { sh -> bindRowShell(sh, r, pendingSyms.contains(s), confirmSym == s) }
     }
     private var hidden = true
@@ -425,18 +526,50 @@ class FavPanel(
     // 间距六档逐值取 dimen，不在 Kotlin 里抄数字（对照表 §3：禁止档外值 9.5 / 12.4 / 4.8 / 16）。
     private fun dimenPx(id: Int): Int = act.resources.getDimensionPixelSize(id)
 
-    // 行高 45.8dp：与 fav_search 的框高对齐（对照表 §2/§5.2）。
-    // ⚠ 这个值 page_fav.xml 里是写死的 45.8dp（fav_search 的 layout_height），保持同风格，
-    //   不为了它新开一个 dimen（对照表 §5.4「唯一可选」项，默认不做）。
-    private val sugRowMinH: Int get() = dp(45.8f).toInt()
+    // 行高 52dp + 上下各 space_3 内边距；三态 chip 34dp 是行内最高元素
+    // ⟹ 实测行高 = 12+34+12 = 58dp（= 方向 B 原型 `方向-B\四屏-自选页.html` 的 .fav-sug__row 实测 58/59px）。
+    // ⚠ 2026-10-16 t51 · 方向 B §2.4-3.3：`.fav-sug__row` min 52px / padding 12-16。
+    //   改前是 45.8dp（与 fav_search 的框高对齐，v1 口径）—— 方向 B 的候选行比搜索框高，
+    //   这个「对齐」不再成立，故按语言层给 52dp 下限（真正的行高由 chip 34 + 内边距决定）。
+    private val sugRowMinH: Int get() = dp(52f).toInt()
 
     // 定列宽：代码列 7em@fs_title、第二列 6em@fs_note（对照表 §2 折算，§6-D8）。
     // ⚠ 字号放大(无障碍 200%)时列宽不跟着放大，靠 ellipsize=END 保证不破版。
     private val sugSymMaxW: Int get() = dp(95.8f).toInt()
     private val sugTagMaxW: Int get() = dp(68.4f).toInt()
 
-    // chip / ＋按钮的高与最小宽（对照表 §3：高度借用 space_8 这一档）。
-    private val sugChipMin: Int get() = dimenPx(R.dimen.space_8)
+    // 三态 chip / ＋ 的高与最小宽 = **34dp**（方向 B §2.4-3.9 的药丸规格，与原型 .fav-sug__chip 逐值相同）。
+    // ⚠ 2026-10-16 t51：改前借用 space_8（v1 的 30.5dp）。34 不在新的 4/8/12/16/20/24/32 刻度上，
+    //   它是**组件规格值**（药丸最小边长），不是间距刻度值 ⟹ 照 §2.4-3.9 写字面 34，不硬塞刻度。
+    private val sugChipMin: Int get() = dp(34f).toInt()
+
+    /**
+     * 方向 B §2.4-3.9 的**药丸**底（chip / 徽标）：代码里现做，不新增 drawable 文件。
+     *
+     * ⚠ 为什么不改 drawable：`fav_badge`(r4) / `fav_sug_add`(r8) / `fav_sug_state_*`(r8) 是 v1 的圆角档，
+     *   方向 B 的圆角只有 **12（卡）/ 10（输入）/ 999（药丸）** ⟹ 这三个都要换成 999。
+     *   但 `res/drawable/` **不在 t51 的 inScope**（只有 page_fav.xml / FavPanel.kt / FavDist.kt），
+     *   而这三处的底本来就由本文件在运行期挂（`background = ...`）⟹ 在 Kotlin 里现做，
+     *   效果与「新开三个 r999 的 drawable」等价，且不碰共享资源。
+     *   （下一轮若要收回 drawable，把本函数替换回 `setBackgroundResource` 即可，逐值一一对应。）
+     *
+     * fill / stroke 都走 `act.attrColor(...)`（= ?attr/），明暗两态自动成立；
+     * 主题切换走 MainActivity 的 recreate()，所以这些运行期 drawable 会整批重建，不会留旧色。
+     */
+    private fun pill(fill: Int, stroke: Int? = null): GradientDrawable =
+        GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = dp(999f)          // 药丸：半径远大于半高，被系统夹到半高
+            setColor(fill)
+            if (stroke != null) setStroke(dp(1f).toInt(), stroke)
+        }
+
+    /** 带按压态的药丸（`＋` 用）：按压 = 换深一档的实底（方向 B §4.1-⑤ / theme.css 的 :active）。 */
+    private fun pillPressed(fill: Int, pressed: Int): StateListDrawable =
+        StateListDrawable().apply {
+            addState(intArrayOf(android.R.attr.state_pressed), pill(pressed))
+            addState(intArrayOf(), pill(fill))
+        }
 
     // 空态块上下内边距（对照表 §5.2 骨架：左右 space_4、上 space_4、下 space_3）。
     private val sugEmptyPadH: Int get() = dimenPx(R.dimen.space_4)
@@ -951,17 +1084,24 @@ class FavPanel(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT)
             minimumHeight = sugRowMinH
-            // 行内左右各 space_3；垂直 0 —— 文字/控件靠 gravity=CENTER_VERTICAL 居中。
-            val p = dimenPx(R.dimen.space_3)
-            setPadding(p, 0, p, 0)
+            // 方向 B §2.4-3.3：候选行 padding = **12（上下 space_3）/ 16（左右 space_4）**。
+            // ⚠ 改前是「左右 space_3、上下 0」（v1 口径，行高靠 minimumHeight 45.8 撑）。
+            //   方向 B 的行高由「内边距 + 34dp chip」自然给出 = 12+34+12 = 58dp，
+            //   minimumHeight 52 只作下限（无障碍大字号时仍有保障）。
+            val p = dimenPx(R.dimen.space_4)
+            val pv = dimenPx(R.dimen.space_3)
+            setPadding(p, pv, p, pv)
             // 行间 1dp 发丝；**末行不画线**（收口交给容器自己的 1dp 描边，见 fav_sug_row_line.xml 注释）。
             if (!last) setBackgroundResource(R.drawable.fav_sug_row_line)
             isClickable = true
             isFocusable = true
-            // 行态：整行换层。⚠ 走 setBackgroundColor 而不是再开一个带线的 drawable ——
-            //   这是对照表 §5.2 骨架的写法；副作用（该行底边发丝被实色底覆盖）在「已加入」那一行上，
+            // 行态：整行换层 = 方向 B 的 --bg-surface-2（= colorSurface2）。
+            // ⚠ 走 setBackgroundColor 而不是再开一个带线的 drawable —— 这是对照表 §5.2 骨架的写法；
+            //   副作用（该行底边发丝被实色底覆盖）在「已加入」那一行上，
             //   即整行换层时本来就不该再有一条分隔线，视觉无落差。
-            if (st == SugState.ADDED) setBackgroundColor(act.attrColor("colorInput"))
+            //   ⚠ 色名 2026-10-16 t51 由 colorInput 换成 **colorSurface2**（方向 B 的命名，
+            //     两值相等 #EDF1F6/#1E242D，只换名字不换色 —— 便于下一轮按语言层读代码）。
+            if (st == SugState.ADDED) setBackgroundColor(act.attrColor("colorSurface2"))
         }
         val pick = LinearLayout(act).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -979,34 +1119,72 @@ class FavPanel(
             letterSpacing = 0.03f                               // 对照表 §6-D10：Android 的 letterSpacing 单位也是 em
             maxLines = 1
             ellipsize = android.text.TextUtils.TruncateAt.END
+            minWidth = sugSymMaxW                            // 徽标列真正对齐：代码列吃固定宽度，不随代码长短抖动
             maxWidth = sugSymMaxW
             paint.isSubpixelText = true
             fontFeatureSettings = "tnum"                        // 对照表 §6-D9：上下行代码右缘对齐
         }
         val tg = TextView(act).apply {
-            text = run {
-                // 2026-10-14 ⚠ 候选行是用户明确要求的“中文名”；tag 语义混杂
-                //   (CNNAME 本地腿给中文名、TOPS/TOPM 给市场标签)，因此行文案合为：
-                //   中文名 + 市场标签，CNNAME 本地腿本身 tag 已经是中文名时去重，只留一个。
-                val nm = MktSuggest.favName(it.s).trim()
-                val mk = it.tag?.trim().orEmpty()
-                when {
-                    nm.isNotEmpty() && mk.isNotEmpty() && nm != mk -> "$nm·$mk"
-                    nm.isNotEmpty() -> nm
-                    else -> mk
-                }
+            // 2026-10-14：候选行第二列——中文名与市场标签。
+            //   市场标签（币/贵金/A股/美股/港股/韩股/商品/美债 …）不再与中文名用「·」拼成整行文字，
+            //   而是拆成**徽标**（fav_badge 中性描边 pill），与自选行 badge 的版式保持一致；
+            //   中文名仍走文字列，市场标签走徽标，两块不再混在一个 TextView 里。
+            val nm = MktSuggest.favName(it.s).trim()
+            val mk = it.tag?.trim().orEmpty()
+            val marketTags = setOf("币", "贵金", "A股", "美股", "港股", "韩股", "商品", "美债", "OKX", "Bybit")
+            val isMarket = mk in marketTags
+            text = when {
+                nm.isNotEmpty() && mk.isNotEmpty() && nm != mk && !isMarket -> "$nm·$mk"
+                nm.isNotEmpty() -> nm
+                !isMarket -> mk
+                else -> ""
             }
             textSize = TS(R.dimen.fs_note)
             setTextColor(act.attrColor("colorSub"))
+            // 徽标列对齐：市场品种时，把第二列的文字区固定成与所有市场行相同的宽度,
+            // 这样紧随其后的市场徽标（美股/港股/...）的起笔位置完全一致；
+            // 4 字的品种名（超威半导体）也要能完整显示，故从 52dp 提到 60dp。
+            //
+            // ⚠⚠ 2026-10-14 用户实报「ARM 的徽标没和其他行对齐」—— 根因就在下面那句 GONE：
+            //   市场行**没中文名**时（ARM/IBM 按 2026-10-13 裁定显示代码，favName 返回空串）
+            //   文字列被判 GONE ⟹ LinearLayout 连它的 60dp 宽 + space_2 左距一起跳过 ⟹
+            //   徽标左移一整列，与 AMD（超威半导体）那行的徽标起笔差 ~60dp。
+            //   ⟹ 市场行的文字列**恒占位**：有名显名、没名留空占位（仍是 60dp + space_2），
+            //     徽标起笔只由固定列宽决定，与「有没有中文名」无关；非市场行维持原样（空则收起）。
+            val marketNameW = dp(60f).toInt()
+            val nameW = if (isMarket) marketNameW else sugTagMaxW
             maxLines = 1
             ellipsize = android.text.TextUtils.TruncateAt.END
-            maxWidth = sugTagMaxW
+            minWidth = nameW
+            maxWidth = nameW
             layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
+                nameW,
                 ViewGroup.LayoutParams.WRAP_CONTENT).apply { leftMargin = dimenPx(R.dimen.space_2) }
+            if (text.isEmpty() && !isMarket) visibility = View.GONE
+        }
+        // 市场标签徽标：与自选行 badge 同形（方向 B §2.4-3.9：colorSurface2 实底药丸 + ink-sub 字，无描边）。
+        val marketBadge: TextView? = run {
+            val mk = it.tag?.trim().orEmpty()
+            val marketTags = setOf("币", "贵金", "A股", "美股", "港股", "韩股", "商品", "美债", "OKX", "Bybit")
+            if (mk !in marketTags) null else TextView(act).apply {
+                text = mk
+                textSize = TS(R.dimen.fs_note)
+                setTypeface(tfSemi)                      // 方向 B §6.7 徽标 = 600
+                setTextColor(act.attrColor("colorSub"))
+                maxLines = 1
+                // 方向 B §6.7：徽标 = surface-2 实底药丸（改前是 fav_badge 的「透明底 + 1dp 描边 + r4」）
+                background = pill(act.attrColor("colorSurface2"))
+                val ph = dimenPx(R.dimen.space_2)        // 方向 B §6.7 的 padding: 2px var(--sp-2)
+                val pv = dp(2f).toInt()
+                setPadding(ph, pv, ph, pv)
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT).apply { leftMargin = dimenPx(R.dimen.space_2) }
+            }
         }
         pick.addView(sym)
         pick.addView(tg)
+        if (marketBadge != null) pick.addView(marketBadge)
         row.addView(pick)
 
         val tail: View = when (st) {
@@ -1023,8 +1201,11 @@ class FavPanel(
                 text = "＋"
                 textSize = TS(R.dimen.fs_title)
                 setTypeface(tfSemi)
-                setTextColor(act.attrColor("colorPrimary"))
-                setBackgroundResource(R.drawable.fav_sug_add)
+                // 方向 B §2.4-3.9：`＋` = **主色实底药丸 + on-accent 字**（唯一可点）。
+                // ⚠ 改前是「透明底 + 1dp colorPrimary 描边 + colorPrimary 字」（fav_sug_add.xml，v1 档）——
+                //   方向 B 把可加态从「描边幽灵」升级成**实底**，三态一眼可分：实底=可点 / 浅底=已加入 / 内嵌=惰性。
+                setTextColor(act.attrColor("colorOnPrimary"))
+                background = pillPressed(act.attrColor("colorAccentFill"), act.attrColor("colorAccentPressed"))
                 contentDescription = "添加到自选：" + it.s
                 val p = dimenPx(R.dimen.space_3)
                 setPadding(p, 0, p, 0)
@@ -1043,8 +1224,11 @@ class FavPanel(
                 text = "已加入自选"
                 textSize = TS(R.dimen.fs_note)
                 setTypeface(tfSemi)
-                setTextColor(act.attrColor("colorPrimary"))
-                setBackgroundResource(R.drawable.fav_sug_state_done)
+                // 方向 B §2.4-3.9：已加入 = **主色浅底药丸 + accent 字**（非可点）。
+                // ⚠ 这一格是**全局最薄文字对比度 4.51:1**（浅色，方向 B 交接 §4.2-④ 已登记）——
+                //   按登记**不另改**：字色仍是 colorAccentText、底仍是 colorAccentSoft。
+                setTextColor(act.attrColor("colorAccentText"))
+                background = pill(act.attrColor("colorAccentSoft"))
                 val p = dimenPx(R.dimen.space_3)
                 setPadding(p, 0, p, 0)
                 gravity = Gravity.CENTER
@@ -1054,8 +1238,9 @@ class FavPanel(
             SugState.IN_LIST -> TextView(act).apply {
                 text = "已在自选"
                 textSize = TS(R.dimen.fs_note)
+                // 方向 B §2.4-3.9：已在自选 = **中性内嵌药丸（惰性）** = 底 colorSurface2 + 字 ink-faint。
                 setTextColor(act.attrColor("colorFaint"))
-                setBackgroundResource(R.drawable.fav_sug_state_exists)
+                background = pill(act.attrColor("colorSurface2"))
                 val p = dimenPx(R.dimen.space_3)
                 setPadding(p, 0, p, 0)
                 gravity = Gravity.CENTER
@@ -1386,14 +1571,17 @@ class FavPanel(
             isClickable = false
             isFocusable = false
         }
-        // ⚠ t8 照稿 A1②:第二行的品类徽章 —— **带 1px 中性描边的药丸**(稿 v2.html:1209-1210),
-        //   12px / --ink2 / radius 4 / padding 1·4,无彩度。
+        // ⚠ t8 照稿 A1②:第二行的品类徽章。
+        //   2026-10-16 t51 · 方向 B §2.4-3.9 / §6.7：徽标从「透明底 + 1px 中性描边 + r4」改成
+        //   **colorSurface2 实底药丸（r999）+ ink-sub 字 + 600**（与候选行的市场徽标同一配方）。
+        //   值仍走 ?attr/，明暗两态自动成立。
         val bd = TextView(act).apply {
-            setTextColor(act.attrColor("colorSub"))      // 稿 --ink2
+            setTextColor(act.attrColor("colorSub"))      // 方向 B --ink-sub
             textSize = TS(R.dimen.fs_note)
+            setTypeface(tfSemi)                          // 方向 B §6.7 徽标 = 600
             maxLines = 1
-            setPadding(dp(3.8f).toInt(), dp(1f).toInt(), dp(3.8f).toInt(), dp(1f).toInt())
-            background = act.getDrawable(R.drawable.fav_badge)
+            setPadding(dimenPx(R.dimen.space_2), dp(2f).toInt(), dimenPx(R.dimen.space_2), dp(2f).toInt())
+            background = pill(act.attrColor("colorSurface2"))
             isClickable = false
             isFocusable = false
         }
@@ -1527,12 +1715,19 @@ class FavPanel(
         //   线必须跟着**有内边距**的容器走 —— 之前挂在无内边距的 content 底边，
         //   字下面几乎贴线、线下面却是下一行的整段 pv，上下两把尺子。
         //   现在线的上下都是同一套 pv，对称。
+        // ⚠ 2026-10-16 t51 · 方向 B §2.4-3.2「列表卡 = 分片」：**背景不再在建立时挂死**，
+        //   改由 submitRows() 按片位分配（首/中片 = 实底 + 底发丝；末片 = 实底 + 下圆角、不画线）。
+        //   理由：片位只在「全量换数据」时才知道（末片是谁），建立时无法判定。
         val root = LinearLayout(act).apply {
             orientation = LinearLayout.VERTICAL
-            background = act.getDrawable(R.drawable.fav_row_line)
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT)
+                ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                // 方向 B §2.4-3.2：列表卡与搜索卡**同一外缩**（space_4）⟹ 卡的左右边界对齐，
+                // 卡内文字也就落在同一条基线上（16 外缩 + 16 内边距 = 32dp）。
+                leftMargin = dimenPx(R.dimen.space_4)
+                rightMargin = dimenPx(R.dimen.space_4)
+            }
             isClickable = true
             isFocusable = true
             addView(content)
@@ -1567,8 +1762,13 @@ class FavPanel(
         sh.boundSym = r.it.s
         // 行高:flag 判据与 flagTv 同源 ⟹ 「flag 画出来了」与「行高跟着变了」不可能脱节。
         val flagged = flagOf(r.d, pending).isNotEmpty()
-        val pv = dp(if (flagged) 11f else 16f).toInt()
-        val ph = dp(15.3f).toInt()
+        // ⚠ 2026-10-16 t51 · 方向 B §2.4-3.3：行 padding = 16（左右 space_4）。
+        //   改前左右 15.3dp（v1 的 space_4 档），新刻度里 space_4 = 16dp ⟹ 直接吃 dimen。
+        //   垂直仍保留 v1 的「有 flag 行少垫一点」补偿（flagged→space_3），
+        //   目的是让带时效行的行高与普通行一致；方向 B 的 §3.3 只钉了 16 与 ≈76，
+        //   这个补偿不冲突，且是 v1 既有口径，本轮不动它（只把它从字面 11dp 收到刻度 space_3=12）。
+        val pv = if (flagged) dimenPx(R.dimen.space_3) else dimenPx(R.dimen.space_4)
+        val ph = dimenPx(R.dimen.space_4)
         sh.root.setPadding(ph, pv, ph, pv)
         // 标题:有中文名用中文名,没有(币类 shortSym 即代码)才回落代码本身。
         val cnName = MktSuggest.favName(r.it.s)
@@ -1602,21 +1802,24 @@ class FavPanel(
         //   ≥10 字（如 `-12345.67%`）取 60%，再长就不是正常数值了。
         paintDist(sh.dc, r.d, pending)
         paintFlag(sh.dc, r.d, pending)
-        // ⚠ 2026-10-07 用户裁定「统一把字都缩小，不要再剪掉单位」：整体先×0.88，再按长度分档，
-        //   9字以上保证%不被列宽裁掉；宁可全小，不许单个%被吃掉。
-        sh.dc.textSize = TS(R.dimen.fs_data).let { base ->
-            val small = base * 0.88f
-            when ((sh.dc.text?.length ?: 0)) {
-                in 0..6 -> small
-                7, 8 -> small * 0.86f
-                9 -> small * 0.72f
-                else -> small * 0.60f
-            }
-        }
-        sh.dc.letterSpacing = -0.02f
+        // ⚠⚠ 2026-10-16 t51 · **撤掉 ×0.88 防裁切缩字（B5）**，换成「字距 + 列宽」方案。
+        //   改前（2026-10-07 裁定「统一把字都缩小，不要再剪掉单位」）：整体 ×0.88 再按长度分档
+        //   ⟹ 屏上是 17.6sp（20×0.88），**贴 token 的假值**，与方向 B 的 20/16/12 冲突。
+        //   方向 B 的做法：**字号 = token 值（fs_data = 20sp）不动**，「装得下」改由字距与列宽承担：
+        //     · 字距按长度收紧（fitTextScale 内的三档），吃掉的是数字间的空白；
+        //     · 列宽仍是代码真值 COL_DIST = 88dp，**不改**（与列头 88 是同一个数，动它=破不变量）。
+        //       实测（density 2.75）：`+32.69%` 在 20sp 下宽 ≈217px < 242px（88dp）⟹ 7 字以内本来就装得下，
+        //       v1 的 ×0.88 是为更长值买的保险；把保险换成「按实测宽度的确定性兜底」更划算。
+        //     · ≥10 字的极端值（`-12345.67%`）字距也不够 ⟹ fitTextScale 按 **paint.measureText 实测宽度**
+        //       做横向压缩（纯算术、确定性、不可能闪退；**字号仍是 20sp**，只压字形宽度，绝不出现省略号）。
+        //   ⚠ 为什么不用 ellipsize=END：用户 2026-10-07 明确「不要再剪掉单位」——宁可压字形，不许剪。
+        //   ⚠ 为什么不用 autoSizeText：本机闪退，2026-10-05 已永久弃用（见上方注释）。
+        sh.dc.textSize = TS(R.dimen.fs_data)
         sh.dc.gravity = Gravity.CENTER
         sh.dc.maxLines = 1
-        sh.dc.setPadding(0, dp(8.6f).toInt(), 0, dp(8.6f).toInt())
+        fitTextScale(sh.dc, dp(COL_DIST).toInt())
+        // ⚠ 8.6dp 是 v1 的档外值（刻度里没有）—— 收到 space_2 = 8dp（差 0.6dp，肉眼无差）。
+        sh.dc.setPadding(0, dimenPx(R.dimen.space_2), 0, dimenPx(R.dimen.space_2))
         sh.dc.background = null
         // ⚠ 2026-10-07 用户裁定「我需要紫色」—— 距支撑语义色落到**最后一次写入**。
         //   原先语义色只在 paintDist 里设一次，而 paintDist 位于本函数**开头**；
@@ -1648,11 +1851,17 @@ class FavPanel(
         //   ⟹ 不再设 tooltip（信息在计算页同源可见）；同时显式清 rc 的（paintRatioCell 若设过）。
         //   保留下方 stripClickable 作皮带（不再承担本修复的成败）。
         sh.gc.tooltipText = null
-        // ⚠ 2026-10-07 与距支撑同幅缩小（统一小一号，避免% / ×被裁）。
-        sh.gc.textSize = TS(R.dimen.fs_title) * 0.88f
-        sh.rc.textSize = TS(R.dimen.fs_title) * 0.88f
+        // ⚠ 2026-10-16 t51 · 与距支撑同批撤掉 ×0.88（B5）：两列都回到 token 值 fs_title = 16sp。
+        //   这两列的值短（`+41.23%` / `70.95%`，实测 ≈174px / 149px），列宽 76dp=209px、56dp=154px
+        //   ⟹ 本来就装得下；fitTextScale 只在极端值时兜底（正常值下 textScaleX 恒 = 1）。
+        sh.gc.textSize = TS(R.dimen.fs_title)
+        fitTextScale(sh.gc, dp(COL_GAIN).toInt())
+        sh.rc.textSize = TS(R.dimen.fs_title)
         // 收益比。
         paintRatioCell(sh.rc, r.d, r.m)
+        // ⚠ 顺序要紧：`rc` 的文本在 paintRatioCell 里才写进去 ⟹ 字距/兜底压缩必须**放在它之后**
+        //   （真机实测：放在前面时 `41.43%` 被 ellipsize 成 `41.43…`，'%' 被吃掉）。
+        fitTextScale(sh.rc, dp(COL_RATIO).toInt())
         sh.rc.tooltipText = null // 2026-10-13 同上：清 tooltip，别让它吞整行点击
         // ⚠ 2026-10-13 用户实报「点字进不去，只有点空白处才能进行情页」。
         //   根因：收益比/收益率格子设了 tooltipText（见上），Android 会自动把该 View 置为
@@ -1739,8 +1948,7 @@ class FavPanel(
                 if (roe0.isFinite()) roe0 else null,
                 if (net0.isFinite()) net0 else null,
                 rec?.optString("t") ?: "")
-            val distPct = if (d != null && d.ok) d.pct else null
-            Row(f, d, m, ratioOf(distPct, m))
+            Row(f, d, m, ratioOf(d))
         }
         // 稿§2 排序:三键互斥取当前列;无值行恒沉底(升序降序都沉底)
         val sort = FavStore.getSort(act)
@@ -2047,12 +2255,19 @@ class FavPanel(
         b.text = span
         b.setTextColor(labelColor)
         b.textSize = TS(R.dimen.fs_note)
+        // ⚠ 2026-10-16 t51 · 方向 B §2.4-3.4：表头三键**一律 600**（改前只有当前排序列加粗）。
+        //   未选中列仍 faint、选中列仍 ink + 主色箭头（这两条 v1 已对，不动）；
+        //   加粗统一走 tfSemi —— 与「列头 = 12sp/600/faint」逐字对齐。
+        //   ⚠ 这里是**加粗不是换字色**：contentDescription（无障碍对应物）一个字都没动。
+        b.setTypeface(tfSemi)
     }
 
     private fun paintSortHeads() {
         paintSortHead(sortDist, "距支撑", "dist")
         paintSortHead(sortGain, "收益率", "gain")
-        paintSortHead(sortRatio, "收益比", "ratio")
+        // ⚠ 2026-10-15 用户裁定：列头随口径改名「收益比 → 距离比」（= 第一支撑 ÷ 第二支撑）。
+        //   排序键仍叫 "ratio"（FavStore 持久化的旧值要能继续读），只改屏上文案。
+        paintSortHead(sortRatio, "距离比", "ratio")
     }
 
     // 稿 L358 两态: 同列 → 升降互换; 换列 → 一律从降序起。
@@ -2071,20 +2286,15 @@ class FavPanel(
         FavStore.setSort(act, nx)
         paintSortHeads()
         repaint()
-        // ⚠ 2026-10-12 裁定 B 改**不动这里**：点列头仍是**全量** refreshFavDist()（用户显式
-        //   动作、整表重排，本来就该全刷）。变的只是每个品种各用各的窗口（循环内 distWin(s)）
-        //   —— 排序键（dist/gain/ratio）与两态状态机、无值沉底规则逐字未改。
-        refreshFavDist()
+        // ⚠ 2026-10-15 用户裁定：点列头排序**不拉取新行情数据**，只用已有数据重排。
+        //   原来这里调 refreshFavDist() 会触发网络请求，用户不需要——排序只是重排已有行。
     }
 
     // 压缩格式(稿§2):|v|>=1e6→M(2位) >=1e5→K(1位) >=1e3→千分位整数 <1000→两位小数
 
-    // 稿 v2.html:967 逐字: const fmtRatio = v => v==null ? '—' : v.toFixed(2)+' ×';
-    // ⟹ **两位小数, 任何量级都是**, 且 × 前留一个空格（空格由调用处 paintRatioCell 拼）。
-    // 改前走 fmtCompact: |v|>=1e3 → 千分位整数 / >=1e5 → 一位 K / >=1e6 → 两位 M,
-    // 于是 86.13 被写成 86.1、1234.56 被写成 1.23K —— 稿里这两种写法都不存在。
-    // fmtCompact **本身不动**: 净收益那一行(规格§2「净收益 +86.13 USD」)还要用它。
-    private fun fmtRatio(v: Double): String = String.format(Locale.US, "%.2f", v)
+    // 墓碑 · 2026-10-15：这里原有 fmtRatio（稿 v2.html:967 的 `v.toFixed(2)+' ×'`），
+    // 供收益比列显示「3.54×」。该列口径当天改为 **距离比 = 第二支撑 ÷ 第一支撑、显示百分数**
+    // （见 ratioOf / paintRatioCell），「×」写法随之退役 —— fmtRatio 无调用方，整段删除。    // fmtCompact **本身不动**: 净收益那一行(规格§2「净收益 +86.13 USD」)还要用它。
 
     // 稿§2 收益率列悬浮:收益率+净收益(USD)+保存时间
     // D7:净收益按规格§2逐字示例「净收益 +86.13 USD」用两位小数千分位(与 MainActivity.fmt 同款),
@@ -2111,30 +2321,34 @@ class FavPanel(
     //   立场与 MktData.kt:920 一致：**宁可空，不可换**。
     //   gain 缺失 ⟹ 整体返回 null，行上显示「—」；老记录仍可在悬浮提示里看它的净收益金额
     //   （见 gainTip，它没有混进这个「×」）。
-    private fun ratioOf(distPct: Double?, m: RowMeta): Double? {
-        if (distPct == null || distPct == 0.0) return null
-        val g = m.gain ?: return null
-        return g / Math.abs(distPct)
+    // ⚠ 2026-10-15 用户裁定（同日第三轮）：距离比 = **100% − 第二支撑 ÷ 第一支撑**
+    //   （= (sup1 − sup2) / sup1，两线间距占第一支撑的百分比）。
+    //   原来是 收益率(%) ÷ |距支撑|(%)；当天第二轮曾改为 sup2 / sup1，现再按用户口径 100% 减。
+    //   （sup1 = 现价下方最高的一条支撑，sup2 = 次高的一条，见 FavDist；两者都 > 0 才有值。）
+    private fun ratioOf(d: DistR?): Double? {
+        if (d == null || !d.ok) return null
+        if (d.sup1 <= 0.0 || d.sup2 <= 0.0) return null
+        return (d.sup1 - d.sup2) / d.sup1
     }
 
     private fun paintRatioCell(rc: TextView, d: DistR?, m: RowMeta) {
-        val distPct = if (d != null && d.ok) d.pct else null
-        // 稿 v2.html:1203 逐字: color: (blankD||ratio==null) ? 'var(--ink3)' : pnlColor(ratio)
-        //   稿 v2.html:1203 的文字逐字: {blankD?'—':fmtRatio(ratio)}, 而 fmtRatio(null)='—'
-        //   ⟹ **zero 必须先判**, 否则 ratioOf 拿 0 当除数会算出 Infinity/NaN。
-        val r = if (isZero(d)) null else ratioOf(distPct, m)
+        // ⚠ 2026-10-15 收益比改口径：直接用 DistR 里的 sup1/sup2，不再需要 distPct/gain。
+        val r = ratioOf(d)
         // ⚠ 稿这一档的判据是 **none||zero**（v2.html:1203 的 `blankD||ratio==null`）,
         //   **没有 stale**; stale 行照常出 `0.63×` 这类值。
         // 改前这里多了一条 `|| isStale(d)`, 于是每条 stale 行的收益比都被抹成「—」,
         // 而同行的收益率、代码、距支撑都照常有值 —— 同行自相矛盾（t389）。
-        if (r == null) {
+        // ⚠ 2026-10-15 `d == null` 与 `r == null` 必须同判：下面提示文案要读 d.sup1/d.sup2，
+        //   而 Kotlin 只在这个 return 之后才把 d 智能转换成非空（ratioOf 内部判空不算数）。
+        if (r == null || d == null) {
             // 上面那一支已对齐稿: 空值 = 文字「—」+ 颜色 --ink3 = colorFaint。
             rc.text = "—"
             rc.setTextColor(act.attrColor("colorFaint"))
             rc.tooltipText = null
             return
         }
-        rc.text = fmtRatio(r) + "×"
+        // ⚠ 2026-10-15 距离比 = 100% − 第二支撑 ÷ 第一支撑，显示百分数（不带 + 号：这不是涨跌）。
+        rc.text = String.format(Locale.US, "%.2f%%", r * 100.0)
         // ⚠ 配色（2026-10-03 **用户裁定改绿**，与收益率列同一裁定）
         //   ⟹ **恒定绿色**。
         //
@@ -2149,16 +2363,10 @@ class FavPanel(
         // ⚠ 距支撑那一列**仍按正负分色**，未受影响（用户只点名了收益率与收益比）。
         // ⚠ 2026-10-07 同上：收益比恒绿（有值即绿），不再按stale置灰。
         rc.setTextColor(act.attrColor("colorTeal"))
-        // D6:距支撑取绝对值——跌破支撑时 distPct 为负,公式本身用 |距支撑|,
-        // 提示里若写「÷ 距支撑 -2.50%」会与「收益比 = 收益率 ÷ |距支撑|%」自相矛盾
-        val distTxt = String.format(Locale.US, "%.2f", Math.abs(distPct!!))
-        rc.tooltipText = "收益比 ${fmtRatio(r)} = " +
-            // ⚠️ 改前这里是 `(gain==null && net!=null) ? "净收益(老记录降级)…" : "收益率 …"` ——
-            //   ratioOf 移除了 net 降级后，这个分支**永远走不到**，留着就是一处
-            //   「文案描述一个已不存在的行为」。现在只有一条路，且 gain 必非空
-            //   （ratioOf 返回非 null ⟹ gain != null）。
-            "收益率 ${fmtPct(m.gain!!)}" +
-            " ÷ 距支撑 $distTxt%"
+        // ⚠ 2026-10-15 距离比改口径（第三轮）：提示文案写全式子 100% − 第二支撑 ÷ 第一支撑。
+        rc.tooltipText = "距离比 " + String.format(Locale.US, "%.2f%%", r * 100.0) + " = " +
+            "100% − 第二支撑 ${String.format(Locale.US, "%.2f", d.sup2)}" +
+            " ÷ 第一支撑 ${String.format(Locale.US, "%.2f", d.sup1)}"
     }
 
     // ---------- 候选层动效（2026-10-14 用户真机要求补） ----------

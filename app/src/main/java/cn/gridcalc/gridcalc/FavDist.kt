@@ -19,7 +19,10 @@ data class DistR(
     val chg: Double = 0.0,
     val why: String = "—",
     val soft: Boolean = false,
-    val ts: Long = 0L
+    val ts: Long = 0L,
+    // 2026-10-15 收益比改口径：第一/第二支撑线价格
+    val sup1: Double = 0.0,
+    val sup2: Double = 0.0
 )
 
 object FavDist {
@@ -120,7 +123,8 @@ object FavDist {
         if (pct.isNaN()) return null
         if (!sane(pct)) return null          // 旧版坏值：不顶屏，交给重算
         return DistR(true, pct, v.optDouble("px", 0.0), v.optDouble("chg", 0.0),
-            ts = v.optLong("ts", 0L))
+            ts = v.optLong("ts", 0L),
+            sup1 = v.optDouble("sup1", 0.0), sup2 = v.optDouble("sup2", 0.0))
     }
 
     // 展示优先级唯一所有者:新值ok/soft(数据已到,含—无支撑)恒优先;
@@ -207,6 +211,7 @@ object FavDist {
                 store[k] = JSONObject()
                     .put("pct", r.pct).put("px", r.price).put("chg", r.chg)
                     .put("ts", r.ts).put("st", "ok")
+                    .put("sup1", r.sup1).put("sup2", r.sup2)
                 while (store.size > MAXE) {
                     var oldest: String? = null
                     var ots = Long.MAX_VALUE
@@ -418,12 +423,20 @@ object FavDist {
                     val prv = show[show.size - 2].c
                     // ⚠ 2026-10-07 泛化修失真：取**离现价最近**的下方支撑（max），不依赖sup列表顺序假设。
                     //   原below[0]在列表降序时正确，一旦上游顺序变了就是最远一条，AVGO/0700的夸张数即此类。
+                    // ⚠ 2026-10-15 收益比改口径：同时取第一/第二支撑线价格，供 FavPanel.ratioOf 用。
+                    //   口径与行情页 supShow 严格同源（MktView.kt:488 `vp.sup.filter { it < cur }`，
+                    //   MktPanel.kt:1616 `sup1=supShow[0]`/`:1619 sup2=supShow[1]`）：
+                    //   **只取现价下方的支撑**，第一=其中最高的一条，第二=次高的一条。
+                    //   ⚠ 不按 |it-cur| 排序 —— 那会把现价**上方**的档选进来，与行情页标签打架。
+                    //   ⚠ 同时保留上面那条「不依赖 sup 列表顺序」的立场：用 max 而非 [0]。
                     val below = vp.sup.filter { it < cur }
-                    val sup = below.maxOrNull()
-                        ?: vp.sup.filter { it >= cur }.minOrNull()
+                    val sup1 = below.maxOrNull()
+                    val sup2 = if (sup1 != null) below.filter { it < sup1 }.maxOrNull() else null
+                    val sup = sup1 ?: vp.sup.filter { it >= cur }.minOrNull()
                     r = if (sup != null && cur > 0) {
                         DistR(true, Math.abs((cur - sup) / cur * 100.0), cur,
-                            if (prv > 0) (cur - prv) / prv * 100.0 else 0.0, ts = System.currentTimeMillis())
+                            if (prv > 0) (cur - prv) / prv * 100.0 else 0.0, ts = System.currentTimeMillis(),
+                            sup1 = sup, sup2 = sup2 ?: 0.0)
                     } else {
                         DistR(false, soft = true, why = "—无支撑")
                     }
@@ -495,9 +508,11 @@ object FavDist {
                 val cur = show.last().c
                 val prv = if (show.size > 1) show[show.size - 2].c else cur
                 val chg = if (prv > 0) (cur - prv) / prv * 100.0 else 0.0
+                // ⚠ 2026-10-15 第一/第二支撑口径同上（与行情页 supShow 同源，只取现价下方）。
                 val below = vp.sup.filter { it < cur }
-                val sup = below.maxOrNull()
-                    ?: vp.sup.filter { it >= cur }.minOrNull()
+                val sup1 = below.maxOrNull()
+                val sup2 = if (sup1 != null) below.filter { it < sup1 }.maxOrNull() else null
+                val sup = sup1 ?: vp.sup.filter { it >= cur }.minOrNull()
                 if (sup != null && cur > 0) {
                     // ⚠⚠⚠ 2026-10-03 **距支撑改为恒正**（用户裁定：「他并没有跌破支撑线，却显示负数」）。
                     //
@@ -513,10 +528,10 @@ object FavDist {
                     //
                     // 【现在的语义】距支撑 = |现价 − 支撑| / 现价，**恒 ≥ 0**。
                     //   「有没有跌破」在图上一眼可见（价格线在支撑线下方），不由这个数表达。
-                    //   ⚠ 收益比本来就取 Math.abs(distPct)（见 FavPanel.ratioOf），本改动不影响它。
+                    //   ⚠ 2026-10-15 收益比改口径：sup1/sup2 传到 DistR，供 FavPanel.ratioOf 用。
                     val rawPct = (cur - sup) / cur * 100.0
                     r = DistR(true, Math.abs(rawPct), cur, chg,
-                        ts = System.currentTimeMillis())
+                        ts = System.currentTimeMillis(), sup1 = sup, sup2 = sup2 ?: 0.0)
                 } else {
                     // 稿NOSUP软分支:数据拉到了,只是该窗口算不出支撑位(≠「—无源」)
                     r = DistR(false, soft = true, why = "—无支撑")

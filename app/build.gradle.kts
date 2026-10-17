@@ -84,7 +84,13 @@ android {
         // V4.6-40518（2026-10-13 手工包）：自选行点击修复四弹——拔掉收益率/收益比格子的
         //          tooltip 触发源（三版剥离均无效，悬浮说明让位整行点击；信息计算页同源可见）
         val ciRun = (findProperty("ciBuildNumber") as String?)?.toIntOrNull()
-        versionCode = if (ciRun != null) 30000 + ciRun else 40518
+        // V4.6-41000（2026-10-15 手工包）：**跳号到 41000** —— 用户手机上已装的包 versionCode
+        //   高于 40518（405xx 手工包序列在别处发过更高的号），Android 按 versionCode 判降级、
+        //   拒绝覆盖安装（用户实报「版号怎么还降低了，怎么安装」）。
+        //   versionName 仍是用户裁定的 4.6，**没降**；versionCode 用户不可见，只管覆盖安装。
+        //   ⚠ 跳到 41000 而不是 40519：40519 仍可能盖不过手机上已有的号，一次跳够，
+        //     保证盖住任何 405xx/406xx-409xx 手工包。CI 的 30000+run 要 run>11000 才追平（远期再收）。
+        versionCode = if (ciRun != null) 30000 + ciRun else 41000
         // ⚠ **版本号唯一来源**：Release 名与 tag 都是 v{versionName}（见 .github/workflows/build-apk.yml）。
         //   已发布序列：4.1 → 4.2.1 → 4.3 → 4.3.1 / 4.3.2 / 4.3.3 → 4.4 ⟹ 本次发 **4.5**。
         //   2026-10-05 用户裁定升到 4.5（4.4 与已发布的包重号，同版本名下两个不同包难追溯）。
