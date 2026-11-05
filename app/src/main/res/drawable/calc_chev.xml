@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 计算屏折叠口的 **chevron**（C-4，2026-10-19 r8）。
+     稿子依据：`方向-B\四屏-计算页.html:175-184`
+       `.calc-chev { flex: none; width: 8px; height: 8px;
+                     border-right: 2px solid var(-ink-faint);
+                     border-bottom: 2px solid var(-ink-faint);
+                     transform: rotate(45deg); }`
+       `:184` `[aria-expanded="true"] .calc-chev { transform: rotate(-135deg) }`
+     ⟹ 一个 **8×8**、只有**右边 + 下边各 2px**、色 = `ink-faint`（本仓 `?attr/colorFaint`）的小直角，
+        旋转 45° 即稿的「∨」（折叠）／−135° 即「∧」（展开）。
+
+     ⚠ 为什么用 layer-list 拼两条矩形，而不是 `<shape>` + `<stroke>`：
+       ShapeDrawable 的 `<stroke>` 画的是**四边**，落不了「只有右边 + 下边」的单边。
+       layer-list 用 item 的 `android:width/height` + `android:gravity` 各放一条 2dp 矩形，
+       拼出那个直角 —— 形态与稿的 border-right/border-bottom 等价。
+     ⚠ **不给 `<size>`**（t1 规格原案写的是 `<shape>` + `<size 8dp×8dp>`）：本件只当「宿主 View 的
+        background」用，而宿主在布局里就是 `layout_width/height="8dp"`（稿的 width/height）
+        ⟹ background 会被拉伸到 8×8 的盒子里，不需要固有尺寸；本仓既有的 layer-list
+        （`fav_row_line` / `row_detail_rule` / `tabbar_top_line`）一律不写 `<size>`，沿同一写法
+        可少一个跨 API 的解析面。⚠ 规格要求的「8dp×8dp」由宿主 View 逐值承担（见 `page_calc.xml`
+        的 `more_chev` / `det_chev`）。
+     ⚠ 旋转由**宿主 View** 的 `android:rotation` 给（drawable 自己转不了），
+       折叠态写在布局里（`rotation="45"`），展开态由 `MainActivity` 的折叠口监听置 `-135`。 -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 右边：宽 2dp、满高 -->
+    <item
+        android:width="2dp"
+        android:gravity="right">
+        <shape android:shape="rectangle">
+            <solid android:color="?attr/colorFaint" />
+        </shape>
+    </item>
+    <!-- 下边：高 2dp、满宽 -->
+    <item
+        android:height="2dp"
+        android:gravity="bottom">
+        <shape android:shape="rectangle">
+            <solid android:color="?attr/colorFaint" />
+        </shape>
+    </item>
+</layer-list>

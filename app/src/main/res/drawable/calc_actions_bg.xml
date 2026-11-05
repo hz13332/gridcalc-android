@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 计算屏**底部动作区**的底（C-8，2026-10-19 r8）。
+     稿子依据：`方向-B\四屏-计算页.html:212-220`
+       `.calc-actions { flex: none; display: flex; align-items: center; gap: var(-sp-3);
+                        padding: var(-sp-3) var(-sp-4);
+                        background: var(-bg-surface);            ← 卡档底色
+                        border-top: var(-hairline) solid var(-border); }`
+     ⟹ 两层：**卡档底**（`-bg-surface`；本仓 `?attr/colorCard`，浅 #FFFFFF / 深 #161B22）
+        + **顶上 1dp 通栏线**（`-border`；本仓 `?attr/colorBorder`）。
+        CSS 的 border 画在 padding 外侧 ⟹ 线是**通栏**的（不随内容内缩）——
+        layer-list 的顶层 item 用 `android:gravity="top"` + `android:height="1dp"` 同样通栏。
+
+     ⚠ 与底栏顶线的分工（不许混）：本件属**计算页内容区**的固定动作区；
+       `drawable/tabbar_top_line.xml`（`activity_main.xml:49`）是**底栏**的顶边，两件各自独立
+       （C-8 的改动边界逐字：不动 `tabbar_top_line.xml`）。
+     ⚠ 与 `card_bg.xml` 的区别：`card_bg` 是 **12dp 四角圆角**的卡；动作区钉在屏底、左右到边，
+       圆角会在贴屏边处露白 ⟹ 本件不画圆角（与稿 `.calc-actions` 无 border-radius 一致）。
+     ⚠ 本屏的 `save_btn_bg` / `btn_ghost` 一字未动（主/次档已对，2026-10-16 t53 登记）。 -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="?attr/colorCard" />
+        </shape>
+    </item>
+    <item
+        android:gravity="top"
+        android:height="1dp">
+        <shape android:shape="rectangle">
+            <solid android:color="?attr/colorBorder" />
+        </shape>
+    </item>
+</layer-list>

@@ -8,9 +8,7 @@
 
     android:fillViewport="true"
 
-    android:scrollbars="none"
-
-    android:clipToPadding="false">
+    android:scrollbars="none">
 
 
 
@@ -18,7 +16,9 @@
 
         android:layout_width="match_parent"
 
-        android:layout_height="wrap_content"
+        android:layout_height="match_parent"
+
+        android:paddingBottom="@dimen/space_4"
 
         android:orientation="vertical">
 
@@ -27,6 +27,18 @@
         <!-- t201 ⑥ AppBar —— 稿 L422 <AppBar title="自选"/>。此前整块缺失。
 
              稿: padding 14/16/12 + borderBottom 1px + 标题 T.title(16)/fontWeight 600/colorInk
+             ⚠ 2026-10-21 t24（闸 2 裁定落地，详见 48_闸2档外与口径残留清单.md §6）：
+               方向-B 稿**无 AppBar**（流程走查_20261019/01_自选与搜索添加.md:157）⟹ 本块三件（fav_title /
+               fav_subtitle / fav_appbar_line）均 visibility=gone，且 Kotlin 侧不接线（FavPanel 不引用 fav_title，
+               fav_subtitle 只被读取、从不置 VISIBLE）⟹ 屏上不渲染 ⟹ **本块三件的改值无视觉影响**；
+               按裁定 2 ②（无稿出处 ⟹ 吸 7 档）落地：
+               fav_title paddingTop 13.4→12dp、paddingBottom 1.9→删 0；fav_subtitle paddingBottom 9.5→8dp。
+               ⚠ 但 t24 在**本文件别处**有**屏上可见**的改值 ⟹ 自选页浅/深两张 Paparazzi 基线会变 ⟹ t43 曾于 2026-10-21 重录
+               （浅 9be93ea742202a28 / 深 cd2d648d50175fbf），但被并发任务 t35 逐字节回滚（record 任务带 tests 过滤参数会连带重写其它 golden）⟹ 终态重录归 t47：
+               ① fav_search 水平内边距 12.4→12dp ⟹ 搜索框提示文字左移 0.4dp（子像素重栅格化，水平位置未移）；
+               ② fav_sort_dist / fav_sort_gain / fav_sort_ratio 内边距 1.9→删 0 ⟹ 表头排序标签上移 1.9dp（fav_sort_dist 另左移 1.9dp）⟹ 表头行高 −3.8dp ⟹ 其下所有列表行上移 3.8dp。
+               （t43 实测差 2.1376% = 9619px，差异落在 搜索框提示文字带 y79–98、表头排序行带 y172–189
+                 与其下两段列表行 y208–229 / y248–267；AppBar 三件不在屏上，不产生像素差。）
 
              ⚠ 下面那条 L15 旧注释曾写「稿:无页面大标题」, 那是错的, 已一并纠正。 -->
 
@@ -44,9 +56,8 @@
 
             android:paddingRight="@dimen/space_4"
 
-            android:paddingTop="13.4dp"
+            android:paddingTop="12dp"
 
-            android:paddingBottom="1.9dp"
 
             android:text="自选"
 
@@ -71,7 +82,7 @@
                （稿的 CSS 变量名以两个减号开头，XML 注释里写不出来，故此处只写变量名）。
                稿对这条的定位见 v2.html:1591「数字不是解释，解释才是」—— 它是安静的注脚，
                不是第二个标题，故给 note 档 + ink2，不给 title 档。
-             ⚠ fav_title 的 paddingBottom 12dp → 2dp，副标吃 10dp，**合计仍是 12dp**，
+             ⚠ fav_title 的 paddingBottom 12dp →（2026-10-21 t24 删 0），副标吃 8dp，合计 8dp，
                AppBar 的外框几何与改前逐像素相同，底下的 1dp 分隔线不会移位。
              ⚠ N 取**真实自选数**，不写死 —— 正是稿墓碑里点名要避免的「9 个品种 写死」。
              ⚠⚠ **visibility="gone"，且 Kotlin 侧故意不接线**（t8 2026-10-02 captain 裁定）：
@@ -93,7 +104,7 @@
 
             android:paddingRight="@dimen/space_4"
 
-            android:paddingBottom="9.5dp"
+            android:paddingBottom="8dp"
 
             android:textColor="?attr/colorSub"
 
@@ -117,7 +128,9 @@
 
             android:layout_width="match_parent"
 
-            android:layout_height="wrap_content"
+            android:layout_height="0dp"
+
+            android:layout_weight="1"
 
             android:orientation="vertical">
 
@@ -146,9 +159,13 @@
 
             android:orientation="vertical"
 
-            android:paddingStart="0dp"
+            android:paddingStart="@dimen/space_2"
 
-            android:paddingEnd="0dp">
+            android:paddingEnd="@dimen/space_2"
+
+            android:clipChildren="false"
+
+            android:clipToPadding="false">
 
             <!-- ⚠ 2026-10-02 用户看图指出「搜索框像粘着了什么东西」。
                  无障碍树实测(1080px 屏,density 2.75):
@@ -179,33 +196,39 @@
                  下沿本来就留 11px;App 这边只有左右内缩、**没有下边距**,所以贴住了。
                  补 space_3(12dp) 与稿的 11px 差 1dp,在 density 2.75 下是 3px。 -->
 
-            <!-- ⚠⚠ 2026-10-16 t51 · 方向 B §2.4-3.2「搜索块 = surface 卡 + r12 + elev-1」。
-                 这里重新**包一层卡**（t102 当年去掉大圆角卡片容器，是 v1「无卡片 + 发丝」的口径；
-                 方向 B 的分组语汇又回到卡片 —— 这是本轮的语言改动，不是回退 t102 的判据）。
-                 · 底 = card_bg（colorCard + **r12**，**无描边** —— t49 换档 r12；1dp stroke 已由
-                   2026-10-16 t1「方案 A」按用户拍板删除，本行原写的「+ 1dp colorBorder」已过期）
-                 · 抬升 = elev_1（浅色 2dp 真阴影 / 深色 0dp，values-night 里归零）
-                 · 内边距 = space_4(16) —— 与列表卡的行内边距**同值**，
-                   于是「搜索框边框」与「列头文字」都落在 16(卡外缩) + 16(卡内缩) = 32dp 的同一条基线上。
-                 ⚠ 原来那两处 16dp 是各自的外缩（EditText 的 marginStart/End），现在归卡的内边距，
-                   下面三个子元素的左右 margin 全部归零（否则叠加成 32+16）。 -->
+
+            <!-- ⚠⚠ 2026-10-28 t2 · 搜索卡按 Oct-28 稿重排（`.fav-search`，四屏-自选页.html:33-43）。
+                 稿逐字：`margin-top: sp-3; padding: sp-3 sp-3 sp-2; background: bg-surface;
+                 border: hairline solid border; border-radius: r-card; box-shadow: elev-1`
+                 ⟹ 本容器：外缩=0（页面列自己给 space_2，稿 `.fav` 的 `padding: 0 sp-2 sp-4`）、
+                   上距=space_3、内边距=左右上 space_3 / 下 space_2。
+                 · 卡面 = @style/Widget.GridCalc.Card（2026-10-28 起自带 1dp colorBorder 发丝，
+                   与稿的 border 一致）+ 抬升 elev_1（深色 0dp）
+                 · **搜索卡保留卡片形态**（2026-10-28 用户裁定：搜索栏与候选菜单都保留卡；
+                   只有下方的自选列表去卡片化，走平铺 + 发丝，见 fav_head / FavPanel.submitRows）
+                 ⚠ 与改前（t51 2026-10-16 版）的差：外缩 space_4 → 0（改由页面列给 space_2）、
+                   内边距 space_4 → sp-3 / sp-3 / sp-2。
+                 ⚠ 候选浮层 fav_sug_box **不再是本容器的子节点**（改前是卡中卡，稿点名不许）——
+                   见下方独立成层的 fav_sug_box。 -->
             <LinearLayout
 
                 android:layout_width="match_parent"
 
                 android:layout_height="wrap_content"
 
-                android:layout_marginStart="@dimen/space_4"
+                android:layout_marginTop="@dimen/space_3"
 
-                android:layout_marginEnd="@dimen/space_4"
-
-                android:background="@drawable/card_bg"
-
-                android:elevation="@dimen/elev_1"
+                style="@style/Widget.GridCalc.Card"
 
                 android:orientation="vertical"
 
-                android:padding="@dimen/space_4">
+                android:paddingLeft="@dimen/space_3"
+
+                android:paddingTop="@dimen/space_3"
+
+                android:paddingRight="@dimen/space_3"
+
+                android:paddingBottom="@dimen/space_2">
 
             <TextView
 
@@ -217,11 +240,30 @@
 
                 android:text="搜索添加"
 
+                android:fontFamily="@font/inter_semibold"
+
+                android:letterSpacing="0.04"
+
                 android:textColor="?attr/colorFaint"
 
-                android:textStyle="bold"
-
                 android:textSize="@dimen/fs_note" />
+
+            <!-- ⚠⚠ 2026-10-28 t11 · 「搜索添加」按 Oct-28 稿收字重与字距（`.fav-sec`，四屏-自选页.html:44-50）：
+                 font-size = fs-note；letter-spacing = 0.04em；
+                 font-weight = fw-semibold；color = ink-faint
+                 （稿里是 CSS 变量写法，变量名的两个前导减号在 XML 注释里不可写，故这里只写变量名。）
+                 ⟹ 旧值 textStyle="bold"(700) + 无字距，新值 fontFamily="@font/inter_semibold"(真 600) +
+                   letterSpacing="0.04"；textColor 不动（稿就是 ink-faint = ?attr/colorFaint）。
+                 ⚠ 为什么不写 textStyle="bold" + textFontWeight="600"：`textFontWeight` 是 API 28+，
+                   本项目 minSdk=26 ⟹ 直接指定 semibold 字面文件，26/27/28+ 三档一致。
+                 ⚠ 实测（emulator-5556，824×1784@320，同一个 12sp 词组）：
+                   改前 96px 宽 / 改后 100px 宽（+4px = +2dp，正是 0.04em × 12sp × 4 字），
+                   高度仍 36px（**单行**，dump 里 text 仍是完整的「搜索添加」⟹ 没被裁）。
+                   墨迹像素数与平均灰度**逐值相同**（1317 / 115.6）：这 4 个字是汉字，Inter 不含 CJK，
+                   字形由系统 Noto CJK 回退提供，而回退链不吃「请求的 600」⟹ 屏上看到的是
+                   「字距变松」，字重与改前持平（改前的 textStyle="bold" 在 CJK 回退上本来也没变粗）。
+                   若要 CJK 也真的拿到 600，得另加 values-v28 的 textFontWeight="600"（API 28+ 才生效）——
+                   本任务未要求，留作后续可选项。 -->
 
                 <!-- ⚠ 2026-10-02 删掉这里的 android:fontFamily="sans-serif-medium"。
                      两个理由:
@@ -240,8 +282,11 @@
                    （v2.html:1468 / :10 = font-variant-numeric:tabular-nums + font-feature-settings:"tnum"），
                    那是**只管数字**的；monospace 会把「黄金」也排成等宽，稿里没有这个效果。
                    ⟹ 改用 fontFeatureSettings="tnum" 对齐稿，minSdk 26 够（该属性 API 21+）。
-                 ⚠ 框高仍留 48dp：稿的框高 = 11+行高+11 ≈ 43px，但 48dp 是 Android 的最小可点区域，
-                   本条不为了逐像素对齐去动它（差 4.5dp，已在交付报告里列出）。
+                 ⚠ 框高 2026-10-21 t67 按方向-B 稿返工为 44dp：稿 .fav-field { height: 44px }
+                   （四屏-自选页.html:44-50）⟹ 1:1 = 44dp。旧的 48dp「最小可点区」理由引的是 v2 稿，已作废。
+                 ⚠ 2026-10-21 t24（闸 2 裁定 2 ① 1:1 返工为稿值）：现行 方向-B 稿 .fav-field
+                   padding: 0 sp-3（稿 CSS 变量即档位 sp-3；四屏-自选页.html:44-50）⟹ 水平 12px / 垂直 0 ⟹ App 已 1:1 落地为
+                   左右 12dp、上下 0（旧稿 v2 的 11px 13px 已被方向-B 稿取代）；框高按上一条 t67 返工为 44dp。
                   ⚠ 2026-10-02 补 marginBottom=space_3(12dp)：用户指出「搜索框像粘着了什么东西」，
                     指的是**垂直**方向 —— 框是圆角描边、其下紧跟一条 1dp 直分隔线，
                     实测间距 0px（框底 y=332、分隔线 y=332..335），两条线贴死读成一根。
@@ -254,9 +299,7 @@
 
                 android:layout_width="match_parent"
 
-                android:layout_height="45.8dp"
-
-                android:layout_marginBottom="@dimen/space_3"
+                android:layout_height="44dp"
 
                 android:background="@drawable/input_bg"
 
@@ -270,13 +313,11 @@
 
                 android:singleLine="true"
 
-                android:paddingLeft="12.4dp"
+                android:paddingLeft="12dp"
 
-                android:paddingRight="12.4dp"
+                android:paddingRight="12dp"
 
-                android:paddingTop="10.5dp"
 
-                android:paddingBottom="10.5dp"
 
                 android:textColor="?attr/colorInk"
 
@@ -285,73 +326,6 @@
                 android:textSize="@dimen/fs_title"
 
                 android:fontFeatureSettings="tnum" />
-
-            <!-- ⚠ 2026-10-06 搜索候选内联容器(取代 PopupWindow 浮层)。
-                 背景:PopupWindow 是另一个窗口,可获焦版本 show 的一刻抢走输入焦点、
-                 软键盘随即收起;复用/延后恢复都只是事后补救,真机上照样掉。
-                 内联容器与输入框在同一窗口里,不产生新的窗口焦点,键盘没有被收的理由。
-                 高度由代码按内容量定(最高 248dp,超了内部滚动,沿用原来浮层的口径)。
-                 默认 GONE,不占位;无障碍树里天然可达(比浮层更好)。
-                 ⚠⚠ 2026-10-11 **用户报「候选列表无法滑动」**：滚动体是 FavPanel 里 new 出来的
-                 sugScroll(ScrollView)，而**本页根布局也是 ScrollView**(本文件第 3 行)，
-                 同方向嵌套 ⟹ 外层越过 touchSlop 就把手势截走，内层收不到 MOVE。
-                 修法**在 Kotlin 侧**(FavPanel.sugScroll)：内层拿到 ACTION_DOWN 时对父链调
-                 requestDisallowInterceptTouchEvent(true)，UP/CANCEL 还回去。
-                 ⟹ 本容器与下面那层 LinearLayout 都**不要**加 android:descendantFocusability
-                 或任何 touch/clickable 属性去「帮忙」，那会与那处标记打架。
-                 ⚠ 高度 248dp 封顶的口径**不变**（超出仍靠 sugScroll 内部滚动，不是截断条数）。 -->
-            <LinearLayout
-
-                android:id="@+id/fav_sug_box"
-
-                android:layout_width="match_parent"
-
-                android:layout_height="wrap_content"
-
-                android:background="@drawable/card_bg"
-
-                android:clipToOutline="true"
-
-                android:elevation="8dp"
-
-                android:orientation="vertical"
-
-                android:visibility="gone">
-
-                <!-- 顶边 1dp 主色发丝（移植对照表 §5.1 / §5.3）：标记「这是查询结果层」，
-                     与自选区的 fav_row_line 同构（那边在底边，这边在顶边）。
-                     ⚠ 不写进 fav_sug_bg 的 layer-list：layer-list 的直角条盖不住 r10 圆角，
-                       会从两个上角露出直角头（对照表 §6-D7）⟹ 用 1dp 子 View + clipToOutline 实现。
-                     ⚠ 子 View 必须排在 sugScroll **之前**：sugScroll 是运行时 addView 进来的
-                       （FavPanel.showResults 末尾），排在后面，不会盖住这条发丝。
-                     ⚠ 本容器与下面那层 LinearLayout 仍**不加**任何 touch/clickable 属性
-                       （见上方 2026-10-11 手势修复的警告段）。 -->
-
-                <!-- 抬起阴影（2026-10-14 用户裁定，移植对照表 §D3 到此结案）：
-                     稿 A 版容器的层次 = 90% alpha + shadow-lift（0 10px 26px rgba(104,108,116,.30)）。
-                     alpha 那层按 §1.1 实测塌缩成实色 token（每通道差 ≤2/255，视觉零差异，不算损失）；
-                     阴影那层 D3 原判「**或不加**（层次已由描边 + 顶边发丝 + 行态换色承担）」+
-                     「建议先不加，实机看一眼再决定」。实机看下来：容器 colorCard #FFFFFF 对画布
-                     colorCanvas #F9FAFD 只有 **1.03:1**，等于同色，只剩一条描边在报边界、没有体积感
-                     ⟹ 按 D3 首选补 `android:elevation`（阴影在 Android 上的唯一正路）。
-                     ⚠ 档位来历：先落 D3 写的 2dp，实机看下来**太淡**（用户原话「太淡了，加浓加浓」）
-                       ⟹ 2026-10-14 同轮提到 **8dp**。要再浓/再淡就改这一个数。
-                     ⚠ 与稿的差距必须知道：elevation 的阴影比稿的 26px lift 更"贴边、更短"；
-                       且**深色主题画布 #0A0D12 上黑阴影几乎不可见**（实测只压暗 1/255），只有浅色主题明显。
-                     ⚠ 轮廓取 fav_sug_bg 的 r10（ViewOutlineProvider.BACKGROUND 是默认值），
-                       不需要额外 setOutlineProvider；阴影靠父容器的边距空间绘制（本容器左右各 space_4）。 -->
-
-                <View
-
-                    android:id="@+id/fav_sug_accent"
-
-                    android:layout_width="match_parent"
-
-                    android:layout_height="1dp"
-
-                    android:background="?attr/colorPrimary" />
-
-            </LinearLayout>
 
             <!-- t111 (1) 源状态行:复用行情页同一套机制(2026-10-12 起为 MktData.legsOf(行情页当前品种);
              ⚠ 旧注释写的 MktData.lastLegs 已在同日删除 —— 它全局不分品种,曾导致「TSLA 显示 Naver」),不另发请求。
@@ -379,22 +353,23 @@
 
 
                 android:visibility="gone"
-                android:paddingTop="12.4dp"
-                android:paddingBottom="12.4dp">
+                android:paddingTop="12dp"
+                android:paddingBottom="12dp">
 
                 <!-- #5 稿 L322-324: 8px 圆点。改前是 12sp 的字形 ●, 真机实测墨迹只有 16px
      (稿 8px 折合本机 8dp×2.75 = 22px), 而且环的描边粗细**根本拿不到** ——
      系统字体里 ● 与 ○ 是两套独立字形, 不是同一图形的实心/空心两态。
-     ⚠ 下面仍是 TextView、id 仍是 fav_srcdot, **没有换控件**; text 恒为空串。 -->
+     ⚠ 下面仍是 TextView、id 仍是 fav_srcdot, **没有换控件**; text 恒为空串。
+     r9（2026-10-20）：圆点尺寸由档外值归进间距档 8dp（对上上面「稿 8px 圆点」）。 -->
                 <TextView
 
                     android:id="@+id/fav_srcdot"
 
-                    android:layout_width="7.6dp"
+                    android:layout_width="8dp"
 
-                    android:layout_height="7.6dp"
+                    android:layout_height="8dp"
 
-                    android:layout_marginTop="4.8dp"
+                    android:layout_marginTop="4dp"
 
                     android:layout_marginEnd="@dimen/space_2"
 
@@ -480,22 +455,83 @@
 
 
 
-            <!-- t8 照稿 A1④ 列头：改成与行内**同一套**「四列定死 + 三条 space-between 间隙」。
-                 稿 v2.html:952 `const GRIDR='88px 88px 76px 56px'`
-                 + v2.html:1019 `display:grid; gridTemplateColumns:GRIDR; justifyContent:'space-between'`
-                 稿 v2.html:953-956 原话:「四列按内容实测宽度定死，余量交给 justify-content:space-between
-                 均分到三条列间隙」「合计 308，框内 380，余 72px → 间隙各 24px」。
-                 墓碑 · t391 那套「列头 gap 统一 col_gap(10dp)」本轮整体下线：它追的是旧一行的 gap:10；
-                 现行稿的间隙是**算出来的**，不是定值。列宽也从 col_symbol(92dp) 改成定死 88。
-                 ⚠ 三只 0dp/weight=1 的 View 就是 space-between 的等价实现（余量平分给它们）。
-                 ⚠ 列宽 88/88/76/56 与行内 FavPanel.kt 的 COL_NAME/COL_DIST/COL_GAIN/COL_RATIO
-                   是**同一个数**，改一处必须改另一处 —— 「表头 ⟷ 行内右缘逐像素相等」这条不变量靠它。
-                   dimens.xml 本轮不在改动范围内，故这里写字面 dp。 -->
+
             </LinearLayout>
 
-            <!-- 列表卡 = 分片（方向 B §2.4-3.2 / theme.css §6.1b）：本列头是**首片**（上圆角 12），
-                 行是后续片（中片 r0 / 末片下圆角 12，片间底发丝、末片不画）——
-                 片位在 FavPanel.submitRows() 里按 index 分配（只有全量换数据时才知道末片是谁）。 -->
+            <!-- ⚠⚠ 2026-10-28 t2 · **候选浮层搬出搜索卡**（改前是卡的子节点 = 稿点名的「卡中卡」）。
+                 稿件：四屏-自选页.html:60-73 `.fav-sug`；裁定原话（:61-64）「候选菜单保留『悬浮感』，
+                 但必须是**独立一层**，不许再套在搜索卡的圆角盒子里 …… DOM 上移到搜索卡之外，
+                 单独成卡（surface + r-card + elev-2 + 发丝），左右各内缩一档，视觉上从搜索框下方
+                 垂下来、覆盖在列表之上」。
+                 本层属性（逐值对稿）：
+                   · 卡面 = @style/Widget.GridCalc.Card（colorCard + 1dp colorBorder + r12）
+                   · 外缩 = space_2：页面列 space_2 + 本层 space_2 = 离屏边 16dp
+                     （搜索卡是 8dp：页面列 space_2 + 卡 0 ⟹ 候选层比搜索卡窄一档，稿 :67
+                      `margin: sp-2 sp-2 0`）
+                   · 顶距 = space_2（稿同处的 margin-top）；搜索卡的下沿空间由它的 paddingBottom(sp-2) 给
+                   · 抬升 = **8dp 显式覆盖**（用户 2026-10-14 裁定「太淡了加浓加浓」；它是显式属性，
+                     盖住 style 的 elev_1，**不许动**。稿的 elev-2 见 theme.css:123 与 :66-73）
+                   · clipToOutline：把运行时加进来的结果列表裁到 r12 圆角里
+                 墓碑 · 顶边「1dp 主色发丝」(fav_sug_accent) 随卡中卡一起下线：它当年的判据是
+                 「在搜索卡内部标出这是查询结果层」；独立成层后边界由卡面自己的 1dp colorBorder
+                 发丝承担，稿的 `.fav-sug` 也只有这一圈 border、没有主色条（四屏-自选页.html:66-73）。
+                 ⚠ 本层**不挂**任何 touch/clickable/descendantFocusability 属性：手势拦截归
+                   FavPanel.sugScroll（2026-10-11 用户报「候选列表无法滑动」的修法，见那里的注释）。
+                 ⚠ 高度动画仍归 sugScroll（FavPanel.animateSugHeight），本层只当外壳。 -->
+            <LinearLayout
+
+                android:id="@+id/fav_sug_box"
+
+                android:layout_width="match_parent"
+
+                android:layout_height="wrap_content"
+
+                android:layout_marginStart="@dimen/space_2"
+
+                android:layout_marginTop="@dimen/space_2"
+
+                android:layout_marginEnd="@dimen/space_2"
+
+                style="@style/Widget.GridCalc.Card"
+
+                android:clipToOutline="true"
+
+                android:elevation="8dp"
+
+                android:orientation="vertical"
+
+                android:visibility="gone" />
+
+            <!-- 设计稿 .fav-rule：搜索/候选层与列表之间只留间距（稿 :104 `.fav-rule { margin: sp-2 0 0 }`）。
+                 ⚠ 2026-10-28 t2：高度 space_5(20dp) → space_2(8dp)；方向 B 不用发丝做组间分隔，
+                   原来那条 20dp 是 v1「搜索块 ↔ 卡片列表」的分组距，列表改平铺后按稿收到 8dp。 -->
+             <Space
+
+                 android:id="@+id/fav_rule"
+
+                 android:layout_width="match_parent"
+
+                 android:layout_height="@dimen/space_2" />
+
+
+            <!-- ⚠⚠ 2026-10-28 t2 · 表头 = **平铺行**（去卡片化）+ **四等分列网格**。
+                 稿件：四屏-自选页.html:106-121 `.fav-head` / `.fav-grid`
+                   `.fav-head { padding: sp-3 sp-1 sp-2; background: transparent; border-radius: 0;
+                                border-bottom: hairline solid border; box-shadow: none }`
+                   `.fav-grid { display: grid; grid-template-columns: repeat(4, minmax(0,1fr));
+                                column-gap: 0 }`
+                 ⟹ 本行：外缩=0（页面列 space_2 已给）、左右内边距=space_1、上下内边距照旧 space_3 / space_2；
+                   底色不再由 Kotlin 的 headBg() 拼（那段已删），改用 @drawable/fav_row_line
+                   （透明底 + 底边 1dp colorBorder —— 正是稿的 border-bottom）；
+                   阴影 elevation 回 0（XML 默认值，稿 box-shadow: none）。
+                 ⚠ 列网格：**四个子项都是 0dp + weight=1**，与行内 FavPanel.gridColLp() 是同一份几何
+                   （稿的 repeat(4,minmax(0,1fr))）⟹「表头 ⟷ 行内右缘逐像素相等」这条不变量由同一套
+                   等分保证，不再靠「定死 88/88/76/56 + 三条 space-between 间隙」（v2 稿 GRIDR，
+                   随 Oct-28 稿的等分网格整体退役）。
+                 ⚠ 列表也不再是卡片/分片：稿把列头与每行都做成透明底 + 无圆角 + 无阴影 +
+                   行间 1dp 发丝（:143-149 + theme.css:466-467）。改前那套「列头带=首片(上圆角)、
+                   行=中片/末片(下圆角)、elev_row 抬升、末片 outline」随卡片一起退役
+                   （Kotlin 侧 sliceBg / headBg / applyLastRowOutline 三处已删，见 submitRows 的注释）。 -->
             <LinearLayout
 
         android:id="@+id/fav_head"
@@ -504,39 +540,35 @@
 
                 android:layout_height="wrap_content"
 
-                android:layout_marginStart="@dimen/space_4"
-
-                android:layout_marginEnd="@dimen/space_4"
+                android:background="@drawable/fav_row_line"
 
                 android:gravity="start|center_vertical"
                 android:orientation="horizontal"
 
-                android:paddingLeft="@dimen/space_4"
+                android:paddingLeft="@dimen/space_1"
                 android:paddingTop="@dimen/space_3"
 
-                android:paddingRight="@dimen/space_4"
+                android:paddingRight="@dimen/space_1"
                 android:paddingBottom="@dimen/space_2">
 
                 <!-- 稿 v2.html:1021 「名称」列名：T.note(12px) / var(ink3)（变量名的两个前导减号在 XML 注释里不可写）。
                      横向内边距 16dp 与行容器(稿 v2.html:1189 padding '13px 16px 14px')相同，
                      首列才逐像素对齐。⚠ 刻意不加 @+id/：静态文案，无 findViewById 绑定。 -->
                 <TextView
-                    android:layout_width="83.9dp"
+                    android:layout_width="0dp"
                     android:layout_height="wrap_content"
+                    android:layout_weight="1"
                     android:text="品种"
                     android:textColor="?attr/colorFaint"
                     android:textStyle="bold"
                     android:textSize="@dimen/fs_note" />
-                <!-- 间隙 1（space-between） -->
-                <View
-                    android:layout_width="0dp"
-                    android:layout_height="1px"
-                    android:layout_weight="1" />
                 <Button
 
                     android:id="@+id/fav_sort_dist"
 
-                    android:layout_width="83.9dp"
+                    android:layout_width="0dp"
+
+                    android:layout_weight="1"
 
                     android:layout_height="wrap_content"
 
@@ -550,11 +582,8 @@
 
                     android:minWidth="0dp"
 
-                    android:paddingTop="1.9dp"
 
-                    android:paddingBottom="1.9dp"
 
-                    android:paddingLeft="1.9dp"
 
                     android:paddingRight="0dp"
 
@@ -564,16 +593,13 @@
 
                     android:textSize="@dimen/fs_note" />
 
-                <!-- 间隙 2（space-between） -->
-                <View
-                    android:layout_width="0dp"
-                    android:layout_height="1px"
-                    android:layout_weight="1" />
                 <Button
 
                     android:id="@+id/fav_sort_gain"
 
-                    android:layout_width="72.5dp"
+                    android:layout_width="0dp"
+
+                    android:layout_weight="1"
 
                     android:layout_height="wrap_content"
 
@@ -587,9 +613,7 @@
 
                     android:minWidth="0dp"
 
-                    android:paddingTop="1.9dp"
 
-                    android:paddingBottom="1.9dp"
 
                     android:paddingLeft="0dp"
 
@@ -601,16 +625,13 @@
 
                     android:textSize="@dimen/fs_note" />
 
-                <!-- 间隙 3（space-between） -->
-                <View
-                    android:layout_width="0dp"
-                    android:layout_height="1px"
-                    android:layout_weight="1" />
                 <Button
 
                     android:id="@+id/fav_sort_ratio"
 
-                    android:layout_width="53.4dp"
+                    android:layout_width="0dp"
+
+                    android:layout_weight="1"
 
                     android:layout_height="wrap_content"
 
@@ -624,9 +645,7 @@
 
                     android:minWidth="0dp"
 
-                    android:paddingTop="1.9dp"
 
-                    android:paddingBottom="1.9dp"
 
                     android:paddingLeft="0dp"
 
@@ -671,6 +690,9 @@
              里的 RecyclerView 只量出一屏的高度，剩下的行根本不创建、滑也滑不出来。
              RecyclerView 不能这么用（标准反模式）。点击保证从来靠的是监听挂法
              （行根监听 + 子控件不接管），不在容器，换回 LinearLayout 全部保留。 -->
+
+        <!-- r9（2026-10-20）：fav_list 删掉原来的档外顶部外边距 —— 稿 四屏-自选页.html:95-99 + :118-123
+             头带与行片之间无 gap（本是一张连体卡），原外边距把一张卡拆成两张。 -->
         <LinearLayout
 
             android:id="@+id/fav_list"
@@ -679,9 +701,11 @@
 
                 android:layout_height="wrap_content"
 
-                android:layout_marginTop="7.6dp"
+                 android:orientation="vertical"
 
-                android:orientation="vertical" />
+                  android:clipChildren="false"
+
+                  android:clipToPadding="false" />
 
         </LinearLayout>
 
@@ -707,13 +731,13 @@
 
             android:orientation="vertical"
 
-            android:paddingStart="30.5dp"
+            android:paddingStart="32dp"
 
-            android:paddingEnd="30.5dp"
+            android:paddingEnd="32dp"
 
-            android:paddingTop="76.3dp"
+            android:paddingTop="32dp"
 
-            android:paddingBottom="76.3dp"
+            android:paddingBottom="32dp"
 
             android:gravity="center"
 
@@ -743,7 +767,7 @@
 
                 android:layout_height="wrap_content"
 
-                android:layout_marginTop="11.4dp"
+                android:layout_marginTop="12dp"
 
                 android:gravity="center"
 
@@ -775,9 +799,9 @@
 
             android:paddingEnd="@dimen/space_4"
 
-            android:paddingTop="17.2dp"
+            android:paddingTop="16dp"
 
-            android:paddingBottom="17.2dp"
+            android:paddingBottom="16dp"
 
             android:visibility="gone">
 
@@ -805,7 +829,7 @@
 
                 android:layout_height="wrap_content"
 
-                android:layout_marginTop="9.5dp"
+                android:layout_marginTop="8dp"
 
                 android:lineSpacingMultiplier="1.6"
 
@@ -817,8 +841,14 @@
 
 
 
-        <!-- ② load:8 个骨架行(块宽 150-i*8 递减;下方两块 20dp) -->
-
+        <!-- ② load:8 个骨架行(块宽 150-i*8 递减;下方两块 20dp)
+             ⚠ 2026-10-28 t2：骨架行跟真行一起改刻度 —— 每片的左右内边距 space_4 → space_1，
+                而本容器又**不在**页面列里（它是 L127 的子节点，与页面列 L154 平级）⟹ 本容器
+                自己补 space_2，骨架的文字/色块才与真行的 12dp 基线对齐（8+4）。
+                数值骨架高 20dp → 16dp：距支撑列的字号收到 fs_title(16sp) 后，色块高度跟着收。
+                ⚠ 已知残差：骨架的底线是行容器**内**的子 View（内缩 4dp），真行的线是行根背景
+                  （满幅）⟹ 加载态那几行的线端比真行短 4dp。加载态是瞬态、不进基线截图，不再为它
+                  重搭结构。 -->
         <LinearLayout
 
             android:id="@+id/fav_skel"
@@ -828,6 +858,10 @@
             android:layout_height="wrap_content"
 
             android:orientation="vertical"
+
+            android:paddingStart="@dimen/space_2"
+
+            android:paddingEnd="@dimen/space_2"
 
             android:visibility="gone">
 
@@ -839,23 +873,23 @@
 
                 android:orientation="vertical"
 
-                android:paddingStart="@dimen/space_4"
+                android:paddingStart="@dimen/space_1"
 
-                android:paddingEnd="@dimen/space_4"
+                android:paddingEnd="@dimen/space_1"
 
-                android:paddingTop="14.3dp"
+                android:paddingTop="12dp"
 
-                android:paddingBottom="14.3dp">
+                android:paddingBottom="12dp">
 
                 <View
 
                     android:layout_width="143.1dp"
 
-                    android:layout_height="15.3dp"
+                    android:layout_height="16dp"
 
                     android:background="@drawable/skl" />
 
-                <View android:layout_width="1dp" android:layout_height="15.3dp" />
+                <View android:layout_width="1dp" android:layout_height="16dp" />
 
                 <LinearLayout
 
@@ -865,13 +899,13 @@
 
                     android:orientation="horizontal">
 
-                    <View android:layout_width="0dp" android:layout_height="19.1dp"
+                    <View android:layout_width="0dp" android:layout_height="16dp"
 
                         android:layout_weight="1" android:background="@drawable/skl" />
 
-                    <View android:layout_width="0dp" android:layout_height="15.3dp"
+                    <View android:layout_width="0dp" android:layout_height="16dp"
 
-                        android:layout_weight="1" android:layout_marginStart="9.5dp"
+                        android:layout_weight="1" android:layout_marginStart="8dp"
 
                         android:background="@drawable/skl" />
 
@@ -891,23 +925,23 @@
 
                 android:orientation="vertical"
 
-                android:paddingStart="@dimen/space_4"
+                android:paddingStart="@dimen/space_1"
 
-                android:paddingEnd="@dimen/space_4"
+                android:paddingEnd="@dimen/space_1"
 
-                android:paddingTop="14.3dp"
+                android:paddingTop="12dp"
 
-                android:paddingBottom="14.3dp">
+                android:paddingBottom="12dp">
 
                 <View
 
                     android:layout_width="135.5dp"
 
-                    android:layout_height="15.3dp"
+                    android:layout_height="16dp"
 
                     android:background="@drawable/skl" />
 
-                <View android:layout_width="1dp" android:layout_height="15.3dp" />
+                <View android:layout_width="1dp" android:layout_height="16dp" />
 
                 <LinearLayout
 
@@ -917,13 +951,13 @@
 
                     android:orientation="horizontal">
 
-                    <View android:layout_width="0dp" android:layout_height="19.1dp"
+                    <View android:layout_width="0dp" android:layout_height="16dp"
 
                         android:layout_weight="1" android:background="@drawable/skl" />
 
-                    <View android:layout_width="0dp" android:layout_height="15.3dp"
+                    <View android:layout_width="0dp" android:layout_height="16dp"
 
-                        android:layout_weight="1" android:layout_marginStart="9.5dp"
+                        android:layout_weight="1" android:layout_marginStart="8dp"
 
                         android:background="@drawable/skl" />
 
@@ -943,23 +977,23 @@
 
                 android:orientation="vertical"
 
-                android:paddingStart="@dimen/space_4"
+                android:paddingStart="@dimen/space_1"
 
-                android:paddingEnd="@dimen/space_4"
+                android:paddingEnd="@dimen/space_1"
 
-                android:paddingTop="14.3dp"
+                android:paddingTop="12dp"
 
-                android:paddingBottom="14.3dp">
+                android:paddingBottom="12dp">
 
                 <View
 
                     android:layout_width="127.8dp"
 
-                    android:layout_height="15.3dp"
+                    android:layout_height="16dp"
 
                     android:background="@drawable/skl" />
 
-                <View android:layout_width="1dp" android:layout_height="15.3dp" />
+                <View android:layout_width="1dp" android:layout_height="16dp" />
 
                 <LinearLayout
 
@@ -969,13 +1003,13 @@
 
                     android:orientation="horizontal">
 
-                    <View android:layout_width="0dp" android:layout_height="19.1dp"
+                    <View android:layout_width="0dp" android:layout_height="16dp"
 
                         android:layout_weight="1" android:background="@drawable/skl" />
 
-                    <View android:layout_width="0dp" android:layout_height="15.3dp"
+                    <View android:layout_width="0dp" android:layout_height="16dp"
 
-                        android:layout_weight="1" android:layout_marginStart="9.5dp"
+                        android:layout_weight="1" android:layout_marginStart="8dp"
 
                         android:background="@drawable/skl" />
 
@@ -995,23 +1029,23 @@
 
                 android:orientation="vertical"
 
-                android:paddingStart="@dimen/space_4"
+                android:paddingStart="@dimen/space_1"
 
-                android:paddingEnd="@dimen/space_4"
+                android:paddingEnd="@dimen/space_1"
 
-                android:paddingTop="14.3dp"
+                android:paddingTop="12dp"
 
-                android:paddingBottom="14.3dp">
+                android:paddingBottom="12dp">
 
                 <View
 
                     android:layout_width="120.2dp"
 
-                    android:layout_height="15.3dp"
+                    android:layout_height="16dp"
 
                     android:background="@drawable/skl" />
 
-                <View android:layout_width="1dp" android:layout_height="15.3dp" />
+                <View android:layout_width="1dp" android:layout_height="16dp" />
 
                 <LinearLayout
 
@@ -1021,13 +1055,13 @@
 
                     android:orientation="horizontal">
 
-                    <View android:layout_width="0dp" android:layout_height="19.1dp"
+                    <View android:layout_width="0dp" android:layout_height="16dp"
 
                         android:layout_weight="1" android:background="@drawable/skl" />
 
-                    <View android:layout_width="0dp" android:layout_height="15.3dp"
+                    <View android:layout_width="0dp" android:layout_height="16dp"
 
-                        android:layout_weight="1" android:layout_marginStart="9.5dp"
+                        android:layout_weight="1" android:layout_marginStart="8dp"
 
                         android:background="@drawable/skl" />
 
@@ -1047,23 +1081,23 @@
 
                 android:orientation="vertical"
 
-                android:paddingStart="@dimen/space_4"
+                android:paddingStart="@dimen/space_1"
 
-                android:paddingEnd="@dimen/space_4"
+                android:paddingEnd="@dimen/space_1"
 
-                android:paddingTop="14.3dp"
+                android:paddingTop="12dp"
 
-                android:paddingBottom="14.3dp">
+                android:paddingBottom="12dp">
 
                 <View
 
                     android:layout_width="112.6dp"
 
-                    android:layout_height="15.3dp"
+                    android:layout_height="16dp"
 
                     android:background="@drawable/skl" />
 
-                <View android:layout_width="1dp" android:layout_height="15.3dp" />
+                <View android:layout_width="1dp" android:layout_height="16dp" />
 
                 <LinearLayout
 
@@ -1073,13 +1107,13 @@
 
                     android:orientation="horizontal">
 
-                    <View android:layout_width="0dp" android:layout_height="19.1dp"
+                    <View android:layout_width="0dp" android:layout_height="16dp"
 
                         android:layout_weight="1" android:background="@drawable/skl" />
 
-                    <View android:layout_width="0dp" android:layout_height="15.3dp"
+                    <View android:layout_width="0dp" android:layout_height="16dp"
 
-                        android:layout_weight="1" android:layout_marginStart="9.5dp"
+                        android:layout_weight="1" android:layout_marginStart="8dp"
 
                         android:background="@drawable/skl" />
 
@@ -1099,23 +1133,23 @@
 
                 android:orientation="vertical"
 
-                android:paddingStart="@dimen/space_4"
+                android:paddingStart="@dimen/space_1"
 
-                android:paddingEnd="@dimen/space_4"
+                android:paddingEnd="@dimen/space_1"
 
-                android:paddingTop="14.3dp"
+                android:paddingTop="12dp"
 
-                android:paddingBottom="14.3dp">
+                android:paddingBottom="12dp">
 
                 <View
 
                     android:layout_width="104.9dp"
 
-                    android:layout_height="15.3dp"
+                    android:layout_height="16dp"
 
                     android:background="@drawable/skl" />
 
-                <View android:layout_width="1dp" android:layout_height="15.3dp" />
+                <View android:layout_width="1dp" android:layout_height="16dp" />
 
                 <LinearLayout
 
@@ -1125,13 +1159,13 @@
 
                     android:orientation="horizontal">
 
-                    <View android:layout_width="0dp" android:layout_height="19.1dp"
+                    <View android:layout_width="0dp" android:layout_height="16dp"
 
                         android:layout_weight="1" android:background="@drawable/skl" />
 
-                    <View android:layout_width="0dp" android:layout_height="15.3dp"
+                    <View android:layout_width="0dp" android:layout_height="16dp"
 
-                        android:layout_weight="1" android:layout_marginStart="9.5dp"
+                        android:layout_weight="1" android:layout_marginStart="8dp"
 
                         android:background="@drawable/skl" />
 
@@ -1151,23 +1185,23 @@
 
                 android:orientation="vertical"
 
-                android:paddingStart="@dimen/space_4"
+                android:paddingStart="@dimen/space_1"
 
-                android:paddingEnd="@dimen/space_4"
+                android:paddingEnd="@dimen/space_1"
 
-                android:paddingTop="14.3dp"
+                android:paddingTop="12dp"
 
-                android:paddingBottom="14.3dp">
+                android:paddingBottom="12dp">
 
                 <View
 
                     android:layout_width="97.3dp"
 
-                    android:layout_height="15.3dp"
+                    android:layout_height="16dp"
 
                     android:background="@drawable/skl" />
 
-                <View android:layout_width="1dp" android:layout_height="15.3dp" />
+                <View android:layout_width="1dp" android:layout_height="16dp" />
 
                 <LinearLayout
 
@@ -1177,13 +1211,13 @@
 
                     android:orientation="horizontal">
 
-                    <View android:layout_width="0dp" android:layout_height="19.1dp"
+                    <View android:layout_width="0dp" android:layout_height="16dp"
 
                         android:layout_weight="1" android:background="@drawable/skl" />
 
-                    <View android:layout_width="0dp" android:layout_height="15.3dp"
+                    <View android:layout_width="0dp" android:layout_height="16dp"
 
-                        android:layout_weight="1" android:layout_marginStart="9.5dp"
+                        android:layout_weight="1" android:layout_marginStart="8dp"
 
                         android:background="@drawable/skl" />
 
@@ -1203,23 +1237,23 @@
 
                 android:orientation="vertical"
 
-                android:paddingStart="@dimen/space_4"
+                android:paddingStart="@dimen/space_1"
 
-                android:paddingEnd="@dimen/space_4"
+                android:paddingEnd="@dimen/space_1"
 
-                android:paddingTop="14.3dp"
+                android:paddingTop="12dp"
 
-                android:paddingBottom="14.3dp">
+                android:paddingBottom="12dp">
 
                 <View
 
                     android:layout_width="89.7dp"
 
-                    android:layout_height="15.3dp"
+                    android:layout_height="16dp"
 
                     android:background="@drawable/skl" />
 
-                <View android:layout_width="1dp" android:layout_height="15.3dp" />
+                <View android:layout_width="1dp" android:layout_height="16dp" />
 
                 <LinearLayout
 
@@ -1229,13 +1263,13 @@
 
                     android:orientation="horizontal">
 
-                    <View android:layout_width="0dp" android:layout_height="19.1dp"
+                    <View android:layout_width="0dp" android:layout_height="16dp"
 
                         android:layout_weight="1" android:background="@drawable/skl" />
 
-                    <View android:layout_width="0dp" android:layout_height="15.3dp"
+                    <View android:layout_width="0dp" android:layout_height="16dp"
 
-                        android:layout_weight="1" android:layout_marginStart="9.5dp"
+                        android:layout_weight="1" android:layout_marginStart="8dp"
 
                         android:background="@drawable/skl" />
 
@@ -1267,9 +1301,9 @@
 
             android:paddingEnd="@dimen/space_4"
 
-            android:paddingTop="12.4dp"
+            android:paddingTop="12dp"
 
-            android:paddingBottom="12.4dp"
+            android:paddingBottom="12dp"
 
             android:visibility="gone">
 
@@ -1296,7 +1330,7 @@
 
                 android:layout_weight="1"
 
-                android:layout_marginStart="7.6dp"
+                android:layout_marginStart="8dp"
 
                 android:lineSpacingMultiplier="1.5"
 
@@ -1306,7 +1340,18 @@
 
         </LinearLayout>
 
-        <!-- t8 照稿 A1③：屏底「距支撑 实时 N / 无源 N」计数行。
+        <!-- 列表区按设计稿 .fav-rows flex:1 撑开剩余高度，统计卡固定在屏底。 -->
+         <Space
+
+             android:id="@+id/fav_footer_spacer"
+
+             android:layout_width="match_parent"
+
+             android:layout_height="0dp"
+
+             android:layout_weight="1" />
+
+         <!-- t8 照稿 A1③：屏底「距支撑 实时 N / 无源 N」计数行。
              稿 v2.html:1641-1644 逐字:
                <div className="num" style={{fontSize:T.note,color:'var(ink3)',padding:'0 16px 8px',flexShrink:0}}>
                  距支撑 实时 {liveN} / 无源 {noneN}{waitN?' · 待算 '+waitN:''}
@@ -1318,7 +1363,22 @@
              ⚠ 稿为什么只要这两个数：v2.html:1589-1592 的原话 ——「依据是用户那句『为什么都是显示没更新』
                ——他要的是答案，而答案就是这两个数。刻意不加：汇率数值与来源、快照取自时刻、
                『点任意一行即…』等任何解释与操作指引。数字不是解释，解释才是。」
-             ⚠ 第三个数「待算」在稿里是条件显示（waitN 为 0 就不出现），见 Kotlin 侧同款注释。 -->
+             ⚠ 第三个数「待算」在稿里是条件显示（waitN 为 0 就不出现），见 Kotlin 侧同款注释。 · 2026-10-21 t67 按稿返工：本行 layout_marginTop 由 space_2(8dp) 改为 space_4(16dp)，出处 = 稿 .fav-foot 的 margin-top = 变量 sp-4（四屏-自选页.html:163-166；同文件 :34 的 .fav-search 也是 sp-4，引用须带锚区分）。
+
+             ⚠ 2026-10-28 t2 · **摘掉 `style="@style/Widget.GridCalc.Card"`，改为平铺**：
+               稿 `.fav-foot { margin-top: sp-2; padding: sp-2 sp-1 }` 与 `.fav-foot__txt`
+               （四屏-自选页.html:200-209）—— 透明底、无边框、无圆角、无抬升；
+               改前挂着 Card style（卡面 + elev_1 + r12），与稿不符。
+               本行在页面列**之外**（它是外层 L127 的子节点，不享页面列的 space_2），
+               故左右自留 space_2 + space_1 = 12dp，与列表文字的 12dp 基线对齐。
+
+             ⚠ 2026-10-28 t11 · **字色由 colorFaint 改为 colorSub**（= 稿的 ink-sub）：
+               稿是两层（四屏-自选页.html:205-210）——
+                 `.fav-foot__txt` 的 color = ink-sub  ⟹ 本行 textColor = ?attr/colorSub
+                 `.fav-foot__n` 的 color = ink、font-weight = 600 ⟹ 三个数字由
+                   FavPanel.paintCountLine() 用 span 套 colorInk + Inter SemiBold（不写在这里）。
+                 （稿里是 CSS 变量写法，变量名的两个前导减号在 XML 注释里不可写，故只写变量名。）
+               改前整串 colorFaint（比稿的 ink-sub 更淡，数字也没有提亮）⟹ 与稿不符。 -->
         <TextView
 
             android:id="@+id/fav_count"
@@ -1327,27 +1387,23 @@
 
             android:layout_height="wrap_content"
 
-            android:layout_marginStart="@dimen/space_4"
+            android:layout_marginStart="@dimen/space_2"
 
-            android:layout_marginEnd="@dimen/space_4"
+            android:layout_marginEnd="@dimen/space_2"
 
             android:layout_marginTop="@dimen/space_2"
 
-            android:background="@drawable/card_bg"
+            android:paddingLeft="@dimen/space_1"
 
-            android:elevation="@dimen/elev_1"
+            android:paddingRight="@dimen/space_1"
 
-            android:paddingLeft="@dimen/space_4"
+            android:paddingTop="@dimen/space_2"
 
-            android:paddingRight="@dimen/space_4"
-
-            android:paddingTop="@dimen/space_3"
-
-            android:paddingBottom="@dimen/space_3"
+            android:paddingBottom="@dimen/space_2"
 
             android:fontFeatureSettings="tnum"
 
-            android:textColor="?attr/colorFaint"
+            android:textColor="?attr/colorSub"
 
             android:textSize="@dimen/fs_note" />
 

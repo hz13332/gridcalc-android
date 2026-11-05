@@ -207,6 +207,12 @@ class MainActivity : Activity() {
         //   这一段曾经横跨三个文件，现在只剩上面那段墓碑。
     private lateinit var dblBtn: android.widget.Switch
     private var dbl = false
+    // t36（2026-10-29）：轨道颜色过渡的**当前帧记账**（0 = 还没有播过动画，起点用另一端终色）。
+    private var dblTrackAnim: android.animation.ValueAnimator? = null
+    private var dblTrackBg = 0
+    private var dblTrackStroke = 0
+    /** false = 首屏初始化阶段（此期间的状态回填不播颜色过渡，见 onCreate 的 dblBtn.post）。 */
+    private var dblTrackReady = false
     private lateinit var calcHeroBox: View   // t141:净收益整块(idle 时 GONE)
 private lateinit var calcIdleHint: TextView
     private lateinit var statTilesTopline: View     // t28 B4: 四格那一行的上边线(稿 L676)
@@ -223,17 +229,21 @@ private lateinit var calcIdleHint: TextView
     private lateinit var themeLight: View
     private lateinit var themeDark: View
 
-    // ④ 稿 L779 的 Switch。真接一个行为, 不是摆设(见 t202 脚本头的三件事)。
-    private lateinit var autoSw: android.widget.Switch
+    // ⚠ 2026-10-28 t4 · `autoSw`（设置页「启动时刷新一次」的 Switch）字段已删除：
+    //   节点 `set_auto_sw` 已从 page_settings.xml 整行移除（用户裁定），
+    //   再留着 findViewById 会拿到 null ⟹ 布局与接线必须成对下线（本仓 t298/t316 的教训）。
 
     private var tab = "fav"
     private var mode = "follow"
 
     // ---------- 行情→计算软联动(稿L393-414:LINK/PH) ----------
     private var lkPrev: Pair<Double, Double?>? = null // 上次联动写入的一对(sup1, sup2?)；sup2 可空（单支撑品种无上限档）
-    private var lkCap: Double? = null // 目标爆仓价上限(sup2;×解除后同对不再回写)
+    private var lkCap: Double? = null // 可选目标上限(sup2;×解除后同对不再回写)
+    private var currentMarketSupport2ForLine: Double? = null // 当前行情页真实显示的支撑，供爆仓线副行使用
+    private var currentCalcLiqForLine: Double? = null // 当前计算结果的主爆仓价；idle/清空时置空
     private var lkPh: Double? = null // 上次由机构目标均价写入的最高价(同值不扰手改)
     private lateinit var statLiqCard: View // 爆仓卡(超上限画红框)
+    private lateinit var statLiqGap: TextView  // 爆仓线副行：当前行情第二支撑，不跟随可选 lkCap 隐藏
     /**
      * t9：「爆仓价」格的**原始面**（XML 的 `@drawable/calc_tile_bg`）。
      * 为什么需要它：v1 的 `statLiqCard.background = null` 本意是「清掉 done 态标的红框」，
@@ -254,6 +264,9 @@ private lateinit var calcIdleHint: TextView
     // 默认disabled;计算成功→enabled(暂存待存闭包);点击→落库一条+文案
     // 「已保存，继续计算后可再存」1.6s后复原「保存数据」;再次计算→重新enabled;
     private lateinit var saveBtn: Button
+    // ⚠ 2026-11-04：保存按钮「常态底 / 常态字色」升成字段，供 [saveBtnSaved] 在 idle 里复用。
+    private var saveBtnBg0: android.graphics.drawable.Drawable? = null
+    private var saveBtnInk0: Int = 0
 
     // ⚠ 2026-10-05 新增：「清空数据」按钮的句柄。
     //   改前 [clearCurrentSymRecs] 把「已删除 N 条 / 没有已保存记录」写在了 **saveBtn** 上
@@ -284,6 +297,13 @@ private lateinit var calcIdleHint: TextView
     //   屏上只是点不到它，默认恒为 false(做多)。彻底移除做空分支是另一件事，**没做**。
     private lateinit var moreToggle: TextView
     private lateinit var moreBox: View
+    // ⚠ 2026-10-19 r8 · C-4：折叠口改竖排后，第一段（展开更多）多了一个容器与两个 chevron。
+    //   `more_row` 承载卡面（btn_ghost）/ 内边距 / chevron，并挂同一段点击监听（稿 `.calc-collapse__btn
+    //   { width:100% }` ⟹ 整段可点）；两个 chevron 是 8dp×8dp 的 View（底 = `calc_chev`），
+    //   旋转角由本文件的折叠口监听设置（折叠 45° / 展开 -135°，稿 `四屏-计算页.html:181/:184`）。
+    private lateinit var moreRow: View
+    private lateinit var moreChev: View
+    private lateinit var detChev: View
     // #119 稿 L693-697: 第二个折叠口是一个**行容器**, 标题与右侧行数都在它里面;
     // 所以 det_toggle 从 TextView 变成 LinearLayout(行内标题不给 id), ladder_note 搬了进去。
     // 点击区与可见性语义不变, 只多了「行数也归这个点击区管」这一条。
@@ -327,22 +347,54 @@ private var lastLines: Int = -1
  */
 fun clearCalcInputs() {
         try {
+            // 清空当前品种时同时撤销回填、联动和自动网格的生命周期状态；否则
+            // 下一次行情回调可能把旧品种的值/结果重新写回当前页。
+            lkPrev = null
+            lkCap = null
+            currentMarketSupport2ForLine = null
+            currentCalcLiqForLine = null
+            lkPh = null
+            restoreGuardSym = null
+            restoreSeq++
+            // 换品种：解除旧品种的联动屏障（清空按钮自己会在清空后重新立屏障）。
+            linkBlockedSeq = -1
+            linkBlockedSym = ""
+            stepThrSeq++
+            justRestored = false
+            nManual = false
+            nManualSym = ""
+            stepThr = null
+            stepThrSym = ""
+            pendingRec = null
+            gridMode = "geo"
+            sideShortMode = false
+            dbl = false
+            lastLines = -1
             programWrite {
                 for ((_, e) in inp) e.setText("")
                 if (::levText.isInitialized) levText.setText("")
+                if (::dblBtn.isInitialized) dblBtn.isChecked = false
             }
+            if (::statCap.isInitialized) paintCap()
+            if (::hero.isInitialized && ::rows.isInitialized) idle()
         } catch (_: Throwable) {
         }
     }
 
     fun restoreCalc(sym: String) {
         try {
+            val restoreId = ++restoreSeq
             val key = normSym(sym)
             val rec = recs.lastOrNull { normSym(it.optString("sym")) == key }
             if (rec == null) {
                 // ③ 清零点:无记录品种**不得置位**,否则该品种的联动会被永久误挡
                 restoreGuardSym = null
                 idle()
+                // 行情数据已经完成渲染/link 后才到这里；无记录也要走一次幂等计算，
+                // 但只允许当前品种消费这次异步回调，避免切品种后把旧结果画回来。
+                uiHandler.post {
+                    if (restoreId == restoreSeq && normSym(curCalcSym()) == key) onCalc()
+                }
                 return
             }
             // D4/t89:有记录→进入回填态,联动(linkCalc/linkPhigh)只更新 lkPrev/lkPh 不写输入框,
@@ -398,6 +450,8 @@ fun clearCalcInputs() {
                 val x = rec.optDouble("liq")
                 if (x <= 0) "0.00" else fmt(x)
             }
+            currentCalcLiqForLine = if (rec.isNull("liq")) null else rec.optDouble("liq")
+            paintLiqGap()
             statVals["roe"]!!.text = (if (roe >= 0) "+" else "\u2212") + String.format("%.2f%%", Math.abs(roe))
             statVals["pos"]!!.text = "%.4f".format(rec.optDouble("pos"))
             statVals["sell"]!!.text = fmt(rec.optDouble("sell"))
@@ -422,7 +476,9 @@ fun clearCalcInputs() {
       //   而阈值正是那个「刚加的品种经常没有」的东西 ⟹ 两个毛病叠在一起。
       //   【改法】回填成功即算一次，不以阈值为前提（没阈值只是不自动改格数）。
       //   [justRestored] 已置位，这一次不会把「已保存」翻成「● 未保存」。
-   uiHandler.post { onCalc() }
+   uiHandler.post {
+       if (restoreId == restoreSeq && normSym(curCalcSym()) == key) onCalc()
+   }
         } catch (e: Exception) {
             // ⚠⚠⚠ 2026-10-03 **删掉空 catch**。
             //   原来是 `catch (_: Exception) {}` —— 吞掉一切且不打日志。
@@ -430,8 +486,8 @@ fun clearCalcInputs() {
             //   而日志里一条线索都没有。用户实报「二次点进去没有出来」，查了半天才定位到这里。
             // ⟹ 现在**记日志 + 在屏上报错**，让它可见。
             android.util.Log.e("RESTORE", "restoreCalc 失败 sym=" + normSym(sym), e)
-            // 失败必须把闸放开，否则该品种的联动会被永久误挡（restoreGuardSym 已置位）
-            restoreGuardSym = null
+            // 失败也不主动清闸：只有用户 TextWatcher/显式计算才能结束回填态，
+            // 避免异常后的旧行情回调继续覆盖可能已经部分回填的输入。
             showErr("这条记录回填失败：" + (e.message ?: e.javaClass.simpleName))
         }
     }
@@ -498,6 +554,51 @@ fun clearCalcInputs() {
     private var pendingRec: (() -> Unit)? = null
     private val uiHandler = android.os.Handler(android.os.Looper.getMainLooper())
 
+    // ---------- 前台定时拉取（2026-10-27 用户裁定） ----------
+    // 原话：「如果 app 在后台或者没有存活就不拉取；如果 app 在前台或者在主要运行的时候，
+    //        就每隔 5 分钟拉取一次」。
+    //
+    // 【为什么只挂生命周期、不引入任何后台设施】现有取数**全是事件驱动**（换品种/换周期/
+    //   点确认/首次进自选），没有任何周期入口；这里加的定时器是**唯一**的周期入口，
+    //   而且只在 onResume → onPause 之间活着 ⟹ 进后台立刻停表并移除排队中的 tick，
+    //   进程被杀更是什么都不会发生。**没有** WorkManager / AlarmManager / 前台服务，
+    //   也不注册任何后台唤醒 —— 「没有存活就不拉取」是结构上成立的，不是靠判断挡的。
+    private val AUTOPULL_MS = 5 * 60 * 1000L
+    /** 上一次周期拉取（或前台首次进入）的时刻；跨 onPause/onResume 保留，用来判断回来时要不要立刻补一次。 */
+    private var lastAutoPullAt = 0L
+    /** 前台闸。为 false 时 tick 即使被误触发也什么都不做，且不再续链。 */
+    private var autoPullOn = false
+    private val autoPullTick = object : Runnable {
+        override fun run() {
+            if (!autoPullOn) return
+            autoPull()
+            uiHandler.postDelayed(this, AUTOPULL_MS)
+        }
+    }
+
+    /**
+     * 前台每 5 分钟真实刷新：当前页无关，整张自选表由 MktData.acquire(refresh=true) 更新；
+     * 若当前在行情页，再强制刷新当前品种（mkLoadQuiet 会绕过内存 K 线缓存，仍保留磁盘留底作临时显示）。
+     * 计算/设置页本身不显示行情，阈值与汇率仍由既有事件路径提供。
+     */
+    private fun autoPull() {
+        lastAutoPullAt = System.currentTimeMillis()
+        try {
+            // ⚠⚠ 2026-11-02 用户裁定：刷新由唯一数据引擎负责，不由当前页决定。
+            //   每一拍都对整张自选表调用 MktData.acquire(refresh=true)；如果行情页正在显示，
+            //   mkLoadQuiet 也必须绕过内存缓存再取。取数失败则保留旧批次及旧时间，不能重算后冒充新鲜。
+            if (::favPanel.isInitialized) {
+                android.util.Log.i("AutoPull", "tick watchlist")
+                favPanel.refreshFavDist(net = true)
+            }
+            if (tab == "mkt" && ::mktPanel.isInitialized) {
+                android.util.Log.i("AutoPull", "tick mkt " + mktPanel.curSym())
+                mktPanel.mkLoadQuiet()
+            }
+        } catch (_: Throwable) {
+        }
+    }
+
     private fun saveIdle() {
         pendingRec = null
         if (::saveBtn.isInitialized) {
@@ -533,6 +634,22 @@ fun clearCalcInputs() {
     // 所以需要一个**活到用户下一次真实输入**为止的标志,而不是瞬时闸。
     // suppressReset 保留不动(对 D2/D9 的程序写值自激仍然必要且正确),只是不再承担 D4。
     private var restoreGuardSym: String? = null
+    // 回填后的自动计算序号：切品种/清空时使排队的旧回调失效。
+    private var restoreSeq: Long = 0L
+    // 显式清空后的行情联动失效边界。
+    // ⚠ 2026-10-26（第 4 轮）：判据从「按品种永久闭嘴」改为**按请求批次代号**。
+    //   【为什么】清空按钮只该拒「清空那一刻已经发出（含已画在屏上、随时会重绘）的那一批」回调；
+    //     而清空后从自选**重新进入同一品种**会产生新批次（mkLoad 里 reqSeq 自增），
+    //     那一轮的 linkCalc/linkPhigh 必须放行 —— 否则 Pl/Ph 与自动网格永久失效
+    //     （第 3 轮 blocker F-SAME-SYM-CLEAR-NEW-GEN）。
+    //   【判据】回调携带**它自己那一批**的代号（MktPanel.shownSeq / paintTgt 的 seq）：
+    //     `代号 <= 屏障` ⟹ 清空前那一批 ⟹ 拒；`>` ⟹ 清空后的新批次 ⟹ 放行。
+    //   【两种错法，不要走】①「新一轮开始时无条件解除阻断」——会把清空后仍在飞的旧回调放进来；
+    //     ② 用回调发生时的当前 reqSeq 冒充回调身份 —— 旧回调会被当成本轮新批次。
+    //   【跨品种】clearCalcInputs 把屏障清成 -1（不生效）；旧品种回调由 MktPanel 的
+    //     reqSeq/stillSame 双守卫拦。reqSeq 从 0 起，-1 不会与任何真实批次撞上。
+    private var linkBlockedSeq: Int = -1
+    private var linkBlockedSym: String = ""
 
     companion object {
         const val ANIM_TAB = 0
@@ -557,46 +674,20 @@ fun clearCalcInputs() {
 
     // ---------- 主题 ----------
 
-    /**
-     * ④ 设置页开关配色, 稿 L266-272 / 稿 L869-875(Switch)逐条:
-     *   开 = 轨道 var(ac) 决策紫**实心** + thumb = ACC(= onFill, 每套主题各一个值)
-     *   关 = 轨道 var(line) 中性线色     + thumb var(ink3) 即 colorFaint
-     *
-     * B-29 改前: 开态轨道是 colorPrimary 压到 alpha 90(= 35% 不透明), 真机上是淡紫,
-     * 不是稿的实心决策紫; 关态轨道也是同一条淡紫, 而稿 L268 的关态轨道是中性灰 var(line)。
-     * 也就是说「开关打开 = 决策紫」这条硬规则只对了色相, 没对明度。
-     *
-     * t10 (2026-10-02) ③ 改 thumb: 开态原来取 `colorOnPrimary`, 而那个 token 两套主题
-     * 都是**纯白**(themes.xml L31 / L66) ⟹ 深色下 thumb 渲染成 #FAFAFA。
-     * 照稿改取 `draftOnFill()`: 深色 → 稿 L99 的 oklch(0.160 0.012 265) = **#0B0D13**。
-     * **没有改 colorOnPrimary 本身** —— 它是 9 处共享 token, 理由见 draftOnFill() 的注释。
-     *
-     * 2026-10-16 t50 · 方向 B §2.4-3.7：thumb 两态改吃 t49 落的 token ——
-     *   开 = `colorOnPrimary`（on-accent，两套主题都是 #FFFFFF）、
-     *   关 = `colorThumbOff`（= --thumb-off，浅 #333C48 / 深 #C3CBD6）。
-     *   这取代了 t10 的「局部取 draftOnFill」：那一处是 v1 稿的 onFill 口径（深色要深墨），
-     *   而方向 B 的开关是「主色实底 + 白滑块」，白压 colorAccentFill 实底浅 5.87:1 / 深 4.80:1
-     *   都达标（t49 已复算）⟹ 不再需要 per-theme 取深墨的特例。
-     *   `draftOnFill()` 函数**保留**：计算屏 paintSide()（:2451）仍在用，属 F-5 的另一处站点。
-     * ⚠ 轨道四态（开 / 开+按压 / 关 / 关+按压）在 `switch_track.xml` 里，本函数**只管 thumb** ——
-     *   「同一件事只留一个主人」这条不变。
-     */
-    private fun t211PaintSwitch(sw: android.widget.Switch, on: Boolean) {
-        sw.thumbTintList = android.content.res.ColorStateList.valueOf(
-            if (on) attrColor("colorOnPrimary") else attrColor("colorThumbOff"))
-        // t10 (2026-10-02) ① **删掉 trackTintList**: 轨道两态改由 R.drawable.switch_track
-        // 这个 selector 自带(根因见该文件头)。改前这里设的是不带 alpha 的实色 colorPrimary,
-        // 真机却渲染成 ~30% 不透明的淡紫; 而同一 API 的 thumbTintList 是生效的
-        // ⟹ 病在轨道 drawable, 只能在 drawable 侧修, 光调 tint 治不了。
-        // 删掉它也是为了「同一件事只留一个主人」: 轨道色此后只有 switch_track.xml 一个来源,
-        // 不会再出现 XML 与 Kotlin 各写一份、改一处忘一处的分叉。
-        // 取法与本仓既有写法一致(FavPanel.kt:1582 / MktPanel.kt:392)。
-    }
+    // ⚠ 2026-10-28 t4 · **`t211PaintSwitch()` 已删除**（连同它上面那整段开关配色说明）。
+    //   原因：设置页「启动时刷新一次」整行移除（用户裁定），它是本函数在**本文件的最后一处
+    //   调用点**；留着就是一个零调用点的 private 函数 = 死代码（静态扫描会报）。
+    //   它没有 `draftOnFill()` 那种「唯一实现某口径」的价值：
+    //   轨道四态一直住在 `switch_track.xml`（本函数只管 thumb 两态），
+    //   而计算屏「加倍建仓」开关的滑块两态由 XML 的 `android:thumbTint="@color/dbl_thumb"` 给，
+    //   不经过本函数 ⟹ 删它不影响任何在屏控件。
+    //   ⚠ 若日后重新引入设置页开关：thumb 两态 = 开 `colorOnPrimary` / 关 `colorThumbOff`，
+    //     轨道用 `@drawable/switch_track`（两态都带描边），别再把 trackTint 与 track 混用。
 
     private fun prefs() = getSharedPreferences("gridcalc", Context.MODE_PRIVATE)
 
-    // ④ 「启动时刷新一次」用的两个键(与 prefs() 同一个 SP 文件)
-    private val PREF_AUTO_REFRESH = "auto_refresh_once"
+    // ⚠ 2026-10-28 t4 · `PREF_AUTO_REFRESH`（"auto_refresh_once"）已随设置页开关一并删除：
+    //   开关不在屏上，持久化键就没有读写的第二个主人；启动刷新改为恒定执行（见 onCreate 末尾）。
     private val PREF_LASTM = "mkt_last_sym"
 
     // v4 D10:主题读写的 SharedPreferences 全程 try/catch,失败降级为默认主题,不崩
@@ -775,10 +866,19 @@ fun clearCalcInputs() {
         //     币安                                  47.99
         //   ⟹ 改后差 0.2%，与币安一致。
         //
-        //   ⚠ **无条件 drop**，不按格距判断（用户选定「就是这样」）：
-        //     触发价正好落在某档上时，那一档既不在 sells 也不在 buys，drop 不会额外吃掉它。
-        //   ⚠ 这一行直接决定建仓规模（q0 = m × q），是爆仓价最大的单一因子，别随手改。
-        val sells = lines.filter { it > po + eps }.drop(1)
+        //   ⚠⚠ 2026-11-02 **改成按格距判断**（用户用币安真实参数对出误差）：
+        //     原裁定「无条件 drop 最近一档」只适用于**触发价落在两档之间**的情形
+        //     （那时最近一档离触发价不足一个格距，挂在那里没意义）。
+        //     当触发价**正好在网格线上、或略高于最低价**时，最近那档离它已有整整一格，
+        //     再 drop 就等于**凭多吃掉一档仓位** ⟹ 建仓少一格、爆仓价被抬高。
+        //     实测（GEV 币安参数：770~1173 / 8 格等比 / 保证金 1100 / 25x / 每笔 0.42 /
+        //       触发价 = 最低价 770 / 不加倍）：币安 预估强平 **451.66**，仓位 8×0.42=3.36。
+        //       无条件 drop ⟹ 仓位 7×0.42=2.94 ⟹ 爆仓价 **403.9**（偏高 48）。
+        //     判据：最近卖档 ÷ 触发价 < 一个格距 ⟹ 触发价在两档之间 ⟹ 丢弃；否则保留。
+        val step = if (lines.size >= 2 && lines[0] > 0) lines[1] / lines[0] else 1.0
+        val above = lines.filter { it > po + eps }
+        val nearestInsideStep = above.isNotEmpty() && po > 0 && above[0] / po < step - 1e-12
+        val sells = if (nearestInsideStep) above.drop(1) else above
         val buys = lines.filter { it < po - eps }
         val m = sells.size
         val bc = buys.size
@@ -947,6 +1047,7 @@ fun clearCalcInputs() {
         //   ⟹ 别再引用 levBar —— 那个字段和节点都已经不存在了。
         if (!::levText.isInitialized) return
         levText.setText(numStr(v))
+        if (suppressReset) return
         // ⚠ EditText 回写会触发 TextWatcher ⟹ 递归风险。用「值相同就不写」切断：
         //   用户敲 5 → watcher 调 t341SetLev(5) → setText("5") → watcher 再调 → 文本已相同则跳过。
         onCalc()
@@ -1019,8 +1120,9 @@ fun clearCalcInputs() {
      *    **折叠口那一行**只在 done 态出现。
      *
      * @param vis 结果卡（四格 + 其上边线）是否可见
-     * @param collapseRow 折叠口那一行（两个口 + ladderNote + 行 + 上边线）是否可见；
-     *        默认跟 [vis] 走 ⟹ 原有调用点（onCalc / OverLeverage）行为一字未变。
+     * @param collapseRow 折叠口那一行（两个口 + ladderNote + 行 + 上边线）是否可见。
+     *        ⚠ 2026-10-29 t37：**形参保留但已不起作用** —— 用户裁定「展开更多 / 网格明细整块下线」，
+     *        该行现在是恒 GONE（见函数体内 `val c = View.GONE` 的墓碑）。保留形参是为了不动 8 个调用点。
      */
     private fun t227SetResultArea(vis: Boolean, collapseRow: Boolean = vis) {
         val v = if (vis) View.VISIBLE else View.GONE
@@ -1033,22 +1135,51 @@ fun clearCalcInputs() {
         //     本仓 t298/t316 的既有教训），渲染层面等同移除。
         //   ⚠ 连带结果（登记）：done 态这条发丝随之消失。它是「合并」的**必然结果**，不是超范围改动。
         if (::statTilesTopline.isInitialized) statTilesTopline.visibility = View.GONE
-        val c = if (collapseRow) View.VISIBLE else View.GONE
+        // ⚠⚠ 2026-10-29 t37 · **折叠口那一行整块下线**（用户裁定，原话：
+        //   「你是稿子有这两个标签，可是我在之前就说不要这两个标签了，你没有一起删除是什么意思？」）
+        //   改前：`val c = if (collapseRow) View.VISIBLE else View.GONE` —— done 态会把
+        //   「展开更多 / 网格明细」两行连同 ladder_note 一起点亮。
+        //   现在：**恒 GONE**。`collapseRow` 形参**保留但不再影响可见性**（本函数有 8 个调用点，
+        //   改签名会把一处「要不要折叠口」的语义散到 8 个地方；而裁定是「整块下线」，与调用点无关）。
+        //   ⚠ 节点与绑定全部保留（moreToggle / detToggle / ladderNote / toggleRow 都有 findViewById，
+        //     删节点会断绑定 —— 本仓 t298/t316 的既有教训），渲染层面等同移除。
+        //   ⚠ `more_row` / `more_chev` / `det_chev` 是 toggleRow 的**子孙**（见 page_calc.xml），
+        //     父行 GONE 之后它们自然不渲染，无需单独设。
+        val c = View.GONE
         if (::moreToggle.isInitialized) moreToggle.visibility = c
         if (::detToggle.isInitialized) detToggle.visibility = c
         if (::ladderNote.isInitialized) ladderNote.visibility = c
         // t23: 折叠口那一行**本身**与它的上边线也要一起收 —— 见 page_calc.xml 同行注释。
         if (::toggleRow.isInitialized) toggleRow.visibility = c
-        if (::toggleRowTopline.isInitialized) toggleRowTopline.visibility = c
+        // ⚠ 2026-10-19 r8 · C-4：顶发丝**按稿恒 GONE**（稿 `四屏-计算页.html:162`
+        //   `.calc-collapse__rule { display: none }`）⟹ 不再跟折叠口一起 VISIBLE。
+        //   节点与绑定保留（`:2963` 有 findViewById、本函数与 `:1563` 有赋值，删节点会断绑定 ——
+        //   本仓 t298/t316 的既有教训），渲染层面等同移除。
+        if (::toggleRowTopline.isInitialized) toggleRowTopline.visibility = View.GONE
         // t351 B-5 窄边界(子 agent 3f483577 报的): 上面只收 statTiles / 两个折叠口 / ladderNote,
         // **不收展开区本体** ⟹ 先点开「展开更多」或「网格明细」、再改参数回到 idle 时,
         // 折叠口已经收起、内容区却还 VISIBLE —— 与「结果区整块不显示」(稿 L662) 矛盾。
-        if (::moreBox.isInitialized) moreBox.visibility = View.GONE
-        if (::detBox.isInitialized) detBox.visibility = View.GONE
+        if (::moreBox.isInitialized) {
+            resetMotion(moreBox)
+            moreBox.visibility = View.GONE
+        }
+        if (::detBox.isInitialized) {
+            resetMotion(detBox)
+            detBox.visibility = View.GONE
+        }
     }
 
     private fun idle() {
     t304Note(null)   // t304: 回到 idle 态就别再挂着改写提示
+        // ⚠ 2026-11-04：按钮上的「已保存 / 已删除」是**常驻状态**，恢复时机只有这里 ——
+        //   用户改了参数（或结果被清）⟹ 屏上数字与已存记录不再自洽 ⟹ 按钮必须重新变回动作标签。
+        if (::saveBtn.isInitialized) {
+            saveBtn.text = "保存数据"
+            saveBtnSaved(false)
+        }
+        if (::clearRecBtn.isInitialized) {
+            clearRecBtn.text = "清空数据"
+        }
         // ══ 2026-10-16 t5 · **用户授权：idle 态对齐方向-B 稿子** ═══════════════════════════
         // 本条推翻 t141 的「未算时**整块不显示**,不是显示一个占位破折号」—— 那条按的是 v1 稿。
         // 方向 B 稿（判据源）的 idle 态**照样渲染结果整卡**，只把值换成占位 `—` 并染成 faint：
@@ -1072,6 +1203,9 @@ fun clearCalcInputs() {
         }
         if (::calcOverline.isInitialized) calcOverline.visibility = View.GONE
         if (::calcOverlineTopline.isInitialized) calcOverlineTopline.visibility = View.GONE
+        // t43：idle 态不保留上一份计算的主爆仓价，副行随之收起。
+        currentCalcLiqForLine = null
+        if (::statLiqGap.isInitialized) statLiqGap.visibility = View.GONE
         // t153 ⑩:回到未算态要恢复显示(否则 over 之后改任一参数,四格一直是空的)
         // ⚠ 2026-10-16 t5:改前这里传 false（整块收掉，因为 v1 稿 L662 要求 idle 不渲染结果区）。
         //   现在结果**卡**在 idle 也显示，只有**折叠口那一行**按稿隐藏
@@ -1128,15 +1262,16 @@ fun clearCalcInputs() {
 
     /** 该品种的**日线**步长阈值（用户裁定「固定用日线阈值」）。取不到时为 null。 */
     private var stepThr: Double? = null
+    // 异步步长请求序号：只允许当前品种最新一轮回调写回计算状态。
+    private var stepThrSeq: Long = 0L
 
     /**
      * 自动网格数量（用户 2026-10-03 裁定）：
      *   等比网格，最高价 → 最低价，**格距 = 该品种日线步长阈值 s**
      *       r = 1 − s
      *       第 k 格 = 最高价 × r^k
-     *       n = floor( ln(ph/pl) ÷ −ln(1−s) )
-     *   取下整即用户说的「**步长阈值不足的一格的向下约**」——
-     *   最后一格到不了最低价，剩下的空档不足一个步长。
+     *       n = ceil( ln(ph/pl) ÷ −ln(1−s) )
+     *   取满足 `ph × (1−s)^n ≤ pl` 的最小整数 n，确保最后一格不高于最低价。
      *
      * @return 取不到步长阈值、或参数不合法时返回 null（调用方保留用户敲的值，不硬算）
      */
@@ -1159,7 +1294,7 @@ fun clearCalcInputs() {
      */
     private fun tryAutoGridN() {
         if (nManual) return
-        val s = stepThr ?: return
+        if (stepThr == null) return
         val pl = inp["Pl"]?.text?.toString()?.trim()?.toDoubleOrNull() ?: return
         val ph = inp["Ph"]?.text?.toString()?.trim()?.toDoubleOrNull() ?: return
         if (ph <= pl) return
@@ -1172,10 +1307,13 @@ private fun autoGridN(pl: Double, ph: Double): Int? {
         val s = stepThr ?: return null
         if (s <= 0.0 || s >= 1.0) return null
         if (pl <= 0.0 || ph <= pl) return null
-        val denom = -Math.log(1.0 - s)
+        val denom = -Math.log1p(-s)
         if (denom <= 0.0) return null
         val raw = Math.log(ph / pl) / denom
-        val n = Math.floor(raw).toInt()
+        // 最小 n 需满足 ph * (1-s)^n <= pl；对理论整数值留出浮点误差容忍。
+        val nearest = Math.rint(raw)
+        val n = if (Math.abs(raw - nearest) <= 1e-10) nearest.toInt()
+                else Math.ceil(raw).toInt()
         // 网格数量下限 2（与下面 onCalc 的校验同口径：一格不成网格）
         return if (n >= 2) n else null
     }
@@ -1186,13 +1324,16 @@ private fun autoGridN(pl: Double, ph: Double): Int? {
      *    拿不到 / 币种无源 ⟹ stepThr 保持 null，网格数量退回用户敲的值，不硬算。
      */
     private fun loadStepThr() {
+         val requestId = ++stepThrSeq
         val sym = try {
             getSharedPreferences("gridcalc", MODE_PRIVATE).getString("mkt_last_sym", "") ?: ""
         } catch (_: Exception) { "" }
         if (sym.isBlank()) { stepThr = null; return }
+        val key = normSym(sym)
         MktData.stepThresholdAsync(sym) { r ->
             runOnUiThread {
-       stepThr = r.v?.takeIf { it > 0 && it < 1.0 }
+                if (requestId != stepThrSeq || normSym(curCalcSym()) != key) return@runOnUiThread
+                stepThr = r.v?.takeIf { it > 0 && it < 1.0 }
                 if (stepThr != null && !nManual) onCalc()
             }
         }
@@ -1201,7 +1342,7 @@ private fun autoGridN(pl: Double, ph: Double): Int? {
     /**
      * ⚠⚠⚠ 2026-10-03 **步长阈值改为按当前品种取**（用户报「大量交易品种的网格数量没有自动计算」）。
      *
-     * 【根因】[autoGridN] 第一行就是 `val s = stepThr ?: return null`，
+     * 【根因】[autoGridN] 依赖异步到达的 `stepThr`，
      *   而 [stepThr] **只由 [loadStepThr] 写一次**，那个函数取的是
      *   `mkt_last_sym`（行情屏最后看的那**一个**品种）。
      * ⟹ 于是：**只要当前算的不是「最后看过的那个品种」，stepThr 就属于别人或为 null**，
@@ -1215,6 +1356,7 @@ private fun autoGridN(pl: Double, ph: Double): Int? {
      * @param sym 目标品种；与当前算的品种一致时才写 [stepThr]，避免异步回调串台。
      */
     internal fun stepThrFor(sym: String) {
+         val requestId = ++stepThrSeq
         if (sym.isBlank()) return
         val key = normSym(sym)
         // ⚠⚠⚠ 2026-10-08 用户报「网格数量还是没自动算：**保存过记录的有、
@@ -1238,7 +1380,7 @@ private fun autoGridN(pl: Double, ph: Double): Int? {
         MktData.stepThresholdAsync(sym) { r ->
             runOnUiThread {
                 // ⚠ 异步回来时可能已经切到别的品种了 ⟹ 只在仍是同品种时写
-                if (normSym(curCalcSym()) != key) return@runOnUiThread
+                if (requestId != stepThrSeq || normSym(curCalcSym()) != key) return@runOnUiThread
                 stepThr = r.v?.takeIf { it > 0 && it < 1.0 }
                // ⚠⚠⚠ 2026-10-05 **只有真的拿到数才记「这个品种算过了」**。
     // 改前这一行无条件写 key ⟹ **一次失败就把这个品种永久挡住**，之后进来都不再试 ——
@@ -1276,12 +1418,13 @@ private fun autoGridN(pl: Double, ph: Double): Int? {
      */
     private var justRestored: Boolean = false
 
-    private fun onCalc() {
+    private fun onCalc(userInitiated: Boolean = false) {
         // ① 取值即消费：只有「紧跟在回填之后的那一次」自动重算豁免置脏。
         val exemptDirty = justRestored
         justRestored = false
         suppressReset = false // v4 D2/D9:真实计算清闸,之后的程序写值照常生效
-        restoreGuardSym = null // ② 清零点:点「计算」= 用户明确要基于当前输入重算 → 退出回填态
+        // ② 只有用户明确计算/交互才退出回填态；自动回填、阈值补算、行情联动不能清闸。
+        if (userInitiated) restoreGuardSym = null
         showErr(null) // 稿calc()首行clear:清上一轮目标上限报错
         // t105 假设①:算完之后若程序自己又写了某个 inp 字段,
         // L1213 的 TextWatcher 会调 idle() 把**刚算出的结果**清掉。
@@ -1331,7 +1474,7 @@ private fun autoGridN(pl: Double, ph: Double): Int? {
             // ⚠⚠ 网格数量：自动算 + 允许手改（用户裁定）。
             //   nManual = true ⟹ 用你敲的值，不再自动覆盖。
             //   自动口径：等比网格，最高→最低，格距 = 该品种**日线**步长阈值 s
-            //       n = floor( ln(ph/pl) ÷ −ln(1−s) )   ← 下整 =「不足一格的向下约」
+            //       n = ceil( ln(ph/pl) ÷ −ln(1−s) )   ← 取满足终点不高于最低价的最小整数
             //   ⚠ 步长阈值取不到（没看过品种 / 币种无源）⟹ 保持你敲的值不动，不硬算。
             //   （nIn / pl / ph / 回写都已在**上方**算完，这里只取最终值。）
             val n = if (nManual) getNum(nIn, "网格数量", true).toInt()
@@ -1398,12 +1541,39 @@ private fun autoGridN(pl: Double, ph: Double): Int? {
             //   爆仓价数字、爆仓卡边框、顶部 StateLine。
             //   ⚠ 净收益/收益率等**不再伪造为「--」** —— 它们是真算出来的，不是缺数据。
             val cap = lkCap
+            // ⚠⚠ 2026-10-29 t42 · **泛红主条件改成「爆仓价 > 网格最低价」**（用户反馈「高于爆仓价也不泛红」）。
+            //   改前唯一触发条件是 `r.liq > cap`，而 `cap` 来自「行情页第二支撑」（lkCap）**可能为空**：
+            //   单支撑品种 cap = null ⟹ liqOverCap 恒 false ⟹ **泛红永不触发**。
+            //   代码自己上面那段的注释就写着「cap 是可选的、最低价是网格计算的必需输入」，
+            //   却把必需的提醒挂在可选值上 —— 这就是那条用户反馈的根因。
+            //   ⟹ 现在**两选一**（命中任一即 markLiqBad）：
+            //        ① `r.liq > gridLow`（**必需输入**，主条件）
+            //           语义 = 价格还没跌到网格下界、仓位就已经强平 ⟹ 这套网格根本打不完；
+            //        ② `r.liq > cap`（有第二支撑时才存在，附加条件，原逻辑保留）。
+            //   ⚠ `gridLow` 直接用 **`pl`**：它就是同一函数里 `calcGrid(total, pl, ph, po, …)` 传进去的**同一个值**
+            //     （同一次 getNum 解析、同一精度），**不从 EditText 重新解析**、也不用 CalcResult
+            //     （CalcResult 不含下界字段，引擎也没返回）—— 重新解析会引入千分位/精度分叉。
+            val gridLow = pl
+            val liqOverGrid = r.liq != null && r.liq > gridLow
             val liqOverCap = cap != null && r.liq != null && r.liq > cap
-            if (liqOverCap) {
+            val liqBad = liqOverGrid || liqOverCap
+            // ⚠⚠ 2026-11-05 用户追问「外面的框怎么还是红色」⟹ **数字与边框必须是同一个判据**。
+            //   屏上唯一可见的参照物是「爆仓线 <第二支撑>」：
+            //     有线 → 超过才告警（红字 + 红框），没超过 → 绿字 + 无框；
+            //     没线 → 退回 t42 那套（爆仓价 > 网格最低价 / > 目标上限）。
+            //   ⚠ 改前边框走 liqBad、数字走 liqLine ⟹ 会出现"绿数字 + 红框"的自相矛盾。
+            val liqWarn = liquidationLinePresentation(r.liq, currentMarketSupport2ForLine)?.exceeded
+                ?: liqBad
+            if (liqWarn) {
                 // 提醒行：沿用稿里那条 StateLine，只把文案换成「超过」而非「高于」——
                 // 「高于目标值」在语义上也对，但用户说的是「超过爆仓价」，用用户的词。
-                if (::calcOverline.isInitialized) calcOverline.visibility = View.VISIBLE
-                if (::calcOverlineTopline.isInitialized) calcOverlineTopline.visibility = View.VISIBLE
+                // ⚠⚠ 2026-10-29 t37 · **`calc_overline` 恒 GONE**（用户裁定「计算页不画 calc_overline」，
+                //   见 `交接_四屏原型.md:352`）。改前这里是 `visibility = View.VISIBLE`：
+                //   爆仓价高于目标价时点亮一条 StateLine 提醒。
+                //   ⚠ 提醒**没有消失**：爆仓价数字染红 + 爆仓卡红框仍由 markLiqBad() 表达；
+                //     去掉的只是稿里本来就没有的那条 overline。节点与绑定保留（删节点会断绑定）。
+                if (::calcOverline.isInitialized) calcOverline.visibility = View.GONE
+                if (::calcOverlineTopline.isInitialized) calcOverlineTopline.visibility = View.GONE
                 markLiqBad()
             }
             // ⚠ 旧行为（idle + 净收益「--」+ 其余结果全部归零 + 藏掉四格与折叠口 + return）
@@ -1420,7 +1590,7 @@ private fun autoGridN(pl: Double, ph: Double): Int? {
             //     「只把三处染红提醒：爆仓价数字、**爆仓卡边框**、顶部 StateLine」直接矛盾。
             //     现在 over 分支**不碰 background** ⟹ 红框按既有逻辑（markLiqBad）显示出来。
             //   ⚠ [markLiqBad] 本体（:2000 附近）与它的 `:1974` 红框逻辑**一字未动**。
-            if (!liqOverCap && ::statLiqCard.isInitialized && statLiqBg0 != null) {
+            if (!liqWarn && ::statLiqCard.isInitialized && statLiqBg0 != null) {   // t42：不告警才还原原始面（判据见上 liqWarn）
                 statLiqCard.background = statLiqBg0
             }
             // ⚠⚠ 2026-10-16 t5 · **把 idle 的 faint 占位色还原成墨色**。
@@ -1436,17 +1606,33 @@ private fun autoGridN(pl: Double, ph: Double): Int? {
             if (::calcHeroBox.isInitialized) calcHeroBox.visibility = View.VISIBLE
                 t227SetResultArea(true)
 if (::calcIdleHint.isInitialized) calcIdleHint.visibility = View.GONE
-            // ⚠⚠⚠ 这里**必须条件隐藏** —— 原来是无条件 GONE，而上面 liqOverCap 刚把它
-            //   设为 VISIBLE，于是提醒行亮一瞬就被抹掉，用户根本看不到。
-            //   （我第一版改动漏了这个，结果自己造了个新 bug：提醒等于没有。）
-            if (!liqOverCap) {
-                if (::calcOverline.isInitialized) calcOverline.visibility = View.GONE
-                if (::calcOverlineTopline.isInitialized) calcOverlineTopline.visibility = View.GONE
+            // ⚠ 2026-10-29 t42：**无条件 GONE** —— overline 在 t37 已按用户裁定永久下线，
+            //   与 liqBad 命中与否无关（不要因为这次改判据又把那条 StateLine 点亮）。
+            //   （历史：t37 之前这里是「liqOverCap 时 VISIBLE、否则 GONE」；那套已随 t37 作废。）
+            if (::calcOverline.isInitialized) calcOverline.visibility = View.GONE
+            if (::calcOverlineTopline.isInitialized) calcOverlineTopline.visibility = View.GONE
+            // ⚠ t42：**命中任一条件（爆仓价 > 网格最低价 / > 目标上限）**就把爆仓价数字染红；否则回墨色。
+            // ⚠⚠ 2026-11-05 用户裁定：**有「爆仓线」时，颜色跟着那条线走** ——
+            //   实报「爆仓价没超过线也爆红，应该显示绿色」。
+            //   病根：t42 的主条件是 `liq > 网格最低价(pl)`，而屏上给用户看的参照物是
+            //   「爆仓线 <第二支撑>」；当最低价低于第二支撑时，`liq` 可以落在两者之间 ——
+            //   对用户来说"还没到线"（该安全），按 pl 判却已算危险 ⟹ 红。
+            //   ⟹ 判据顺序改为：**有线就按线**（超过 = 红，没超过 = 绿）；没线才退回 t42 那套。
+            //   ⚠ 卡边框（markLiqBad）仍按 liqBad 走"网格打不完"那条独立语义，本次不动。
+            val liqLine = liquidationLinePresentation(r.liq, currentMarketSupport2ForLine)
+            val liqColor = when {
+                liqLine != null -> if (liqLine.exceeded) red else attrColor("colorTeal")
+                liqWarn -> red
+                else -> ink
             }
-            // ⚠ liqOverCap 时爆仓价数字染红（提醒）；否则回墨色
-            statVals["liq"]?.setTextColor(if (liqOverCap) red else ink)
+            statVals["liq"]?.setTextColor(liqColor)
+            // 爆仓线副行读当前行情页的第二支撑，不依赖可选目标上限 lkCap 是否保存/解除。
+            // 主值仍是 r.liq；只有模型有爆仓价且当前行情存在第二支撑时显示。
+            currentCalcLiqForLine = r.liq
+            paintLiqGap()
             hero.setTextColor(if (r.net >= 0) teal else red)
             hero.text = (if (r.net >= 0) "+" else "\u2212") + fmt(Math.abs(r.net))
+            animateResultValue(hero)
             // t102 第4步:hero 副行原来写「收益率 X% · N卖M买 · 见底权益约 Y USD」,
             // 这三样**下方四格里已经全有了**(收益率/初始持仓/卖出总额)——同一信息在一屏出现两遍。
             // 全局硬规则:一屏只允许「用户要的值、状态、能点的操作」,重复一律删。
@@ -1470,7 +1656,9 @@ if (::calcIdleHint.isInitialized) calcIdleHint.visibility = View.GONE
             // 稿 L625: R.nb+' / '+R.ns  ⟹ "4 / 8"
             // 改前是 "%d买 %d卖"。⚠ 我今晚的验收基线抄的就是这个错格式, 正在一并更正。
             statVals["grids"]!!.text = "%d / %d".format(r.b, r.m)
-            statVals["eqb"]!!.text = t219fmt2(r.eqBottom)   // t316 #136 稿 L626 用 U+2212 真减号, 原 fmt() 是 ASCII 减号
+            // ⚠ 2026-10-28 t4：`statVals["eqb"]!!.text = t219fmt2(r.eqBottom)` 已删 ——
+            //   「见底权益」格整块下线（用户裁定），节点与 map 项都不在了，留着这行是 **NPE**。
+            //   r.eqBottom 仍由引擎照常算出（业务计算未动），只是不再上屏。
             statVals["cost"]!!.text = fmt(r.cost0) + " USD"
             // 计价币种与美元汇率:沿用 CSV 的既有语义(L460-464)——
             // USD 品种汇率恒 1,取不到汇率就留空,**不为填满而编数**。
@@ -1531,6 +1719,7 @@ if (::calcIdleHint.isInitialized) calcIdleHint.visibility = View.GONE
                     "顶", MktData.fmtCeilQ(ph), "全平|sell", "—", t219fmt2(r.net),
                     red, zebra, false))
             }
+            animateGridRows()
             // 稿§1.1:计算成功只暂存待存结果(不落库);点「保存数据」才追加一条
             pendingRec = { logRec(r, pl, ph, n, c, l, po, q, FEE_TAKER, mmr) }
             saveBtn.text = "保存数据"
@@ -1600,7 +1789,7 @@ if (::calcIdleHint.isInitialized) calcIdleHint.visibility = View.GONE
     private val recPref get() = getSharedPreferences("gridcalc_records_v1", Context.MODE_PRIVATE)
 
     // 前向声明：clearCurrentSymRecs 在它定义之前就要用（Kotlin 对成员函数本可后置，
-    // 但这里 saveBtnSaved 是同文件内的局部函数，跨定义顺序会报 unresolved）
+    // 但历史上这里曾引用同文件内的局部函数 saveBtnSaved（跨定义顺序会报 unresolved；该函数已于 2026-11-04 删除）
 
     /**
  * ⚠⚠⚠ 2026-10-03 **恢复本函数**（我把它当死代码删掉了，那是个错误）。
@@ -1656,7 +1845,7 @@ private fun recLoad() {
     //   删全部会把别的品种存好的参数一起清掉，那正是本会话花大力气打通的东西。
     //   ⚠ 本函数的同类邻居 [recLoad]/[clearRecords] 都曾被我当「死代码」删掉：
     //     **先摘调用点、再按「无调用」删被调方，这两步必须一起判断。**
-    //   ⚠ 放在 [saveBtnSaved] 之后：[saveBtnSaved] 在本文件里定义得比这里晚，
+    //   ⚠ 历史上它曾需要放在 saveBtnSaved 之后（该函数已于 2026-11-04 删除，顺序约束不再存在），
     //     声明顺序反了会报 unresolved（Kotlin 的 class 成员不支持前向声明，抽象声明也不行）。
     fun clearCurrentSymRecs() {
         val sym = try { if (::mktPanel.isInitialized) mktPanel.curSym() else "" } catch (_: Throwable) { "" }
@@ -1665,18 +1854,30 @@ private fun recLoad() {
         val before = recs.size
         recs = recs.filter { normSym(it.optString("sym")) != key }.toMutableList()
         val removed = before - recs.size
-        if (removed > 0) {
-            recSave()
-            if (restoreGuardSym == key) restoreGuardSym = null   // 清零点：闸必须放开
-            pendingRec = null
-            saveIdle()
-        }
+        if (removed > 0) recSave()
+        // 无论是否有已保存记录，清空都要撤销当前品种的输入、结果、回填闸和
+        // 自动网格状态；否则「没有记录」时按钮看似成功，旧值仍会留在屏上。
+        clearCalcInputs()
+        // 显式清空还要拒绝「清空这一刻已经发出的那一批」行情回调（已画在屏上那批的重绘
+        // onInfo、以及 paintTgt 的延时重试都算）。屏障取 MktPanel 当前已发出的最大批次代号：
+        //   回调代号 <= 屏障 ⟹ 清空前那一批 ⟹ 拒（t7 的 F-CLEAR-LATE-TARGET-CALLBACK 不回归）；
+        //   清空后重新进入同品种的 mkLoad 会拿到更大的代号 ⟹ 放行（本轮要修的同品种重进）。
+        linkBlockedSeq = try {
+            if (::mktPanel.isInitialized) mktPanel.reqSeqNow() else -1
+        } catch (_: Throwable) { -1 }
+        linkBlockedSym = key
+        // clearCalcInputs 已清回填闸；这里保留显式判据，防止未来拆分清理路径时漏放。
+        if (restoreGuardSym == key) restoreGuardSym = null
+        pendingRec = null
+        saveIdle()
         // ⚠⚠ 2026-10-05 **提示写到清空按钮自己身上**（原来错写在 [saveBtn] 上）。
         //   改前用户点「清空数据」，屏上却是「保存数据」按钮变成「已删除 N 条」——
         //   反馈落在了没点的那个按钮上，等于没反馈。
         //   ⟹ 这里改 [clearRecBtn]；[saveBtn] 的样式与复原逻辑全部不碰（那是保存按钮自己的）。
-        val msg = if (removed > 0) "已删除 $removed 条" else "没有已保存记录"
+        // ⚠ 2026-11-04 恢复：清空按钮自己变成「已删除 N 条」（用户截图要的形态），1.6s 后复原。
+        val msg = if (removed > 0) "已删除" else "没有已保存记录"
         if (::clearRecBtn.isInitialized) {
+            // ⚠ 2026-11-04 同上（用户裁定「肯定要弹回去啊」）：显示「已删除」1.6s 后自动复位。
             clearRecBtn.text = msg
             uiHandler.postDelayed({
                 if (clearRecBtn.text == msg) clearRecBtn.text = "清空数据"
@@ -1912,6 +2113,34 @@ private fun recLoad() {
     //           稿画了按钮但原型没有回滚, 画一个点了没反应的按钮比不反馈更糟。
     private var undoSnap: List<org.json.JSONObject>? = null
 
+    private fun dismissPanel(host: android.view.ViewGroup, v: View, after: (() -> Unit)? = null) {
+        if (v.getTag() == "motion-closing") return
+        v.setTag("motion-closing")
+        if (!motionEnabled()) {
+            if (v.parent === host) host.removeView(v)
+            after?.invoke()
+            return
+        }
+        val d = resources.displayMetrics.density
+        val sheet = v.findViewById<View>(R.id.panel_sheet)
+        v.animate().cancel()
+        sheet?.animate()?.cancel()
+        v.animate().alpha(0f).setDuration(160).setInterpolator(pgEaseOut).start()
+        if (sheet != null) {
+            sheet.animate().alpha(0.7f).translationY(24f * d)
+                .setDuration(160).setInterpolator(pgEaseOut)
+                .withEndAction {
+                    if (v.parent === host) host.removeView(v)
+                    after?.invoke()
+                }.start()
+        } else {
+            v.animate().withEndAction {
+                if (v.parent === host) host.removeView(v)
+                after?.invoke()
+            }.start()
+        }
+    }
+
     private fun showPanel(title: String, body: String, okText: String, onOk: () -> Unit) {
         val host = findViewById<android.view.ViewGroup>(android.R.id.content)
         val v = LayoutInflater.from(this).inflate(R.layout.panel_clear, host, false)
@@ -1919,16 +2148,28 @@ private fun recLoad() {
         v.findViewById<android.widget.TextView>(R.id.panel_body).text = body
         v.findViewById<android.widget.TextView>(R.id.panel_ok).text = okText
         v.findViewById<android.view.View>(R.id.panel_mask).setOnClickListener {
-            host.removeView(v)          // 点遮罩关闭(稿 L802)
+            dismissPanel(host, v)          // 点遮罩关闭(稿 L802)
         }
         v.findViewById<android.widget.TextView>(R.id.panel_cancel).setOnClickListener {
-            host.removeView(v)          // 稿 L807 取消
+            dismissPanel(host, v)          // 稿 L807 取消
         }
         v.findViewById<android.widget.TextView>(R.id.panel_ok).setOnClickListener {
-            host.removeView(v)
-            onOk()
+            dismissPanel(host, v, onOk)
+        }
+        val sheet = v.findViewById<View>(R.id.panel_sheet)
+        val d = resources.displayMetrics.density
+        val motion = motionEnabled()
+        if (motion) {
+            v.alpha = 0f
+            sheet?.alpha = 1f
+            sheet?.translationY = 24f * d
         }
         host.addView(v)
+        if (motion) {
+            v.animate().alpha(1f).setDuration(180).setInterpolator(pgEaseOut).start()
+            sheet?.animate()?.translationY(0f)
+                ?.setDuration(280)?.setInterpolator(pgBezier)?.start()
+        }
     }
 
     // 稿 L815-822: 底部 toast, 文案 + 右侧紫字「撤销」。undo 非空时点它真撤销。
@@ -1996,8 +2237,29 @@ private fun recLoad() {
             setMargins((16 * d).toInt(), 0, (16 * d).toInt(), (80 * d).toInt())
         }
         ov.addView(bar, lp)
+        val enterY = 8f * d
+        val motion = motionEnabled()
+        if (motion) {
+            ov.alpha = 0f
+            ov.translationY = enterY
+        }
         host.addView(ov)
-        uiHandler.postDelayed({ if (ov.parent != null) host.removeView(ov) }, 3200)
+        if (motion) {
+            ov.animate().alpha(1f).translationY(0f)
+                .setDuration(220).setInterpolator(pgEaseOut).start()
+        }
+        uiHandler.postDelayed({
+            if (ov.parent != null) {
+                if (!motionEnabled()) {
+                    host.removeView(ov)
+                } else {
+                    ov.animate().alpha(0f).translationY(enterY)
+                        .setDuration(140).setInterpolator(pgEaseOut)
+                        .withEndAction { if (ov.parent != null) host.removeView(ov) }
+                        .start()
+                }
+            }
+        }, 3200)
     }
 
     // 稿recClear(652):二次确认后清空 —— 改成稿 L804-810 的底部面板
@@ -2014,6 +2276,21 @@ private fun recLoad() {
         }
     }
 
+    // 爆仓线是当前行情页的第二支撑；可选 lkCap 只负责目标上限/越线判断。
+    private fun paintLiqGap() {
+        if (!::statLiqGap.isInitialized) return
+        val line = liquidationLinePresentation(currentCalcLiqForLine, currentMarketSupport2ForLine)
+        if (line == null) {
+            statLiqGap.visibility = View.GONE
+            return
+        }
+        statLiqGap.text = "爆仓线 ${t7formatField(line.support2, 2)}"
+        statLiqGap.setTextColor(if (line.exceeded) attrColor("colorRed") else attrColor("colorFaint"))
+        statLiqGap.setTypeface(null, if (line.exceeded) android.graphics.Typeface.BOLD
+                                     else android.graphics.Typeface.NORMAL)
+        statLiqGap.visibility = View.VISIBLE
+    }
+
     // 稿paintCap(394-396):爆仓卡第二行灰字「目标上限 X」(t120 改名),无上限收起
     private fun paintCap() {
         val c = lkCap
@@ -2026,13 +2303,13 @@ private fun recLoad() {
         }
     }
 
-    // 稿.stat.bad:爆仓卡红框(稿1px CSS边框≈density取整像素,圆角8dp)
+    // 稿.stat.bad:爆仓卡红框(稿1px CSS边框≈density取整像素,圆角10dp=r-input)。r9:方向-B 0 命中 stat.bad(旧稿遗留,无稿依据),按三档口径(设计语言.md:22)取 r-input 10dp,与常态 calc_tile_bg / 稿 .calc-tile(四屏-计算页.html:141-143)一致。
     private fun markLiqBad() {
         statLiqCard.background = android.graphics.drawable.GradientDrawable().apply {
             setColor(android.graphics.Color.TRANSPARENT)
             setStroke((resources.displayMetrics.density + 0.5f).toInt().coerceAtLeast(1),
                 attrColor("colorRed"))
-            cornerRadius = resources.displayMetrics.density * 8f
+            cornerRadius = resources.displayMetrics.density * 10f
         }
     }
 
@@ -2071,7 +2348,23 @@ private fun recLoad() {
         calcNote.text = src
     }
 
-    fun linkCalc(sup: List<Double>) {
+    /**
+     * 这笔联动回调**是不是清空前那一批**（是 ⟹ 一律丢弃）。
+     *
+     * @param batchSeq 回调**自己那一批**的请求代号（MktPanel.shownSeq / paintTgt 的 seq）。
+     *   ⚠ 不是回调发生时的当前 reqSeq：旧回调会被当成本轮新批次，正是要防的错。
+     *   ⚠ 若这个代号在清空之后才产生（`> 屏障`），说明它是用户清空后重新进入同品种
+     *     的新一轮取数 —— 必须放行，否则 Pl/Ph 与自动网格永久失效。
+     */
+    private fun linkBlockedAfterClear(batchSeq: Int): Boolean {
+        if (linkBlockedSeq < 0 || linkBlockedSym.isEmpty()) return false
+        // 跨品种时屏障不生效：旧品种回调由 MktPanel 的 reqSeq/stillSame 双守卫拦。
+        if (normSym(curCalcSym()) != linkBlockedSym) return false
+        return batchSeq <= linkBlockedSeq
+    }
+
+    fun linkCalc(sup: List<Double>, batchSeq: Int) {
+        if (linkBlockedAfterClear(batchSeq)) return
         // ⚠⚠ 2026-10-07 用户实报「网格数量还是没有自动计算，都有步长阈值了」——**根因就在这道门槛**。
         // 【现象】行情页 00700 只有**一个**支撑（第一支撑 52.85，无第二支撑），原门槛
         //   `if (sup.size < 2) return` 于是直接返回：最低价不写入 → tryAutoGridN 拿不到 pl
@@ -2084,9 +2377,14 @@ private fun recLoad() {
         // 【用户裁定覆盖稿】用户要的是「有步长阈值就自动算」⟹ 拆开判：
         //   支撑≥1 就写最低价；第二支撑有则写 cap，无则 lkCap 保持 null
         //   （null 本来就是已支持的常态，见 L350 记录回填 / L2939 解绑）。
+        val support2ForLine = secondSupportForLiqLine(sup)
+        if (currentMarketSupport2ForLine != support2ForLine) {
+            currentMarketSupport2ForLine = support2ForLine
+            paintLiqGap()
+        }
         if (sup.isEmpty()) return
         val s1 = sup[0]
-        val s2 = sup.getOrNull(1)   // ⚠ 可空：单支撑品种没有上限档，不构型由它决定
+        val s2 = support2ForLine   // ⚠ 可空：单支撑品种没有上限档，不构型由它决定
         val prev = lkPrev
         if (prev != null && prev.first == s1 && prev.second == s2) return
         lkPrev = Pair(s1, s2)
@@ -2116,7 +2414,8 @@ private fun recLoad() {
 
     // 稿linkPhigh(406-414):Nasdaq机构目标均价>现价且>当前最低价才写入计算页最高价;
     // 最低价非数字(NaN)放行;同值(LKph门)不打扰手改
-    fun linkPhigh(avg: Double, cur: Double) {
+    fun linkPhigh(avg: Double, cur: Double, batchSeq: Int) {
+        if (linkBlockedAfterClear(batchSeq)) return
         if (!(avg > 0) || !(cur > 0)) return
         if (avg <= cur) return
         // ⚠ 2026-10-02 t7：输入框现在可能带千分位（稿 L2201），解析前先剥掉，与 getNum 同款。
@@ -2148,11 +2447,8 @@ private fun recLoad() {
     // 网格模式:3.7.2无独立控件,记录值回填到状态(重算时继续写回该品种的模式)
     private var gridMode = "geo"
 
-    // 品种归一化:大写 + 4位港股补零到5位(1211→01211)
-    private fun normSym(s: String): String {
-        val u = s.trim().uppercase(java.util.Locale.US)
-        return if (Regex("^\\d{4}$").matches(u)) "0$u" else u
-    }
+    // 品种归一化：大写 + 天然气别名收敛（港股/A股已下线，不再按市场补零/加前缀）
+    private fun normSym(s: String): String = MktData.canonicalSym(s)
 
     // 费率/维持保证金率:记录存小数(0.0005),输入框是百分数(0.05)→回填×100,8位小数去尾
 
@@ -2333,6 +2629,7 @@ private fun recLoad() {
             else -> calcPage
         }
         body.addView(v)
+        if (name == "mkt" || name == "calc" || name == "setup") paintStaticCardShadows()
         v.setPadding(0, sbTop, 0, 0) // 真融合:换入页垫静止位,clipToPadding=false放行滚动穿越
         playPageAnim(v, anim)
         paintTabs()
@@ -2366,6 +2663,82 @@ private fun recLoad() {
                 v.animate().alpha(1f).translationY(0f)
                     .setDuration(220).setInterpolator(pgEaseOut).start()
             }
+        }
+    }
+
+    private fun motionEnabled(): Boolean =
+        try { android.animation.ValueAnimator.getDurationScale() > 0f }
+        catch (_: Throwable) { true }
+
+    /** 只改变可见性过渡，不改变折叠区的最终尺寸、颜色或布局参数。 */
+    private fun animateVisibility(v: View, show: Boolean) {
+        v.animate().cancel()
+        if (!motionEnabled()) {
+            v.visibility = if (show) View.VISIBLE else View.GONE
+            resetMotion(v)
+            return
+        }
+        val d = resources.displayMetrics.density
+        val offset = 6f * d
+        if (show) {
+            v.visibility = View.VISIBLE
+            v.alpha = 0f
+            v.translationY = -offset
+            v.animate().alpha(1f).translationY(0f)
+                .setDuration(220).setInterpolator(pgEaseOut)
+                .withEndAction {
+                    v.alpha = 1f
+                    v.translationY = 0f
+                }.start()
+        } else {
+            if (v.visibility != View.VISIBLE) return
+            v.animate().alpha(0f).translationY(-offset)
+                .setDuration(160).setInterpolator(pgEaseOut)
+                .withEndAction {
+                    v.visibility = View.GONE
+                    v.alpha = 1f
+                    v.translationY = 0f
+                }.start()
+        }
+    }
+
+    private fun resetMotion(v: View) {
+        v.animate().cancel()
+        v.alpha = 1f
+        v.translationX = 0f
+        v.translationY = 0f
+    }
+
+    /** 计算结果更新时的轻微数值强调，数值本身仍立即写入。 */
+    private fun animateResultValue(v: View) {
+        v.animate().cancel()
+        if (!motionEnabled()) {
+            resetMotion(v)
+            return
+        }
+        val d = resources.displayMetrics.density
+        v.alpha = 0.55f
+        v.translationY = 5f * d
+        v.animate().alpha(1f).translationY(0f)
+            .setDuration(240).setInterpolator(pgBezier).start()
+    }
+
+    /** 明细已重建后逐行进入；仅使用 alpha/translation，不改行高。 */
+    private fun animateGridRows() {
+        if (!::rows.isInitialized) return
+        if (!motionEnabled()) {
+            for (i in 1 until rows.childCount) resetMotion(rows.getChildAt(i))
+            return
+        }
+        val d = resources.displayMetrics.density
+        for (i in 1 until rows.childCount) {
+            val row = rows.getChildAt(i)
+            row.animate().cancel()
+            row.alpha = 0f
+            row.translationY = 5f * d
+            row.animate().alpha(1f).translationY(0f)
+                .setStartDelay(minOf(i * 12L, 180L))
+                .setDuration(220).setInterpolator(pgEaseOut).start()
         }
     }
 
@@ -2439,7 +2812,6 @@ private fun recLoad() {
      *     不能同时留」—— 那是为了让指示条落在灰线上。现在两者都归宿主 padding（标签自身 paddingTop
      *     已删），不存在叠加问题。
      */
-
     /**
      * 主题三段的两态 —— 2026-10-16 t50 换成**方向 B §2.4-3.6** 的取值：
      *   选中 = **抬起的药丸**：底 seg_sel（`colorSurfaceRaised`，浅 #FFFFFF / 深 #272E38）
@@ -2473,8 +2845,8 @@ private fun recLoad() {
             btn.setTextColor(android.content.res.ColorStateList(
                 arrayOf(intArrayOf(android.R.attr.state_pressed), intArrayOf()),
                 intArrayOf(ink, rest)))
-            btn.setTypeface(null, if (on) android.graphics.Typeface.BOLD
-                              else android.graphics.Typeface.NORMAL)
+            btn.setTypeface(if (on) resources.getFont(R.font.inter_semibold) else null,
+                            android.graphics.Typeface.NORMAL)  // t95/C-39：选中段字重按稿取 600（theme.css:522 fw-semibold + :189）；minSdk 26 ⟹ create(family,600,false) 属 API 28+ ⟹ 取 600 面字体资源 res/font/inter_semibold.ttf
             btn.elevation = if (on) elev1 else 0f
         }
     }
@@ -2493,6 +2865,43 @@ private fun recLoad() {
     // 稿 L670-671 只有一处 `heroSub`：`over?'其余结果全部归零' : saved?'已保存':'● 未保存'`。
     // **同一件事只留一个主人。**（与 t118「两套真相」同一个病。）
     // 保存动作的真状态仍然要写：改为驱动 heroSub，而不是另开一个 view。
+    /**
+     * 保存按钮的两态样式：`on` = 「已保存」态（白底细边 + faint 字），`false` = 常态（主色实底 + 白字）。
+     * ⚠ 2026-11-04：从 onCreate 里的局部函数提上来，因为 [idle] 也要用它把按钮复位。
+     */
+    private fun saveBtnSaved(on: Boolean) {
+        if (!::saveBtn.isInitialized) return
+        // ⚠⚠ 2026-11-04 用户报「按钮四个角有黑色」：真机上按钮的 elevation 阴影是按 **view 轮廓** 画的，
+        //   而轮廓来自 background 的 outline；换过一次背景（已保存态 → GradientDrawable）后，
+        //   某些机型上会留下一个**方角**轮廓 ⟹ 圆角之外露出四块深色三角。
+        //   ⟹ 这里双重保险：① 显式给按钮一个**圆角**轮廓（10dp，与底图同档）；
+        //     ② 关掉按钮自带的 elevation 动效（Theme.Material 的 Button 默认有 stateListAnimator）。
+        saveBtn.outlineProvider = object : android.view.ViewOutlineProvider() {
+            override fun getOutline(view: android.view.View, outline: android.graphics.Outline) {
+                val r = 10f * view.resources.displayMetrics.density
+                outline.setRoundRect(0, 0, view.width, view.height, r)
+            }
+        }
+        saveBtn.stateListAnimator = null
+        saveBtn.elevation = 0f
+        if (on) {
+            val dm = saveBtn.resources.displayMetrics
+            saveBtn.background = android.graphics.drawable.GradientDrawable().apply {
+                cornerRadius = 10 * dm.density
+                setColor(android.graphics.Color.TRANSPARENT)
+                setStroke(Math.max(1, (1 * dm.density).toInt()), attrColor("colorBorder"))
+            }
+            saveBtn.setTextColor(attrColor("colorFaint"))
+        } else {
+            // ⚠ 2026-11-04：idle() 可能在 onCreate 还没捕获到常态底之前就被调用（TextWatcher）。
+            //   那一刻 saveBtnBg0 仍是 null —— 直接写下去会把按钮刷成**透明底 + 透明字**（实测整块消失）。
+            //   ⟹ 没捕获到就不要动它。
+            val bg = saveBtnBg0 ?: return
+            saveBtn.background = bg
+            saveBtn.setTextColor(saveBtnInk0)
+        }
+    }
+
     private fun t105SetDirty(dirty: Boolean) {
         if (!::heroSub.isInitialized) return
         if (dirty) {
@@ -2507,59 +2916,109 @@ private fun recLoad() {
     }
 
     /**
-     * t135 (1):方向改**填充分段**。按稿 L254-262 的 `Seg` 真实实现:
-     *   容器:inline-flex + `border 1px --line` + `borderRadius 8` + `overflow hidden`
-     *   段内:`padding sm?'7px 11px'` + `fontSize sm?T.note`
-     *   选中:`background var(--ac)` + 字重 600
-     *   未选中:透明底 + 字重 400
+     * ⚠ 2026-10-29 t34 · **本函数已空转，保留作锚点**（用户裁定 · 方案 C：方向只作展示、不是按钮）。
      *
-     * t134 之前这里**只切 textColor**,所以是「纯紫字无底色」——
-     * 那是 t134 卡住的原因(要改 Kotlin)。本轮加上 background 与字重。
+     * 原来它做两件事，现在都不需要了：
+     *   ① 用 `seg_sel / seg_unsel` + `colorInk/colorSub` + BOLD/NORMAL + `elev_1` 把「做多」画成**药丸段**
+     *      （r8 的 C-9 口径）；② 供 `sideLong.setOnClickListener` 重算后重画方向。
+     * 「做多」现在是 **XML 静态状态徽标**（page_calc.xml：@drawable/side_badge_bg = colorTealBg + r999，
+     *   字色 ?attr/colorTeal、字阶 fs_micro、600→BOLD），样式真值全在资源里 ⟹
+     *   **运行期一律不许再覆写**：再调 setBackgroundResource(seg_sel) / setTextColor(ink) / elevation
+     *   会把徽标打回药丸，正是用户这次要消掉的「丑」。
+     *
+     * 为什么保留而不删（本仓「0 调用点 ≠ 死代码」，同 `draftOnFill` / `recLoad` 先例）：
+     *   做空段与 `sideShortMode` 整套公式仍在（t105..t341 大量引用，只是屏上恒为做多）。
+     *   若日后恢复做空，这里就是「按方向重画」的唯一落点：补回 `seg_sel / seg_unsel` 两态 + 两个 item。
+     *   ⚠ 恢复时必须同时补齐四处：page_calc.xml 的 side_short 节点 + `sideShort` 字段与 findViewById
+     *     + 本函数的方向着色 + sideLong 的点击监听 —— 缺一即崩（详见 onCreate 里那段墓碑）。
      */
     private fun paintSide() {
-        if (!::sideLong.isInitialized) return
-        val primary = attrColor("colorPrimary")
-        // ⚠ t11 (2026-10-02) 照稿改 D1：选中段文字原来取共享 token `colorOnPrimary`，
-        // 而那个 token 两套主题都是纯白 ⟹ 深色下「做多/做空」选中段是白字压 #987DEF，
-        // **只有 3.22:1，不过 AA 4.5**。与 t10 在设置屏 Seg 修的是**完全同一条缺陷**。
-        // 照稿改取 `draftOnFill()`：深色 → 稿 L99 的 oklch(0.160 0.012 265) = **#0B0D13**
-        // ⟹ 6.03:1 达标（稿 L97-98 原话：「紫底配白字在这里恰好选错了方向」）。
-        // **没有改 colorOnPrimary 本身** —— 它是 9 处共享 token，理由见 draftOnFill() 注释。
-        // 浅色走 draftOnFill 的 else 分支，值仍是 colorOnPrimary(#FFFFFF) ⟹ **浅色零变化**。
-        val onPrimary = draftOnFill()
-        val ink2 = attrColor("colorSub")
-        val padH = (11 * resources.displayMetrics.density).toInt()
-        val padV = (7 * resources.displayMetrics.density).toInt()
-        fun seg(v: TextView, on: Boolean) {
-            v.setTextColor(if (on) onPrimary else ink2)
-            v.setTypeface(null, if (on) android.graphics.Typeface.BOLD
-                              else android.graphics.Typeface.NORMAL)
-            v.setPadding(padH, padV, padH, padV)
-            // 稿 L256-264 逐字: 容器 `inline-flex` + `border:1px var(--line)`
-            //   + `borderRadius:8` + `overflow:hidden`, **段内只有背景色**:
-            //   `background: val===o[0] ? 'var(--ac)' : 'transparent'`, 没有描边没有圆角。
-            // 所以段只画**一块纯色矩形**; 描边、圆角、以及「选中段内侧两角被切直」
-            // 全部由容器的 seg_box + clipToOutline(= overflow:hidden) 负责。
-            //
-            // ⚠ 改前这里给**每一段**都画了 1px 描边 + 8dp 圆角, 而容器那层
-            //   (seg_box) 当时因为 XML 标签提前闭合**一直没生效** —— 所以看着是对的。
-            //   容器修好之后若不改这里, 就变成**两层描边 + 两套圆角**。
-            //   这也解释了为什么上一轮的症状是「两个独立药丸中间有缝」(A.4 复核 #92)。
-            v.background = android.graphics.drawable.GradientDrawable().apply {
-                shape = android.graphics.drawable.GradientDrawable.RECTANGLE
-                setColor(if (on) primary else android.graphics.Color.TRANSPARENT)
-            }
-        }
-        seg(sideLong, !sideShortMode)
-        // ⚠ 2026-10-03 用户裁定删「做空」：side_short 节点已不存在 ⟹ 这一行连同
-        //   `sideShort` 字段一起删了。sideShortMode 与整套做空公式仍在，只是屏上进不去。
-        //   ⚠ 若日后要把做空加回来：恢复 page_calc.xml 的 side_short TextView +
-        //     MainActivity 的 `sideShort` 字段与 findViewById + 这一行 seg(...)，三处缺一即崩。
+        // 空实现：徽标样式真值在 res（drawable/side_badge_bg.xml + page_calc.xml 的 side_long）。
+        // 这里刻意什么都不做 —— 任何 setBackground/setTextColor/setElevation 都会把徽标打回药丸。
     }
 
     private fun paintDbl() {
         if (!::dblBtn.isInitialized) return
         dblBtn.isChecked = dbl   // t104:Button 配色 -> Switch 勾选
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════════════════════
+    // 2026-10-29 t36 · 开关轨道**颜色过渡**（用户反馈：「蓝色是突然消失的不是渐变」）
+    //
+    // 问题：`drawable/switch_track.xml` 是 `<selector>`，颜色由状态直接给出 ⟹ 平台只在状态变化时
+    //   重读一次，**瞬时跳变**；而滑块的**位置**有平台动画 ⟹ 观感是「钮在滑、轨道早已换完色」。
+    // 做法：切换的那一瞬间由 Kotlin 用 ValueAnimator + ArgbEvaluator **临时接管**轨道 drawable，
+    //   逐帧 `dblBtn.track = GradientDrawable(插值底, 1dp 插值描边)`；动画一结束立刻
+    //   `setTrackResource(R.drawable.switch_track)` 把轨道交回 selector ——
+    //   **终态色与「开+按压」态仍由 selector 独家负责**（本文件不复制那三档色值）。
+    //
+    // ⚠ 动画开关必须尊重系统设置（本仓既有约定，见 motionEnabled / playPageAnim / animateSugHeight）：
+    //   动画缩放 = 0（无障碍/开发者选项关动画）时**直接一帧到位**，不播、不留中间色。
+    // ⚠ 快速连点（中途反向）：先 cancel 上一个 animator，再**从当前帧颜色起播**
+    //   （dblTrackBg/dblTrackStroke 每帧记账），否则颜色会跳回起点。
+    // ⚠ 时长/插值器沿用本仓「开关与切页」那一族：180ms + pgEaseOut（不新建插值器）。
+    // ══════════════════════════════════════════════════════════════════════════════════════════
+
+    /** 轨道两态终色（底, 描边）—— 与 `drawable/switch_track.xml` 的两个 item 逐 token 对齐，**只读 token、不写字面量**。 */
+    private fun t36DblTrackTarget(on: Boolean): Pair<Int, Int> =
+        if (on) attrColor("colorAccentFill") to attrColor("colorOnPrimary")
+        else attrColor("colorTrackOff") to attrColor("colorControlOutline")
+
+    /** 过渡期用的临时轨道：形状/圆角/描边宽度与 `switch_track.xml` 一致（胶囊 = 半高、1dp 描边）。 */
+    private fun t36DblTrackDrawable(bg: Int, strokeColor: Int): android.graphics.drawable.GradientDrawable {
+        val density = resources.displayMetrics.density
+        val h = if (dblBtn.height > 0) dblBtn.height else (26 * density).toInt()   // 兜底 = layout 的 26dp
+        return android.graphics.drawable.GradientDrawable().apply {
+            shape = android.graphics.drawable.GradientDrawable.RECTANGLE
+            cornerRadius = h / 2f
+            setColor(bg)
+            setStroke((1 * density).toInt().coerceAtLeast(1), strokeColor)
+        }
+    }
+
+    private fun t36AnimateDblTrack(on: Boolean) {
+        if (!::dblBtn.isInitialized) return
+        dblTrackAnim?.cancel()
+        dblTrackAnim = null                      // 先置空：被 cancel 的那条 onAnimationEnd 据此判定「已被接管」
+        val (toBg, toStroke) = t36DblTrackTarget(on)
+        if (!motionEnabled()) {
+            // 系统关动画 ⟹ 一帧到位；终态与按压态都交回 selector（不残留任何中间色）。
+            dblTrackBg = toBg
+            dblTrackStroke = toStroke
+            dblBtn.setTrackResource(R.drawable.switch_track)
+            // ⚠ 2026-10-29 t36（实测踩到）：setTrackResource 只换 drawable 实例，**不会**把当前状态
+            //   灌给它（drawableStateChanged 只在状态变化时触发）⟹ selector 停在默认 item = 关态灰轨，
+            //   动画末尾会从蓝「啪」地跳回灰。必须显式补一次 setState。
+            dblBtn.trackDrawable?.setState(dblBtn.drawableState)
+            return
+        }
+        val (offBg, offStroke) = t36DblTrackTarget(!on)
+        // 起点：中途反向时用**当前帧**颜色；否则用另一端终色（第一次切换时 dblTrackBg 还是 0）。
+        val fromBg = if (dblTrackBg != 0) dblTrackBg else offBg
+        val fromStroke = if (dblTrackStroke != 0) dblTrackStroke else offStroke
+        val argb = android.animation.ArgbEvaluator()
+        val anim = android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = 180L
+            interpolator = pgEaseOut
+            addUpdateListener { a ->
+                val t = a.animatedValue as Float
+                dblTrackBg = argb.evaluate(t, fromBg, toBg) as Int
+                dblTrackStroke = argb.evaluate(t, fromStroke, toStroke) as Int
+                dblBtn.setTrackDrawable(t36DblTrackDrawable(dblTrackBg, dblTrackStroke))
+            }
+            addListener(object : android.animation.AnimatorListenerAdapter() {
+                override fun onAnimationEnd(a: android.animation.Animator) {
+                    if (dblTrackAnim !== a) return       // 快速连点：已被下一次切换接管，不许还原
+                    dblTrackAnim = null
+                    dblTrackBg = toBg
+                    dblTrackStroke = toStroke
+                    dblBtn.setTrackResource(R.drawable.switch_track)   // 交回 selector（终态 + 按压态）
+                    dblBtn.trackDrawable?.setState(dblBtn.drawableState)
+                }
+            })
+        }
+        dblTrackAnim = anim
+        anim.start()
     }
 
     fun hideKeyboard(v: View) {
@@ -2597,9 +3056,28 @@ private fun recLoad() {
     }
 
     // v4§7 回前台取一次汇率(缓存6h内不动网;无轮询、无定时器、无后台常驻)
+    // ⚠ 2026-10-27 起本函数**多了前台定时拉取**（用户裁定，见 [autoPullTick] 段注释）：
+    //   onResume 开闸并排第一拍，onPause 关闸并撤掉排队中的 tick ⟹ 后台零请求。
+    //   ⚠ 从后台回来时**若距上次拉取已超过一个周期就立刻补一拍**（否则回来要先看 5 分钟旧数据）；
+    //     首次进入前台不补 —— 冷启动那条路 onCreate 本来就会取一轮，补一拍只会重复打一次。
     override fun onResume() {
         super.onResume()
         MktData.FX.ensure(this)
+        autoPullOn = true
+        uiHandler.removeCallbacks(autoPullTick)
+        if (lastAutoPullAt == 0L) lastAutoPullAt = System.currentTimeMillis()
+        val overdue = System.currentTimeMillis() - lastAutoPullAt >= AUTOPULL_MS
+        uiHandler.postDelayed(autoPullTick, if (overdue) 0L else AUTOPULL_MS)
+    }
+
+    /**
+     * 进后台：**立刻停表**，并移除已经排队但还没跑的那一拍。
+     * 这是「app 在后台就不拉取」的唯一实现点 —— 没有第二处、也不需要再判断一次可见性。
+     */
+    override fun onPause() {
+        super.onPause()
+        autoPullOn = false
+        uiHandler.removeCallbacks(autoPullTick)
     }
 
     // ---------- ⑦返回键分发(稿 OnBackPressedDispatcher 语义,内置同构微型版) ----------
@@ -2633,77 +3111,108 @@ private fun recLoad() {
     }
 
     /**
-     * #99 收尾 · 稿 L603 的编辑态宽 92px, 获焦时顺带收起该行单位。
+     * 2026-10-29 t33 · **参数格聚焦态改成稿的 `:focus-within` 行为**（函数名沿用旧名 t429EditWidth92，
+     * 但它**已经不再改任何宽度** —— 见末尾「为什么保留旧名」）。
      *
-     * 稿 L592-614 NumField 逐字(t13 回稿核过的原文, 不是转述):
-     *   L594  整行 onClick 调 setEditing(editing===k?null:k) —— 切编辑态是**点一下 toggle**
-     *        一个 React state, 不是 focus 事件; L602 另有 onBlur 收起。
-     *   L597  按 editing===k 三元切两套 DOM。
-     *   L598  编辑态 = 只有一个 input 元素;
-     *   L603  它的 style 里 width:92 / marginLeft:auto / textAlign:right / 圆角 6
-     *        —— **编辑态没有单位**。
-     *   L609  单位是**非编辑态**才出现的另一个 span(note 号字 + 3px 间距)。
+     * 稿真值（`四屏-计算页.html` / `theme.css` §6.6，逐字）：
+     *   `.calc-field, .calc-cell { background: bg-surface-2; border: 1px solid transparent; r-input }`
+     *   `.calc-field:focus-within, .calc-cell:focus-within { border-color: accent; background: bg-surface }`
+     *   ⟹ 获焦时**整格**（标签 + 输入体 + 单位一起）变白、外圈 1dp accent 描边；**布局不动、单位常驻**。
      *
-     * ⚠ **这里是近似, 不是同构, 别当成已经按稿实现了**:
-     *   App 侧只有**一个常驻 EditText**, 没有稿那种「点开才变可写」的只读态,
-     *   所以拿 focus 事件当稿的 editing: 获焦 = 进编辑态, 失焦 = 退出。
-     *   代价与依据, 说清楚:
-     *     - 稿没点之前那一行是只读 span; App 一直可写。这是 t105「回车才算」与
-     *       软键盘流程成立的前提, 改成只读态是比这一条大得多的改动, 本轮不做。
-     *     - 稿一次只编辑一个字段(editing 是个 key); App 靠系统焦点天然一次一个,
-     *       点另一个框时前一个先失焦还原, 视觉结果与稿切换一致。
-     *     - 92 是稿的 CSS px; 本页其余尺寸也是按 dp 一套口径取的, 这里同样按 dp。
+     * App 等价实现（Android 没有 `:focus-within`：子 View 获焦不会把 state_focused 传给父容器）：
+     *   · 输入体 `drawable/calc_input_bg` 两态**全透明** —— 面与框一律由格子容器承担；
+     *   · 获焦时把**格子容器**（= `edit.parent`，那 6 个 `.calc-field` / `.calc-cell` 的 LinearLayout）
+     *     的 background 换成 `drawable/calc_cell_bg_focus`（colorCard + 1dp colorAccentText + r10，
+     *     即稿的 `bg-surface + accent + r-input`）；
+     *   · 失焦换回 `drawable/calc_tile_bg`（surface2 + r10，稿的常态格）。
      *
-     * 行富余宽度的去处: 稿靠 marginLeft:auto 把输入框顶到右缘; Android 的
-     * layout_marginStart 没有 auto, 所以获焦时把 weight 让给**行首标签**
-     * (标签 0dp + weight 1), 失焦时原样还回输入框。标签文字左对齐, 加宽后视觉不变。
+     * ⚠ 旧行为（t429，2026-10-02）**整段删除**：获焦时「输入框压到 92dp + 标签吃富余 + 单位 GONE」。
+     *   那是 v1 稿「编辑态 width:92 / 无单位」的近似，与 Oct-28 稿的 `:focus-within` 直接冲突：
+     *   稿明确「整格亮起、布局不动、单位不隐藏」。删掉后：输入框**恒** 0dp + weight=1、
+     *   标签**恒** wrap_content、单位常驻 ⟹ 长数字（如 151,440.00）在框内横向滚动（singleLine），
+     *   既不会挤走标签/单位，也不会换行（回归项见 t33 报告的装机四图）。
      *
-     * 为什么非编辑态不收紧宽度: 常态要 8 行并排塞进两列, 撑满才排得下;
-     * 92dp 只在获焦那一个框上生效, 也就是本条要修的那 6.25dp 缺口。
+     * ⚠ 失焦的千分位格式化（t7，稿 L2201：12500 → 12,500.00）**必须留在这个 listener 里**：
+     *   `setOnFocusChangeListener` 是**覆盖式**的，再挂第二个会把整格高亮顶掉 ⟹ 两件事同住一个 listener。
      *
-     * 单位 TextView 在 page_calc.xml 里**没有 id**, 所以按**行内相邻位置**取
-     * (本框的下一个兄弟), 不新增 id、不加 lateinit(t147 栽过 lateinit 崩)。
-     * 「网格数量」那行本来就没有单位, 取不到就只调宽度, 不报错。
-     * 两态几何是**硬编码的不变量**, 失焦时无条件写回常态, **不读也不信 XML 的当前值**:
-     *   非编辑态: 本框 0dp + weight 1(撑满), 标签 wrap_content + weight 0
-     *   编辑态:   本框 92dp + weight 0,     标签 0dp + weight 1(吃富余, 把框顶到右缘)
-     * 理由(队长裁定): 「撑满」是**硬布局要求**不是偏好 —— 8 行要并排塞进两列。
-     * 拿 XML 的当前值当还原基准, 等于把防线的地基交给最可能被人改错的那一处;
-     * 在这里复述一次不是「把 XML 抄一遍」, 是**刻意的加固**: 即便有人误把
-     * 92dp 写进 XML, 非编辑态也不会跟着坏。稿 L603 的 92 是**运行期编辑态**的宽度,
-     * 本来就不该出现在 XML 里(page_calc.xml 那一侧另有一道注释警告)。
+     * ⚠ 为什么保留旧名 `t429EditWidth92`：全仓注释 / 报告 / 交接台账都用这个名字定位这段逻辑，
+     *   改名会让历史引用集体失锚（本仓惯例：保留锚点 + 在注释里写明现状，而不是悄悄改名）。
+     *   它现在只做两件事：**整格高亮**（容器背景两态切换）+ **失焦格式化**。
      */
     private fun t429EditWidth92(edit: EditText, dp: Int? = null) {
-        val row = edit.parent as? android.view.ViewGroup ?: return
-        val i = row.indexOfChild(edit)
-        if (i <= 0) return
-        val label = row.getChildAt(i - 1) as? TextView ?: return
-        val unit = row.getChildAt(i + 1) as? TextView
-        val eLp = edit.layoutParams as? LinearLayout.LayoutParams ?: return
-        val lLp = label.layoutParams as? LinearLayout.LayoutParams ?: return
-        val w92 = (92 * edit.resources.displayMetrics.density).toInt()
-        val wrap = LinearLayout.LayoutParams.WRAP_CONTENT
+        val cell = edit.parent as? View ?: return
         edit.setOnFocusChangeListener { _, hasFocus ->
-            if (hasFocus) {
-                unit?.visibility = View.GONE
-                eLp.width = w92
-                eLp.weight = 0f
-                lLp.width = 0
-                lLp.weight = 1f
-            } else {
-                unit?.visibility = View.VISIBLE
-                eLp.width = 0
-                eLp.weight = 1f
-                lLp.width = wrap
-                lLp.weight = 0f
-            }
-            edit.layoutParams = eLp
-            label.layoutParams = lLp
-            // ⚠ 2026-10-02 t7：失焦时按稿 L2201 把显示排成「补位 + 千分位」
-            // （12500 → 12,500.00、1 → 1.00）。**只能挂在这一个 listener 里** ——
-            // setOnFocusChangeListener 是【覆盖式】的，再挂第二个会把上面那段
-            // 编辑态宽度换算整个顶掉，那正是 t429 防了一晚上的事。
+            // 稿的 :focus-within == 容器换装（整格变白 + 1dp accent），输入体自己不再画任何东西。
+            cell.setBackgroundResource(
+                if (hasFocus) R.drawable.calc_cell_bg_focus else R.drawable.calc_tile_bg)
+            // t7：失焦时按稿 L2201 排成「补位 + 千分位」（12500 → 12,500.00、1 → 1.00）。
             if (!hasFocus) t7formatField(edit, dp)
+        }
+    }
+
+    /**
+     * 2026-10-29 t33 · 杠杆倍率格（`.calc-lev`）同样吃 `:focus-within` ——
+     * 稿 `theme.css:600-601` 把 `.calc-lev` 与 `.calc-field/.calc-cell` 写进**同一条**聚焦规则。
+     *
+     * 它的结构与那 6 个参数格不同：`in_L` 的父级是「标签 + 输入 + ×」的行内 LinearLayout（无底），
+     * **带面的是祖父**（杠杆格，background = calc_tile_bg）⟹ 这里显式上溯两层。
+     * 上溯失败就什么都不做（不抛异常、不影响输入）；杠杆格没有 t7formatField（它的值由
+     * LEV_MAX 夹取 + 数字键盘写入，不存在千分位格式化需求）。
+     */
+    private fun t33FocusLevCell(edit: EditText) {
+        val cell = (edit.parent as? View)?.parent as? View ?: return
+        edit.setOnFocusChangeListener { _, hasFocus ->
+            cell.setBackgroundResource(
+                if (hasFocus) R.drawable.calc_cell_bg_focus else R.drawable.calc_tile_bg)
+        }
+    }
+
+    /**
+     * 2026-10-29 t39 · 数值输入框的**长值自适应收缩**（把「500,001,100.00 被裁成 500,001,10(」修掉）。
+     *
+     * ⚠ 为什么 XML 的 autoSize 不够 —— 实测结论（不是推测，装机连拍量的）：
+     *   本页 7 个数值 EditText 都是 `singleLine="true"`，可**横向滚动**；平台对这类 TextView 走
+     *   `mHorizontallyScrolling` 分支（desired width = VERY_WIDE），autosize 引擎因此判定「永远放得下」
+     *   ⟹ 从不收缩。实测：`35.00` 与 `500,001,100.00` 的字符步进都是 **17.8px/字符**（字号没变），
+     *   长值右侧被裁掉。XML 里那组 autoSize 属性**保留**（对非滚动控件/将来平台有效、无副作用），
+     *   真正生效的是这里。
+     *
+     * 做法：以 `fs_title`(16sp) 为起点、按 **0.5sp** 步长往下试，用 `Paint.measureText` 量当前文本；
+     *   量出的宽度 ≤ 可用宽度（控件宽 − 左右 padding）即停。下限 **11sp**（= fs_micro）。
+     *   短值第一次就通过 ⟹ 仍渲染在 fs_title，不会被无谓缩小。
+     *   ⚠ 只改 `textSize`，不动 layout_width/weight（t10/t12 的栅格不动）。
+     *   ⚠ 可用宽度里再扣 **4dp 呼吸位**：文本右对齐，扣掉之后左侧会留出 4dp 缝，
+     *     长值才不会「数字紧贴标签」（用户原症状的一半就是这个贴）。
+     */
+    private fun t39FitText(edit: EditText) {
+        val dm = resources.displayMetrics
+        val gutter = 4 * dm.density
+        val avail = (edit.width - edit.paddingLeft - edit.paddingRight - gutter).toFloat()
+        if (avail <= 0f) return
+        val text = edit.text?.toString().orEmpty()
+        val maxPx = resources.getDimension(R.dimen.fs_title)
+        // ⚠ 2026-10-29 队长裁定（采纳 t39 的建议①）：**下限按 px 恒定，不随系统字号放大**。
+        //   改前 `applyDimension(SP, 11f)` = 11sp × fontScale ⟹ 系统字号 1.5 时下限也涨到 16.5sp，
+        //   而格子宽度是 dp（不随字号变）⟹ 极长值在 1.3/1.5 下必然仍被裁
+        //   （t39 实测：1.3 格宽 158px 显示「500,001,10」；1.5 格宽 132px 显示「500,001」）。
+        //   现在下限 = `11 * density`（11dp 的 px 值，与 fontScale 无关）：
+        //     · 短值仍从 fs_title 起量，**照旧随系统字号放大**（上限未动，可访问性意图保留）；
+        //     · 只有放不下时才收缩，且止于 11dp 的物理字号 ⟹ 长值不再被裁。
+        //   为什么不选「省略号 + 聚焦滚动」：数字被截断时省略号会被误读成另一个数，
+        //   而未聚焦态无法滚动查看 ⟹ 信息实际丢失。宁可小一点，也要完整。
+        val minPx = 11f * dm.density
+        val stepPx = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, 0.5f, dm)
+        val paint = android.graphics.Paint(edit.paint)
+        var size = maxPx
+        while (size > minPx) {
+            paint.textSize = size
+            if (paint.measureText(text) <= avail) break
+            size -= stepPx
+        }
+        if (size < minPx) size = minPx
+        // 只在真的变了才 set：避免每帧 requestLayout（也会和 EditText 的光标/滚动打架）。
+        if (kotlin.math.abs(edit.textSize - size) > 0.5f) {
+            edit.setTextSize(TypedValue.COMPLEX_UNIT_PX, size)
         }
     }
 
@@ -2764,9 +3273,9 @@ private fun recLoad() {
         body = findViewById(R.id.body)
         val inf = LayoutInflater.from(this)
         // ⚠ 2026-10-05 **必须在两个 Panel 构造之前 attach**：
-        //   `MktSuggest.favName` 是同步函数，自选行首帧就要读它；
-        //   名字缓存在 NameBook 里，这里晚一行 attach，首帧就会把中文名读成空。
-        MktData.NameBook.attach(this)
+        //   `MktSuggest.favName` 是同步函数，自选行首帧就要读它。
+        //   资产随 APK 分发，装载是同步读 raw，不联网、失败也只是空表（回落显示代码）。
+        UsNames.attach(this)
         calcPage = inf.inflate(R.layout.page_calc, body, false)
         settingsPage = inf.inflate(R.layout.page_settings, body, false)
         mktPage = inf.inflate(R.layout.page_mkt, body, false)
@@ -2785,7 +3294,7 @@ private fun recLoad() {
         //   ⚠ 2026-10-13 用户裁定**移除 versionCode 括号**（「图片上的东西可以去掉了」）——
         //     版号体系已随 v4.6 升档（第二位逢十进一），关于页只留 versionName。
         val vn = pkgInfo?.versionName
-        aboutV?.text = "网格交易收益计算器" + (vn?.let { " v$it" } ?: "")
+        aboutV?.text = "网格罗盘" + (vn?.let { " v$it" } ?: "")
         mktPanel = MktPanel(this, mktPage)
         favPage = inf.inflate(R.layout.page_fav, body, false)
         favPanel = FavPanel(this, favPage, mktPanel) { s, disp ->
@@ -2831,8 +3340,18 @@ private fun recLoad() {
         mktPanel.onDistCommitted = { sym ->
             if (sym.isNotEmpty()) favPanel.refreshFavDist(only = setOf(sym))
         }
+        // 行情页每取到一批新 K 线 → 通知自选页（丢旧距离缓存 + 按这一批重算那一行）。
+        // 2026-11-02 用户报「行情页拉到了，自选页还是旧值，得一个个点」：此前两屏之间没有数据事件，
+        // 自选只能等自己下一轮全量抓取。这里零新增请求（复用层吃 LastChart）。
+        mktPanel.onChartReady = { sym ->
+            if (::favPanel.isInitialized) favPanel.onMarketChartReady(sym)
+        }
 
-        // ④ 启动时刷新一次 —— **已移到 onCreate 末尾**，见那里的 autoRefreshOnce()。
+        // ④ 启动时刷新一次 —— **已移到 onCreate 末尾**。
+        //   ⚠ 2026-10-28 t12：原文写「见那里的 autoRefreshOnce()」—— 那个函数**已不存在**
+        //   （设置页「启动时刷新一次」开关在 t4 整行移除后，「启动刷新」收敛为**恒执行一次**，
+        //     入口就是 onCreate 末尾那段 `lastSymPersisted() → setSym + mkLoad`，没有独立函数名）。
+        //   这里只改注释，零逻辑改动。
         //   （原来就放在这里，但它会同步走到 restoreCalc，而计算页的视图那时还没绑定。）
         // t201 ⑧:原本这里给 mkt_back(「‹」返回按钮)挂 setOnClickListener, 已随该按钮一起删掉 ——
         // 稿 L522 的 AppBar 里只有标题。系统返回键在下面 OnBackPressedDispatcher, 未动。
@@ -2900,6 +3419,13 @@ private fun recLoad() {
             }
             t429EditWidth92(e, dp)
             t7formatField(e, dp)   // 首屏就排好：XML 预填的默认值也是「12,500.00 / 1.00」那一版
+            // 2026-10-29 t39：长值自适应收缩（XML 的 autoSize 对本页单行可滚动的 EditText 不生效，见 t39FitText）。
+            e.addTextChangedListener(object : android.text.TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+                override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+                override fun afterTextChanged(s: android.text.Editable?) { e.post { t39FitText(e) } }
+            })
+            e.post { t39FitText(e) }
             // t105「回车才算」四路触发,一次修全(此前只有拖滑杆能算,回车/IME ✓ 全不触发):
             //   ① **先算后收键盘**:原来 hideKeyboard(v) 在 onCalc() 之前,它内部会 v.clearFocus(),
             //      一旦抛异常 onCalc 永不执行 —— 真机实测就是这条(队长按 ✓ 出不来数)。
@@ -2913,7 +3439,7 @@ private fun recLoad() {
                     actionId == EditorInfo.IME_ACTION_UNSPECIFIED ||
                     actionId == EditorInfo.IME_ACTION_NEXT ||
                     actionId == EditorInfo.IME_ACTION_NONE) {
-                    onCalc()   // t143:不再吞异常(t121 教训);出错要能看见
+                    onCalc(userInitiated = true)   // t143:不再吞异常(t121 教训);出错要能看见
                     try { hideKeyboard(v) } catch (t: Throwable) { }
                     true
                 } else false
@@ -2921,7 +3447,7 @@ private fun recLoad() {
             e.setOnKeyListener { v, keyCode, ev ->
                 if (keyCode == android.view.KeyEvent.KEYCODE_ENTER &&
                     ev?.action == android.view.KeyEvent.ACTION_DOWN) {
-                    onCalc()   // t143:不再吞异常(t121 教训);出错要能看见
+                    onCalc(userInitiated = true)   // t143:不再吞异常(t121 教训);出错要能看见
                     try { hideKeyboard(v) } catch (t: Throwable) { }
                     true
                 } else false
@@ -2949,8 +3475,16 @@ private fun recLoad() {
                 override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
                 override fun afterTextChanged(e2: android.text.Editable?) {
                     if (suppressReset) return      // 程序写值 ⟹ 不是手改
-                    if (stepThr == null) return     // 还没自动算 ⟹ 不判
+                    val text = e2?.toString()?.trim().orEmpty()
+                    if (text.isEmpty()) {
+                        // 只有用户清空 N 才释放自动填充；下一次阈值/价格到位可再写入。
+                        nManual = false
+                        return
+                    }
+                    // 用户手填不依赖 stepThr 是否已到；否则先填 N 再等行情会被误判为自动态。
                     nManual = true
+                    val key = normSym(curCalcSym())
+                    if (key.isNotEmpty()) nManualSym = key
                 }
             })
         }
@@ -2975,12 +3509,16 @@ private fun recLoad() {
     //     若之后要未保存提示，**恢复一个最短版本**，不要把这一整行长回来。
         heroSub.visibility = View.GONE
         statVals["liq"] = calcPage.findViewById(R.id.stat_liq)
+        statLiqGap = calcPage.findViewById(R.id.stat_liq_gap)  // t43：格内副行
         statVals["roe"] = calcPage.findViewById(R.id.stat_roe)
         statVals["pos"] = calcPage.findViewById(R.id.stat_pos)
         statVals["sell"] = calcPage.findViewById(R.id.stat_sell)
-        // t104:一行四格里的 买格·卖格 / 见底权益,以及展开更多的 建仓成本/计价币种/美元汇率
+        // t104:一行四格里的 买格·卖格,以及展开更多的 建仓成本/计价币种/美元汇率
+        // ⚠ 2026-10-28 t4：**「见底权益」格已整块移除**（用户裁定），`stat_eqb` / `stat_eqb_unit`
+        //   两个节点不再存在 ⟹ 这里不再登记 `statVals["eqb"]`。**别按旧注释把它加回来**：
+        //   statVals 是 `MutableMap<String, TextView>`，findViewById 找不到时存进去的是 null，
+        //   后面 `statVals.values.forEach { it.text = ... }` 会在 idle()/onCalc() 里直接 NPE。
         statVals["grids"] = calcPage.findViewById(R.id.stat_grids)
-        statVals["eqb"] = calcPage.findViewById(R.id.stat_eqb)
         statVals["cost"] = calcPage.findViewById(R.id.stat_cost)
         statVals["ccy"] = calcPage.findViewById(R.id.stat_ccy)
         // 稿 L632:「计价币种 / 美元汇率」合并为一行,值写进 stat_ccy(见 L385)。
@@ -2991,6 +3529,9 @@ private fun recLoad() {
         levText = calcPage.findViewById(R.id.in_L)
         sideLong = calcPage.findViewById(R.id.side_long)
         moreToggle = calcPage.findViewById(R.id.more_toggle)
+        moreRow = calcPage.findViewById(R.id.more_row)      // r8 C-4: 第一段容器(卡面/内边距/整段可点)
+        moreChev = calcPage.findViewById(R.id.more_chev)    // r8 C-4: 8dp×8dp chevron
+        detChev = calcPage.findViewById(R.id.det_chev)      // r8 C-4: 同上(网格明细段)
         moreBox = calcPage.findViewById(R.id.more_box)
         detToggle = calcPage.findViewById(R.id.det_toggle)
 ladderNote = calcPage.findViewById(R.id.ladder_note)
@@ -3003,6 +3544,7 @@ ladderNote = calcPage.findViewById(R.id.ladder_note)
             override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
             override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
             override fun afterTextChanged(e: android.text.Editable?) {
+                if (suppressReset) return                    // 程序回填只写值，末尾 post 统一计算
                 val s = e?.toString()?.trim().orEmpty()
                 if (s.isEmpty()) return                      // 中间态：不算，等下一个字符
                 val d = s.toDoubleOrNull() ?: return
@@ -3012,7 +3554,7 @@ ladderNote = calcPage.findViewById(R.id.ladder_note)
                     levText.setSelection(levText.text.length)
                     return
                 }
-                onCalc()                                     // 界内：只重算，不回写
+                onCalc(userInitiated = true)                 // 界内：只重算，不回写
             }
         })
         // ⚠ 这里不调 t341SetLev：输入框的值**已经**是用户敲进来的值，
@@ -3020,26 +3562,50 @@ ladderNote = calcPage.findViewById(R.id.ladder_note)
         levText.setOnEditorActionListener { v, _, _ ->
             (v as? android.view.inputmethod.InputMethodManager)?.let { }
             v.clearFocus()
-            onCalc()
+            onCalc(userInitiated = true)
             true
         }
+        // ⚠ 2026-10-29 t33：杠杆格也吃稿的 `:focus-within`（theme.css:600-601 把 `.calc-lev`
+        //   与 `.calc-field/.calc-cell` 写进同一条聚焦规则）。输入体已改全透明 ⟹ 不挂这段，
+        //   杠杆格获焦时就没有任何视觉反馈了（旧行为是输入体自己画框，已随 t33 删除）。
+        //   2026-10-29 t39：同一套长值收缩也挂到杠杆输入（48dp 固定宽，比半宽格更窄）。
+        levText.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun afterTextChanged(s: android.text.Editable?) { levText.post { t39FitText(levText) } }
+        })
+        levText.post { t39FitText(levText) }
+        t33FocusLevCell(levText)
         // ⚠ 滑杆的 findViewById / setOnSeekBarChangeListener 已随节点删除一并移除。
 
-        // 做多/做空:当前项高亮(稿:Segmented 两段)
+        // 做多：**状态徽标，不是按钮**（2026-10-29 t34 · 用户裁定 · 方案 C）
         // ⚠ 2026-10-03 用户裁定删「做空」：side_short 节点已删 ⟹ 这里不能再绑它（会 NPE）。
         //   做空公式本身仍在，屏上只是进不去，默认恒为做多。
-        sideLong.setOnClickListener { sideShortMode = false; paintSide(); onCalc() }
-        paintSide()
+        // ⚠ 2026-10-29 用户裁定：方向只作展示，不再是按钮 ⟹ 本监听已删。
+        //   做空已于 2026-10-03 删除、sideShortMode 恒 false ⟹ 这个监听点了只是重算，没有可感知效果。
+        //   若日后要恢复做空：需同时恢复 page_calc.xml 的 side_short 节点 + sideShort 字段与 findViewById
+        //   + paintSide 的方向着色 + 本监听，四处缺一即崩。
+        //   ⚠ 同时把 page_calc.xml 的 side_long 从「徽标」改回「分段项」（背景/内边距/字色/字阶/可点性五项）。
+        // ⚠ 初始化时也不再调 paintSide()：徽标样式真值在 XML/资源里，运行期覆写会把它打回药丸。
         // 展开更多 / 网格明细:两个折叠区
-        moreToggle.setOnClickListener {
+        // ⚠ 2026-10-19 r8 · C-4：两段改竖排后各有自己的 chevron（`more_chev` / `det_chev`）：
+        //   **折叠 = 45°、展开 = -135°**（稿 `四屏-计算页.html:181` / `:184`）。旋转只能由宿主
+        //   View 给（drawable 自己转不了）⟹ 与面板的生灭同批设置。
+        //   容器 `more_row` 也挂同一段逻辑：稿 `.calc-collapse__btn { width:100% }` ⟹ 整段可点
+        //   （`more_toggle` 自己仍是可点的 TextView，同一次触摸只会命中其中一个，不会双触发）。
+        fun toggleMore() {
             val vis = moreBox.visibility != View.VISIBLE
-            moreBox.visibility = if (vis) View.VISIBLE else View.GONE
+            animateVisibility(moreBox, vis)
+            if (::moreChev.isInitialized) moreChev.rotation = if (vis) -135f else 45f
             // t167:「收起」二字归 ladder_note 独占,more_toggle 只报自己的名字
-        moreToggle.text = "展开更多"
+            moreToggle.text = "展开更多"
         }
+        moreToggle.setOnClickListener { toggleMore() }
+        if (::moreRow.isInitialized) moreRow.setOnClickListener { toggleMore() }
         detToggle.setOnClickListener {
             val vis = detBox.visibility != View.VISIBLE
-            detBox.visibility = if (vis) View.VISIBLE else View.GONE
+            animateVisibility(detBox, vis)
+            if (::detChev.isInitialized) detChev.rotation = if (vis) -135f else 45f
         t229SyncLadderNote()
         }
         detSum = calcPage.findViewById(R.id.det_sum)
@@ -3062,7 +3628,7 @@ ladderNote = calcPage.findViewById(R.id.ladder_note)
             statLiqCard.background = null
             statVals["liq"]?.setTextColor(attrColor("colorInk"))
             showErr(null)
-            onCalc()
+            onCalc(userInitiated = true)
         }
 
         dblBtn = calcPage.findViewById(R.id.dbl_btn)  // t104:文字按钮 -> Switch
@@ -3070,9 +3636,20 @@ ladderNote = calcPage.findViewById(R.id.ladder_note)
             if (dbl == on) return@setOnCheckedChangeListener
             dbl = on
             paintDbl()
-            onCalc()
+            // 2026-10-29 t36：轨道颜色跟着滑块一起过渡（终态与按压态仍由 switch_track selector 负责）。
+            if (dblTrackReady) t36AnimateDblTrack(on)
+            onCalc(userInitiated = true)
         }
         paintDbl()
+        // ⚠ t36：初始化那次 paintDbl() 触发的 isChecked 变化**不播颜色过渡**（冷启动不该有一段淡入）。
+        //   在首帧后再开门：否则恢复的 dbl=true 会让 App 一打开就演一遍「灰→蓝」。
+        dblBtn.post {
+            dblTrackBg = 0
+            dblTrackStroke = 0
+            dblBtn.setTrackResource(R.drawable.switch_track)   // 首帧由 selector 直接给终态
+            dblBtn.trackDrawable?.setState(dblBtn.drawableState)
+            dblTrackReady = true
+        }
         // 稿§1.1 保存数据按钮:默认disabled,点击落库暂存结果,1.6s后文案复原
         saveBtn = calcPage.findViewById(R.id.save_btn)
         // ⚠ 2026-10-03「清空数据」按钮：用户要求「计算界面也要有个清空数据的功能，
@@ -3102,30 +3679,54 @@ ladderNote = calcPage.findViewById(R.id.ladder_note)
         // 稿 L740-746:未保存 = 主色实底无边框;已保存 = 透明底 + 1px 边框 + 次级色。
         // 运行时构造而不是新加 drawable 文件:两态写在代码里,一眼看得见,也不动 res/drawable/**。
         // 还原用「原始背景」这个已解析好的 Drawable 实例,不在代码里复述资源名:
-        // page_calc.xml 里 save_btn 的 android:background = @drawable/save_btn_bg(shape,8dp 圆角),
+        // page_calc.xml 里 save_btn 的 android:background = @drawable/save_btn_bg(shape,10dp 圆角 = r-input),
         // 实色是 ?attr/colorPrimary(稿 L83 浅色 ac = oklch(0.495 0.165 292) = #6749B6)。
-        val saveBtnBg0 = saveBtn.background
-        val saveBtnInk0 = saveBtn.currentTextColor
-        // t201 ⑫ 按稿 L741-746 去掉保存按钮的 disabled 态。
-        // 删掉的四处(原行号): L106: saveBtn.isEnabled = false; L441: saveBtn.isEnabled = true; L1512: saveBtn.isEnabled = false; L1544: saveBtn.isEnabled = false
-        // 理由: 稿 L741 的 onClick 无条件 setSaved(true), div 无 disabled 概念;
-        //       按钮恒可点是稿的行为。两态文案(稿 L745)一条未删。
-        fun saveBtnSaved(on: Boolean) {
-            if (on) {
-                val dm = saveBtn.resources.displayMetrics
-                saveBtn.background = android.graphics.drawable.GradientDrawable().apply {
-                    cornerRadius = 8 * dm.density
-                    setColor(android.graphics.Color.TRANSPARENT)
-                    setStroke(Math.max(1, (1 * dm.density).toInt()),
-                        attrColor("colorBorder"))
+        // ⚠ 2026-11-04 恢复：用户要的就是「按钮自己变成状态文案」这一形态
+        //   （原话：「我说的是要像这样字保存」——要的是『已保存 2 条』『已删除 2 条』那种显示）。
+        //   上一版把它挪去状态行/Toast 是**理解错了**，这里按用户给的截图恢复：
+        //   保存 → 按钮变「已保存 N 条」+ 白底细边；清空 → 按钮变「已删除 N 条」。1.6s 后复原。
+        //   ⚠ 真正的要求是后半句：「要真的保存或删除才行」——落库/删库都已实测（见下）。
+        // ⚠⚠ 2026-11-04 用户报「保存/删除之后按钮上的文案不符合逻辑」：
+        //   改前点「保存数据」→ 按钮自己变成「已保存 N 条」并**换掉底色**（透明+细边），
+        //   点「清空数据」→ 同理变成「已删除 N 条」。两个问题：
+        //     ① **按钮的位置写的是状态**：按钮是「能点的动作」，变成状态后用户不知道还能不能再点
+        //        （尤其换了底色，看着像被禁用）；
+        //     ② 状态本来就有归属：稿 L670-671 的状态行（`heroSub`）写的正是「● 未保存 / 已保存」，
+        //        由 [t105SetDirty] 维护 —— 那才是状态该出现的地方。
+        //   ⟹ 现在：**按钮文案与样式恒定**（「保存数据」/「清空数据」），
+        //     一次性结果用 Toast 报（「已保存 N 条」/「已删除 N 条」），持续状态走状态行。
+        //   ⚠ 实测过「真的存/真的删」：点保存后 `gridcalc_records_v1` 里多一条 `{"sym":"XAUUSD"...}`，
+        //     点清空后回到 `[]` —— 行为没变，这次只改反馈形式。
+        saveBtnBg0 = saveBtn.background
+        saveBtnInk0 = saveBtn.currentTextColor
+        saveBtnSaved(false)
+        // ⚠ 2026-11-04 用户要「按下又抬起的动画」。
+        //   背景：上一轮为了消掉真机按钮四角的黑色三角，我把 Material 的 stateListAnimator 关了、
+        //   elevation 归零 —— 顺带把按下时那点"抬起来"的手感也一起拿掉了。
+        //   ⟹ 用**自己的缩放动画**补回来（不依赖 elevation，所以不会再引出阴影/方角轮廓）：
+        //     按下 0.96 / 90ms 缓出；抬起回 1.0 / 160ms 带轻微回弹（Overshoot 1.1）。
+        //   ⚠ 只做 setOnTouchListener 且 **return false**：不能吃掉事件，否则 OnClickListener 不触发。
+        fun pressFx(v: android.view.View) {
+            v.setOnTouchListener { view, ev ->
+                when (ev.actionMasked) {
+                    android.view.MotionEvent.ACTION_DOWN ->
+                        view.animate().scaleX(0.96f).scaleY(0.96f)
+                            .setDuration(90)
+                            .setInterpolator(android.view.animation.DecelerateInterpolator())
+                            .start()
+                    android.view.MotionEvent.ACTION_UP,
+                    android.view.MotionEvent.ACTION_CANCEL ->
+                        view.animate().scaleX(1f).scaleY(1f)
+                            .setDuration(160)
+                            .setInterpolator(android.view.animation.OvershootInterpolator(1.1f))
+                            .start()
                 }
-                saveBtn.setTextColor(attrColor("colorFaint"))
-            } else {
-                saveBtn.background = saveBtnBg0
-                saveBtn.setTextColor(saveBtnInk0)
+                false
             }
         }
-        saveBtnSaved(false)
+        pressFx(saveBtn)
+        if (::clearRecBtn.isInitialized) pressFx(clearRecBtn)
+
         saveBtn.setOnClickListener {
             // 稿 L741 的 onClick 是**无条件**的 setSaved(true); App 早退时【静默返回】,
             // 用户以为按钮坏了。审计 B 节 #12 给了两个选项, 这里选「早退给可见反馈」
@@ -3148,14 +3749,22 @@ ladderNote = calcPage.findViewById(R.id.ladder_note)
             save()
             pendingRec = null
             // 稿 L741 逐字「已保存 N 条」——必须带条数,否则用户不知道自己存了什么。
-            // (原来写死「已保存,继续计算后可再存」,既不含条数也不在稿里)
-            saveBtn.text = "已保存 ${recs.size} 条"
+            // ⚠⚠ 2026-11-04 用户第三次裁定：状态要**留在按钮里**，不许 1.6s 后自己掉回「保存数据」
+            //   （原话：「我让你在里面显示已保存和已删除，你怎么又给改回去了」）。
+            //   ⟹ 这里**不再 postDelayed 复原**；回到「保存数据」的唯一时机是 [idle]：
+            //     用户改了参数 ⟹ 屏上结果与已存记录不再自洽 ⟹ 按钮必须重新变成可保存的动作。
+            saveBtn.text = "已保存"
             saveBtnSaved(true)
-            // t105:保存后清脏 → 「● 已保存 · 品种」(只这两个字+品种,不加解释)
+            // t105:保存后清脏 → 状态行「已保存」
             t105SetDirty(false)
+            // ⚠ 2026-11-04 用户裁定「肯定要弹回去啊」：按钮显示「已保存」1.6s 后**自动复位**为「保存数据」。
+            //   恒驻会把按钮变成一块永久状态牌，之后用户根本点不动（看上去像已存过、不该再存）。
+            //   复位条件再加一道 [idle]：万一定时器被别处打断，用户一改参数也会复位。
             uiHandler.postDelayed({
-                saveBtn.text = "保存数据"
-                saveBtnSaved(false)
+                if (saveBtn.text == "已保存") {
+                    saveBtn.text = "保存数据"
+                    saveBtnSaved(false)
+                }
             }, 1600)
         }
         // ⚠⚠⚠ 2026-10-03 **设置页「数据」整块删除**（用户裁定：「把这个功能取消吧，我不需要了」）。
@@ -3181,34 +3790,12 @@ ladderNote = calcPage.findViewById(R.id.ladder_note)
         themeDark.setOnClickListener { setMode("dark") }
         paintThemeSeg()
 
-        // ④ 稿 L777-L779:「启动时刷新一次」= 可拨的 Switch(on={auto} set={setAuto})
-        // 用户裁定「功能要真的实现」⟹ 这个开关真的控制启动时的那一次取数:
-        //   开 → onCreate 末尾调 mktPanel.mkLoad() 重新取一次记住的品种
-        //   关 → 不自动取, 行情页沿用上次留下的数据(不报错、不空转)
-        // 默认开, 对齐稿 L849 useState(true)。
-        autoSw = settingsPage.findViewById<android.widget.Switch>(R.id.set_auto_sw)
-        autoSw.isChecked = prefs().getBoolean(PREF_AUTO_REFRESH, true)
-        // ④ 染成决策紫(稿 L779 的 Switch 与整个稿同一套配色)。平台 Switch 默认青绿,
-        //   放在这个紫调界面里像外来件。取色用本类早就在用的 attrColor,
-        //   所以【不新增 res/color 资源或目录】—— 上一轮拖这件事的理由是错的。
-        // t10 (2026-10-02) ① 轨道换自绘 drawable(稿 L871 的 44x26 圆角胶囊):
-        //   平台默认轨道即使 trackTintList 设成实色也只渲染出 ~30% 不透明的淡紫,
-        //   而 thumbTintList 同 API 生效 ⟹ 病在 drawable 侧, 只能换轨道本身。
-        //   绑定时设一次即可, 之后两态由 selector 的 state_checked 自己切, 不用每次重设。
-        autoSw.setTrackDrawable(resources.getDrawable(R.drawable.switch_track, theme))
-        // 2026-10-16 t50 · 方向 B §2.4-3.7 / §5.3-M10 的滑块几何 —— **装机实测 + 平台边界如实登记**：
-        //   轨道 44×26.9dp（布局给 44×26；多出的 0.9dp 是平台 Switch 的最小高度）✓
-        //   滑块 19.6dp（规格 20）✓
-        //   **开态位移实测 19.3dp（规格 16）** ✗ —— 滑块直径与位移 Android 不暴露尺寸 API，
-        //   平台按 thumb 固有尺寸与两侧内缩算；唯一能调它的 `Switch.setThumbOffset` 已在
-        //   **API 31 被移除**（本仓 compileSdk 33 ⟹ 编译期就 Unresolved reference，实测确认），
-        //   `android:thumbOffset` 同批废弃 ⟹ **要精确到 16dp 只能换自绘 thumb drawable**
-        //   （drawable 层，不在本任务 inScope）。差值 3.3dp 只影响滑块停靠的内缩，不影响两态可辨。
-        t211PaintSwitch(autoSw, autoSw.isChecked)
-        autoSw.setOnCheckedChangeListener { _: android.widget.CompoundButton, on: Boolean ->
-            prefs().edit().putBoolean(PREF_AUTO_REFRESH, on).apply()
-            t211PaintSwitch(autoSw, on)
-        }
+        // ⚠⚠ 2026-10-28 t4 · **设置页「启动时刷新一次」整行移除**（用户裁定）：
+        //   开关 `set_auto_sw` 已从 page_settings.xml 删掉 ⟹ 原先这里的
+        //   findViewById<Switch> / isChecked 初始化 / setTrackDrawable /
+        //   t211PaintSwitch 染色 / OnCheckedChangeListener / PREF_AUTO_REFRESH 写入
+        //   全部**成对下线**（节点不存在时 findViewById 返回 null，非空断言版会直接 NPE）。
+        //   行为收敛：启动刷新**恒为默认值「开」**，见 onCreate 末尾那次单次刷新。
 
         savedInstanceState?.let { b ->
             for ((k, e) in inp) b.getString("in_$k")?.let { e.setText(it) }
@@ -3235,10 +3822,14 @@ ladderNote = calcPage.findViewById(R.id.ladder_note)
         //   放晚了：finishLoad 的回填会早于 recLoad 执行 ⟹ 第一次进来读不到自己的记录。
         recLoad()
 
-        // ④ 启动时刷新一次(真的刷, 不是注释)。三道闸, 缺一不可:
-        //   1) 开关开着  2) 记得住上次看的品种  3) 那个品种现在确实还在
+        // ④ 启动时刷新一次(真的刷, 不是注释)。两道闸, 缺一不可:
+        //   1) 记得住上次看的品种  2) 那个品种现在确实还在
         // ⛔ 首次安装没有"上次看的品种" ⟹ 什么都不做, 绝不让 mkLoad 显示「先输入品种」。
         // ⛔ 只在 onCreate 跑这一次。搬到 onResume 就变成"每次回前台都刷" = 轮询, 硬门禁止。
+        // ⚠ 2026-10-28 t4：**原第三道闸「开关开着」已撤掉** —— 设置页那个「启动时刷新一次」
+        //   Switch 整行移除（用户裁定），行为收敛为**恒等于默认值「开」**（Oct-28 设置页稿：
+        //   「行为恒为默认启动刷新，不再需要暴露给用户」）。旧偏好键 auto_refresh_once 不再读，
+        //   曾经把它关掉的设备也会在下次冷启动刷新一次；取数逻辑（mkLoad / setSym）本身一字未动。
         //
         // ⚠⚠⚠ 2026-10-03 **必须放在这里（onCreate 最末），不能更早**。
         //   原来它在 :2458，早于计算页视图绑定（:2671 `calcErr = findViewById(...)`）。
@@ -3251,18 +3842,87 @@ ladderNote = calcPage.findViewById(R.id.ladder_note)
         //     setSym 会置 `fromFav = true`（本轮为「自选进入也回填」加的），
         //     于是这条**启动路径也被算作主动进入**，回填就此在绑定前开跑。
         //   ⟹ 两处改动叠加才炸：视图绑定顺序 + fromFav 语义。单看任一处都发现不了。
-        if (prefs().getBoolean(PREF_AUTO_REFRESH, true)) {
-            val lastM = mktPanel.lastSymPersisted()
-            if (lastM.isNotEmpty()) {
-                mktPanel.setSym(lastM)
-                mktPanel.mkLoad()
-            }
+        val lastM = mktPanel.lastSymPersisted()
+        if (lastM.isNotEmpty()) {
+            mktPanel.setSym(lastM)
+            mktPanel.mkLoad()
         }
         showTab(startTab)
+        // ⚠ 2026-11-02：启动即跑**一拍数据引擎**（自选表 + 当前行情）。
+        //   以前冷启动只取"上次看的那个品种"，自选其余行要等 5 分钟后那一拍才有数；
+        //   现在第一拍就在启动时打出去，两屏从第一屏起读的是同一批数据。
+        //   ⚠ 直接调 autoPull()（不用 autoPullTick）：那个 tick 在前台闸 autoPullOn=false 时
+        //     会直接返回，而 onResume 还没跑到 —— 会白丢一拍。
+        uiHandler.post { autoPull() }
     }
+    /**
+     * Static card views use the shared card style, but their parent-chain clipping
+     * can suppress the downward elevation shadow on API 28+. Keep the spot-shadow
+     * mapping in one runtime owner, matching MktPanel's card treatment.
+     */
+    private fun paintStaticCardShadows() {
+        val cards = listOf(
+            calcPage.findViewById<View>(R.id.calc_top_card),
+            calcPage.findViewById<View>(R.id.calc_params_card),
+            // ⚠ 2026-10-28 t4：四格区（保证金/触发价/网格数量/每格数量）本轮恢复成卡片，
+            //   它的抬升与 spot shadow 染色走同一个运行期主人 —— 不登记就会只剩一个描边、
+            //   浅色下没有 elev_1（父链 clipChildren 会吃掉向下阴影，这正是本函数存在的理由）。
+            calcPage.findViewById<View>(R.id.calc_grid_card),
+            calcPage.findViewById<View>(R.id.dbl_row),
+            calcPage.findViewById<View>(R.id.calc_hero_box),
+            // ⚠ 2026-10-29 t30：这里原有 `mktPage.findViewById<View>(R.id.mkt_metrics_card)` —— **已删**。
+            //   行情屏按稿彻底去卡片化（稿 theme.css §6.1 的透明组含 .mk-metrics / .mk-sup / .mk-price …
+            //   ⟹ background:transparent + border-radius:0 + box-shadow:none），本函数给它的
+            //   12dp 圆角 outline + elev_1 + spot 阴影正是「指标块还浮着一张圆角卡」的来源（实测：
+            //   其它四块已平，只有指标块还带一圈圆角阴影）。
+            //   ⚠ 同屏其它屏（计算 / 设置）的卡片**照旧**走本函数，别把整段删了。
+            settingsPage.findViewById<View>(R.id.settings_theme_card),
+            settingsPage.findViewById<View>(R.id.settings_about_card)
+        )
+        val dark = resolve(mode) == "dark"
+        val elevation = if (dark) 0f else resources.getDimension(R.dimen.elev_1)
+        val radius = 12f * resources.displayMetrics.density
+        for (card in cards) {
+            card.post {
+                var parent = card.parent
+                while (parent is android.view.ViewGroup) {
+                    parent.clipChildren = false
+                    parent.clipToPadding = false
+                    parent = parent.parent
+                }
+                card.outlineProvider = object : android.view.ViewOutlineProvider() {
+                    override fun getOutline(view: View, outline: android.graphics.Outline) {
+                        outline.setRoundRect(0, 0, view.width, view.height, radius)
+                    }
+                }
+                card.elevation = elevation
+                if (android.os.Build.VERSION.SDK_INT >= 28) {
+                    card.outlineAmbientShadowColor = Color.TRANSPARENT
+                    card.outlineSpotShadowColor = if (dark) Color.TRANSPARENT else 0x40101828
+                }
+            }
+        }
+    }
+
 }
 // t102 第1步:字号只认 res/values/dimens.xml 的 4 档(30/21/16/12),
 // 代码里不再出现裸数字字号 —— 迁移前散着 14 档、相邻常只差 1sp,眼睛建立不起主次。
 // 注意除以 scaledDensity 而不是 density:TextView.textSize 的单位是 **sp**,要跟着用户字号设置缩放。
 internal fun t102sp(ctx: android.content.Context, id: Int): Float =
     ctx.resources.getDimension(id) / ctx.resources.displayMetrics.scaledDensity
+
+internal data class LiqLinePresentation(val support2: Double, val exceeded: Boolean)
+
+internal fun secondSupportForLiqLine(supportsBelowCurrent: List<Double>): Double? =
+    supportsBelowCurrent.getOrNull(1)
+
+/** The visible line is a projection of current market support, independent of optional lkCap. */
+internal fun liquidationLinePresentation(
+    liqNow: Double?,
+    marketSupport2: Double?
+): LiqLinePresentation? {
+    val support2 = marketSupport2 ?: return null
+    val liquidation = liqNow ?: return null
+    if (!support2.isFinite() || !liquidation.isFinite()) return null
+    return LiqLinePresentation(support2, liquidation > support2)
+}

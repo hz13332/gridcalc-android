@@ -35,7 +35,33 @@
              ⟹ 标签与药丸**同心**，且文字位置与改前只差 0.8dp（实测 23.2dp → 24.0dp）。
            · 药丸**声明在标签之前**（FrameLayout 里后声明的盖在上面）⟹ 药丸在文字下面，不是盖住文字。
            · 1.9dp / 12.4dp / 14.3dp 三个**档外值全部收进 space_* 档**（t55 的 O4 那条）。
-         点击区域与等分关系不变：FrameLayout 仍是 layout_weight=1、仍整块可点。 -->
+         点击区域与等分关系不变：FrameLayout 仍是 layout_weight=1、仍整块可点。
+
+         ⚠⚠ 2026-10-19 r8 · **X-1 破例值登记（三处登记之① = 本注释）**：
+           药丸 layout_height = **39dp**、宿主 paddingTop = **10dp** —— 这两个值是
+           **7 档刻度（4/8/12/16/20/24/32）之外的破例值**；依据与理由逐条如下，**不要再「就近吸档」**：
+             · 稿 `theme.css:351-371`（下称稿）：`.gc-tabbar` min-height 61px、`.gc-tabbar__item`
+               `padding: 10px 8px 12px` + `background-clip: content-box` ⟹ 药丸 = 61 - 10 - 12 = **39px**
+               = 39px ⟹ **39dp**；项 paddingTop = 10px ⟹ **10dp**（R-1 全线 1:1，×0.9539 折算口径已作废）。
+             · **吸档在本例物理上不可行**：7 档最大就是 32dp，吸到 32dp = 改前的值 = X-1 报的差异本身
+               （「药丸 32dp vs 稿 38/39px」）⟹ 吸档等于不修。
+             · 底栏本来就被排除在档位扫描之外：稿 `theme.css:34-37` 与 `:263-267` 逐字把
+               `.gc-status / .gc-tabbar / .gc-navbar / .gc-theme-toggle` 及其后代排除在档位扫描外
+               （按真机尺寸取值）；`设计语言.md:120-129` 把底栏列进「设备框几何」表（几何真值，不是间距刻度）。
+             · 与本仓既有原则同源：`values\dimens.xml:56-60` 逐字「几何真值**不属视觉 token**」。
+             · 与本轮文件归属一致：`dimens.xml`（含 `values-night`）本轮只归计算组写 ⟹ 跨屏组只能用
+               **行内字面量**（即本文件），正好落在「破例 + 登记」这条路上。
+           三处登记 = ① 本注释；② `细节修复需求-r8_20261019.md` §3-①（四条理由原文）；
+             ③ `values\dimens.xml` 的几何真值段（**本轮由计算组代写**，跨屏组不碰该文件）。
+           ⟹ 期望项自身高 = 10 + 39 + 12 = **61dp** = 稿 61px ✓（1:1 之后一字不差）；
+             `tabbar` 的 `minHeight="61dp"` 保留（= 稿 `gc-tabbar-h` 变量 61px 的逐值）。
+           ⚠ 尺寸口径：底栏项**自身高** = 项 padding + 药丸；`tabbar` 容器在真机上另有
+             **24dp navigation bar inset padding**（edge-to-edge），**不计入项高** —— 别把它算进去。
+
+         ⚠ 2026-10-19 r8 · **X-2**：四处标签 `textSize` 由 `fs_title`(16sp) 改 **`fs_note`(12sp)**
+           （稿 `theme.css:361` `.gc-tabbar__item { font-size: var(fs-note) }`；`:184` 该变量 = **12px**，
+           字号 1:1 ⟹ 12sp）。16sp 是 t59 的遗留。映射表 §3 规则 23 原判「字号 ✅」**不成立**，
+           已回写为「字号 + 内边距两处偏差」（见 `方向B落点映射表_20261016.md` §3 规则 23）。 -->
     <!-- t350 稿 L243: tabbar 顶条 1px。底色换成了 @drawable/tabbar_top_line ——
          那个 drawable 是 layer-list, **自带 colorCanvas 底层**, 所以这一处是
          **替换**原来的 android:background="?attr/colorCanvas", 不是叠加。
@@ -55,13 +81,13 @@
             android:layout_weight="1"
             android:paddingStart="@dimen/space_2"
             android:paddingEnd="@dimen/space_2"
-            android:paddingTop="@dimen/space_2"
+            android:paddingTop="10dp"
             android:paddingBottom="@dimen/space_3">
             <!-- 药丸（沿用既有 id，不新增 view）：选中时 paintTabs() 换成 @drawable/tab_pill。 -->
             <View
                 android:id="@+id/tab_fav_bar"
                 android:layout_width="match_parent"
-                android:layout_height="@dimen/space_7"
+                android:layout_height="39dp"
                 android:layout_gravity="center"
                 android:background="@android:color/transparent" />
             <TextView
@@ -70,7 +96,7 @@
                 android:layout_height="wrap_content"
                 android:layout_gravity="center"
                 android:text="自选"
-                android:textSize="@dimen/fs_title" />
+                android:textSize="@dimen/fs_note" />
         </FrameLayout>
         <FrameLayout
             android:id="@+id/tab_mkt"
@@ -79,12 +105,12 @@
             android:layout_weight="1"
             android:paddingStart="@dimen/space_2"
             android:paddingEnd="@dimen/space_2"
-            android:paddingTop="@dimen/space_2"
+            android:paddingTop="10dp"
             android:paddingBottom="@dimen/space_3">
             <View
                 android:id="@+id/tab_mkt_bar"
                 android:layout_width="match_parent"
-                android:layout_height="@dimen/space_7"
+                android:layout_height="39dp"
                 android:layout_gravity="center"
                 android:background="@android:color/transparent" />
             <TextView
@@ -93,7 +119,7 @@
                 android:layout_height="wrap_content"
                 android:layout_gravity="center"
                 android:text="行情"
-                android:textSize="@dimen/fs_title" />
+                android:textSize="@dimen/fs_note" />
         </FrameLayout>
         <FrameLayout
             android:id="@+id/tab_calc"
@@ -102,12 +128,12 @@
             android:layout_weight="1"
             android:paddingStart="@dimen/space_2"
             android:paddingEnd="@dimen/space_2"
-            android:paddingTop="@dimen/space_2"
+            android:paddingTop="10dp"
             android:paddingBottom="@dimen/space_3">
             <View
                 android:id="@+id/tab_calc_bar"
                 android:layout_width="match_parent"
-                android:layout_height="@dimen/space_7"
+                android:layout_height="39dp"
                 android:layout_gravity="center"
                 android:background="@android:color/transparent" />
             <TextView
@@ -116,7 +142,7 @@
                 android:layout_height="wrap_content"
                 android:layout_gravity="center"
                 android:text="计算"
-                android:textSize="@dimen/fs_title" />
+                android:textSize="@dimen/fs_note" />
         </FrameLayout>
         <FrameLayout
             android:id="@+id/tab_setup"
@@ -125,12 +151,12 @@
             android:layout_weight="1"
             android:paddingStart="@dimen/space_2"
             android:paddingEnd="@dimen/space_2"
-            android:paddingTop="@dimen/space_2"
+            android:paddingTop="10dp"
             android:paddingBottom="@dimen/space_3">
             <View
                 android:id="@+id/tab_setup_bar"
                 android:layout_width="match_parent"
-                android:layout_height="@dimen/space_7"
+                android:layout_height="39dp"
                 android:layout_gravity="center"
                 android:background="@android:color/transparent" />
             <TextView
@@ -139,7 +165,7 @@
                 android:layout_height="wrap_content"
                 android:layout_gravity="center"
                 android:text="设置"
-                android:textSize="@dimen/fs_title" />
+                android:textSize="@dimen/fs_note" />
         </FrameLayout>
     </LinearLayout>
 </LinearLayout>

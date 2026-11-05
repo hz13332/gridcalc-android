@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ⚠ 生成文件，不要手改。真值 = theme.css，改法：
+      python toolchain/tokens/extract_tokens.py（css 参数指向 theme.css，out 指向 tokens.json）
+      python toolchain/tokens/gen_android.py（emit 落 build，apply 落 res）
+  源：design/四屏视觉改版/方向-B/theme.css（45405 B，sha256:16 0fa87b30e8e3c7d0）
+  themes.xml 里 Theme.GridCalc.Light / Dark 的 parent 指向本文件的两个 base style；
+  token 项已全部搬走，themes.xml 只剩字体 / 状态栏 / textColor* 这类非 token 项。
+-->
+<resources>
+    <style name="Theme.GridCalc.Tokens.Light" parent="android:Theme.Material.NoActionBar">
+        <item name="colorAccentFill">#2A5BD7</item>
+        <item name="colorAccentPressed">#1E47B0</item>
+        <item name="colorAccentSoft">#1A2A5BD7</item>
+        <item name="colorAccentText">#2A5BD7</item>
+        <item name="colorBorder">#DCE3EB</item>
+        <item name="colorBorderStrong">#C6D0DC</item>
+        <item name="colorCanvas">#F1F4F8</item>
+        <item name="colorCard">#FFFFFF</item>
+        <item name="colorControlOutline">#6B7684</item>
+        <item name="colorFaint">#646E7C</item>
+        <item name="colorInk">#10151C</item>
+        <item name="colorInput">#EDF1F6</item>
+        <item name="colorOnDanger">#FFFFFF</item>
+        <item name="colorOnPrimary">#FFFFFF</item>
+        <item name="colorPrimary">#2A5BD7</item>
+        <item name="colorPrimaryPressed">#1E47B0</item>
+        <item name="colorRed">#C0362F</item>
+        <item name="colorSub">#4A5563</item>
+        <item name="colorSurface2">#EDF1F6</item>
+        <item name="colorSurface3">#E2E8F0</item>
+        <item name="colorSurfaceRaised">#FFFFFF</item>
+        <item name="colorTeal">#0B7A55</item>
+        <item name="colorTealBg">#1F0B7A55</item>
+        <item name="colorThumbOff">#333C48</item>
+        <item name="colorTrackOff">#E2E8F0</item>
+    </style>
+    <style name="Theme.GridCalc.Tokens.Dark" parent="android:Theme.Material.NoActionBar">
+        <item name="colorAccentFill">#3D6BE0</item>
+        <item name="colorAccentPressed">#2F55B8</item>
+        <item name="colorAccentSoft">#248FB2FF</item>
+        <item name="colorAccentText">#8FB2FF</item>
+        <item name="colorBorder">#2A313B</item>
+        <item name="colorBorderStrong">#3A434F</item>
+        <item name="colorCanvas">#0E1116</item>
+        <item name="colorCard">#161B22</item>
+        <item name="colorControlOutline">#6E7A88</item>
+        <item name="colorFaint">#818C9B</item>
+        <item name="colorInk">#E9EDF3</item>
+        <item name="colorInput">#1E242D</item>
+        <item name="colorOnDanger">#0A0D12</item>
+        <item name="colorOnPrimary">#FFFFFF</item>
+        <item name="colorPrimary">#8FB2FF</item>
+        <item name="colorPrimaryPressed">#2F55B8</item>
+        <item name="colorRed">#FF7A72</item>
+        <item name="colorSub">#AAB4C2</item>
+        <item name="colorSurface2">#1E242D</item>
+        <item name="colorSurface3">#272E38</item>
+        <item name="colorSurfaceRaised">#272E38</item>
+        <item name="colorTeal">#3FD48F</item>
+        <item name="colorTealBg">#293FD48F</item>
+        <item name="colorThumbOff">#C3CBD6</item>
+        <item name="colorTrackOff">#1E242D</item>
+    </style>
+</resources>

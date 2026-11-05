@@ -1,33 +1,63 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  行情页「数量」输入框的描边盒。
+  行情屏「数量」框 = **输入控件本体类**（稿 .mk-cnt__i 一组）的落点。
 
-  稿 v2.html:2065-2071 逐字（该 input 的 style）：
-    border:'1px solid <line>' / borderRadius:6 / padding:'2px 6px'
-    textAlign:'right' / fontSize:T.title / background:'transparent'
+  ── 配方（Oct-28 稿为准，theme.css §6.6）────────────────────────────────────
+    常态：底 colorSurface2（bg-surface-2）+ 1dp colorControlOutline 描边 + r10
+          —— theme.css:588-598 `.mk-cnt__i { background: bg-surface-2;
+             border: 1px solid control-outline; border-radius: r-input }`
+    聚焦：底 colorCard（bg-surface）+ 1dp colorAccentText（accent）描边 + r10
+          —— theme.css:600-604 `.mk-cnt__i:focus { border-color: accent; background: bg-surface }`
+    ⟹ 与共享输入件 input_bg（容器类，常态无描边）**不同类**：这一类自带底色的裸输入
+      必须有一条看得见的边界（control-outline 压自身内嵌底：浅 4.07:1 / 深 3.58:1，两套都 ≥3:1）。
 
-  ⟹ 1px 描边 + 透明底，文字右对齐、字号 16sp(T.title)。
-  改前这个框 background=@null，是**裸数字、屏上连框都没有**，与稿不一致
-  （稿那个 input 明确带描边）。
+  ── 2026-10-28 本轮改了什么 ────────────────────────────────────────────────
+    1. 常态分支**值不变**（surface2 / 1dp control-outline / r10 都是上一轮 t58 已对齐的稿值）。
+    2. **新增聚焦分支**：改前本件是单个 <shape>，没有任何状态 —— 点进「数量」框屏上毫无反馈，
+       与稿的 :focus 规则对不上。本轮把单 shape 升成 <selector>（两态同色系、只换描边与底），
+       layout 侧一行不动（所有调用点都是 android:background=，selector 直接可用）。
+    3. 圆角 10dp 不动：方向 B 全方向只用 12 / 10 / 999 三档（卡 / 输入 / 药丸），
+       与 input_bg / calc_input_bg / save_btn_bg / btn_ghost 同档。
 
-  ── 2026-10-16 t58（方向 B §2.3 + §5.1-③）────────────────────────────────
-    圆角 **6dp → 10dp**（= r-input 档）。依据两条：
-      · 方向 B §2.3「圆角只用 **12 / 10 / 999** 三档」（卡 / 输入 / 药丸）——
-        稿的 6 不在任何一档；
-      · 交接_方向B.md §5.1-③「App 输入类圆角 6/8 不一致 ⟹ **一次收齐到 10dp**」。
-    ⟹ 与 input_bg / calc_input_bg / save_btn_bg / btn_ghost 同档（全部 10dp）。
-    ⚠ 本件**不是**共享件：它是行情屏专属的「数量」框，所以 t49（共享 drawable 换档）
-      没扫到它 —— 属任务分解的归属缺口，t58 补上。
-    ⚠ 活引用 5 处（`page_mkt.xml` L366 数量框**默认可见** + L417 + L590/606/621 拆股编辑区），
-      本件换档后 5 处同时生效。
-    ⚠ 旧注释里那句「radius 取 6 而非 8：这是稿自己的值」**已退役** ——
-      本轮口径以方向 B 的三档圆角为准，不再逐件对齐 v1 稿的零散值。
+  ── 活引用（2026-10-28 grep，共 **5 处**，全在 page_mkt.xml）────────────────
+      :412  mkt_kcount      K 线数量输入框（**默认可见**，本件的主消费者）
+      :466  mkt_win         「确认」按钮
+      :676  mkt_split_date  拆股日期输入（t3 本轮整行下线）
+      :692  mkt_split_ratio 拆股比例输入（t3 本轮整行下线）
+      :707  mkt_split_add   「添加」按钮（t3 本轮整行下线）
+    ⟹ t3 落地后本件剩 2 处（:412 输入框 / :466 确认按钮）。
+
+  ── ⚠ 已知的一件两用（登记，不在本轮改 layout）───────────────────────────────
+     本件同时被两个**次级按钮**（:466 确认 / :707 添加）当底用，而稿的次级按钮
+     （theme.css §6.3 `.mk-cnt__ok`）是「卡面 colorCard + colorBorder 1dp」，与本件
+     （surface2 + control-outline）差一档面层色。按钮落在 page_mkt.xml，不在共享层本轮范围；
+     真要收口时：新建一件「次级按钮」drawable 给 :466（t3 收工后只剩这一个按钮点），
+     本件即退回纯输入件。聚焦分支对按钮无影响（触屏按压走 state_pressed，不触发 state_focused）。
+
+  ── 历史（保留以追溯）──────────────────────────────────────────────────────
+     2026-10-21（闸 4 首跑）以方向 B 为准，旧 v2.html 的 transparent 底作废；
+     2026-10-16 t58 圆角 6dp → 10dp（§5.1-③ 输入类圆角一次收齐到 10dp）。
+     旧注释里的行号（L366 / L417 / L590 / L606 / L621）是当时的快照，已按本轮 grep 重数。
 -->
-<shape xmlns:android="http://schemas.android.com/apk/res/android"
-    android:shape="rectangle">
-    <solid android:color="@android:color/transparent" />
-    <stroke
-        android:width="1dp"
-        android:color="?attr/colorBorder" />
-    <corners android:radius="10dp" />
-</shape>
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 聚焦：描边换 accent + 底抬到卡面（theme.css:600-604） -->
+    <item android:state_focused="true">
+        <shape android:shape="rectangle">
+            <solid android:color="?attr/colorCard" />
+            <stroke
+                android:width="1dp"
+                android:color="?attr/colorAccentText" />
+            <corners android:radius="10dp" />
+        </shape>
+    </item>
+    <!-- 常态：内嵌底 + control-outline 边界（theme.css:588-598） -->
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="?attr/colorSurface2" />
+            <stroke
+                android:width="1dp"
+                android:color="?attr/colorControlOutline" />
+            <corners android:radius="10dp" />
+        </shape>
+    </item>
+</selector>

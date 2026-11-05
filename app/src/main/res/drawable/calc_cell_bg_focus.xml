@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 计算屏「参数格」**获焦态**的格子容器面（2026-10-29 t33 新增）。
+     为什么要有它：稿的聚焦是**整格亮起**，不是输入框自己画框 ——
+       `四屏-计算页.html` / `theme.css` §6.6（逐字）：
+         `.calc-field, .calc-cell { background: bg-surface-2; border: 1px solid transparent; r-input }`
+         `.calc-field:focus-within, .calc-cell:focus-within { border-color: accent; background: bg-surface }`
+     Android 没有 `:focus-within`（子 View 获焦不会把 state_focused 传给父容器）⟹ 等价落法：
+       在 MainActivity 的 focus listener 里把**格子容器**（edit.parent）的 background
+       在本件与 @drawable/calc_tile_bg 之间切换；输入体（@drawable/calc_input_bg）两态全透明。
+     取值 = 稿的三件：底 colorCard（= bg-surface）/ 1dp colorAccentText（= accent）/ r10（= r-input）。
+     对比度（沿用本仓既有复算）：accent 描边压 colorCard 浅 #2A5BD7 on #FFFFFF = 5.87:1、
+       深 #8FB2FF on #161B22 = 7.4:1，两套都 ≥3:1。
+     ⚠ 与 @drawable/calc_tile_bg 的分工：本件**只在获焦时**由代码挂上，XML 里不出现；
+       常态格仍然是 calc_tile_bg（surface2 + r10，无描边）。 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="?attr/colorCard" />
+    <stroke
+        android:width="1dp"
+        android:color="?attr/colorAccentText" />
+    <corners android:radius="10dp" />
+</shape>

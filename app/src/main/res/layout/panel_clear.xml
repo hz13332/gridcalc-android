@@ -19,7 +19,7 @@
   2) 清空原来没有字重，稿 L810 是 fontWeight:600，补 android:textStyle=bold。
      Android 只有 normal/bold 两档，600 无原生对应，取 bold 为稿侧最接近的一档。
   按钮文案由 MainActivity.showPanel 的 okText 运行期赋值，布局里的字只是兜底，未改。
-
+  2026-10-21 t46（R-18 处置② 有稿出处 ⟹ 1:1 返工）：取消 上下 15dp、清空 上下 14dp（原 14.3/13.4 = 稿值 ×0.9539 旧折算产物）；稿出处 B-标杆迁移.html:807-810。
   变量对照(色表已核: 稿三级灰 = colorInk / colorSub / colorFaint):
     bg   -> colorCanvas   ink  -> colorInk   ink2 -> colorSub
     line -> colorBorder   dn   -> colorRed
@@ -38,10 +38,10 @@
         android:layout_height="wrap_content"
         android:layout_gravity="bottom"
         android:orientation="vertical"
-        android:paddingLeft="19.1dp"
-        android:paddingRight="19.1dp"
-        android:paddingTop="22.9dp"
-        android:paddingBottom="26.7dp"
+        android:paddingLeft="20dp"
+        android:paddingRight="20dp"
+        android:paddingTop="24dp"
+        android:paddingBottom="28dp"
         android:background="@drawable/panel_sheet_bg">
 
         <TextView
@@ -64,7 +64,7 @@
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="22.9dp"
+            android:layout_marginTop="24dp"
             android:orientation="horizontal">
 
             <TextView
@@ -74,8 +74,8 @@
                 android:layout_weight="1"
                 android:background="@drawable/panel_btn_line"
                 android:gravity="center"
-                android:paddingTop="14.3dp"
-                android:paddingBottom="14.3dp"
+                android:paddingTop="15dp"
+                android:paddingBottom="15dp"
                 android:text="取消"
                 android:textColor="?attr/colorSub"
                 android:textSize="@dimen/fs_title" />
@@ -95,8 +95,8 @@
                 android:layout_weight="1"
                 android:background="@drawable/panel_btn_danger"
                 android:gravity="center"
-                android:paddingTop="13.4dp"
-                android:paddingBottom="13.4dp"
+                android:paddingTop="14dp"
+                android:paddingBottom="14dp"
                 android:text="清空"
                 android:textColor="?attr/colorOnDanger"
                 android:textSize="@dimen/fs_title"

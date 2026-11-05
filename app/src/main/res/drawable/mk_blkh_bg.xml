@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- K 线卡 / OHLC 明细卡的**卡头带**底（r8 B-1 / B-11）。
+     稿依据：`四屏-行情页.html:161-168`（`.mk-blkh` = surface-2 底 + `border-radius: 12px 12px 0 0`
+     + padding `sp-3 sp-4`）+ `theme.css:471-479`（`.mk-blkh` 与 `.mk-th` 同档：fs-note / 600 / ink-faint）。
+     ⚠ 只有**上**两角圆角（它是卡片的顶片，下缘与卡面同色平接，不画圆角也不画发丝）。
+     ⚠ 卡片的底/圆角/抬升仍由 MktPanel.paintCardSlices() 运行期刷（XML 的 drawable 给不了分片圆角），
+       本件只负责「卡头带这一条 surface-2 底 + 上圆角」。 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="?attr/colorSurface2" />
+    <corners
+        android:topLeftRadius="12dp"
+        android:topRightRadius="12dp"
+        android:bottomLeftRadius="0dp"
+        android:bottomRightRadius="0dp" />
+</shape>

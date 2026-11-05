@@ -2,18 +2,27 @@
 <!-- B-44 稿 L269: 滑块 background: on ? ACC : ink3 ⟹ 打开=白钮, 关掉=ink3 灰钮。
      ⚠ 注释正文里不能出现连续两个连字符, 稿的 CSS 变量写法正好有两个, 上面一律用中文名。
 
-     2026-10-16 t53 · 方向 B §2.4-3.7 开关 + §5.1-① F-5 站点：
+     ⚠⚠ 2026-10-29 用户裁定（方案 A）：**两态滑块统一为白**，取消关态的深灰。
+       原因（用户原话）：「切换不够连贯，切换的时候像是换了另外一个组件」。
+       实测（动画放慢 10 倍连拍）：平台 Switch 的**位置**有动画，但**颜色是瞬间整体跳变** ——
+       轨道与滑块在切换的第一瞬就全部换色，之后只剩位置在动 ⟹ 深灰钮直接变白钮，
+       观感读成「旧组件消失、新组件滑进来」。
+       保留双色钮就无法消除这个突变（除非给颜色做插值，那是方案 B，本轮不选）。
+       ⟹ 让**主体（滑块）不变**：两态同为白钮，滑动过程中只有轨道由灰变蓝，
+          「同一个东西在换状态」而不是「换了个东西」。
+       代价：关态钮不再是稿的 ink3。稿是静态稿、不描述过渡，此处以过渡连贯性优先。
+
+     历史（仍有效）：
        开态 = **colorOnPrimary**（等于方向 B 的 on-accent 角色；attrs.xml 的 v2 对照表逐字：
               on-accent 到 colorOnPrimary，两套主题都是白）。白钮压 t49 的轨道实底
               colorAccentFill：浅 5.87:1 / 深 4.80:1 ⟹ 双双过 AA。
-              ⚠ 这一处**不改 token**：F-5 的根因是「主色一个值同时当文字与实底」，
-                已由 t49 把**轨道实底**换成 colorAccentFill 收掉；滑块继续取 on-accent 就是对的。
-       关态 = colorFaint 改成 **colorThumbOff**（方向 B 新增的关态滑块角色，
-              浅 #333C48 / 深 #C3CBD6；与设置屏 t211PaintSwitch 的取值同族，
-              三屏开关滑块从此同一套）。
+       关态原为 **colorThumbOff**（浅 #333C48 / 深 #C3CBD6），本轮取消。
      ⚠ 消费方是 android:thumbTint（page_calc.xml 的 dbl_btn）—— 仍是**唯一主人**，
-       本文件不新增 Kotlin 依赖。 -->
+       本文件不新增 Kotlin 依赖。
+     ⚠ 白钮压在关态轨道 colorTrackOff（浅 #E2E8F0）上对比度仅 ≈1.15:1 ⟹ **靠平台滑块自带的
+       投影**区分边界；若实测白钮与轨道糊成一片，须给滑块加 1dp colorControlOutline 描边
+       （不能靠加深轨道，那会改动 t49 的轨道配色口径）。 -->
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:state_checked="true" android:color="?attr/colorOnPrimary" />
-    <item android:color="?attr/colorThumbOff" />
+    <item android:color="?attr/colorOnPrimary" />
 </selector>

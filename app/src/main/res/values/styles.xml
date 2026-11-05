@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- ════════════════════════════════════════════════════════════════════════
+         共享视觉层（2026-10-28 本轮统一）。本文件只放两类东西：
+           ① 卡组件：Widget.GridCalc.Card（无描边）与其 .Outline 变体（1dp 发丝）
+           ② 输入控件配方表（落点是三个 drawable，不是 style —— 见文件末尾）
+         真值：design/四屏视觉改版/方向-B/ 的 theme.css（语言层）+ 四屏 HTML（各屏 layout 层）。
+         ⚠ 本文件不写死颜色：一律 ?attr/，明暗由 Theme.GridCalc.Light / Dark 两套 token 给。
+         ⚠ 档位（本轮未新增任何档外值）：
+             间距 4 / 8 / 12 / 16 / 20 / 24 / 32 · 字号 30 / 20 / 16 / 12 / 11 · 圆角 12 / 10 / 999；
+             1dp 是发丝描边宽度，不属这三把尺子（theme.css:208 的 hairline）。
+         ════════════════════════════════════════════════════════════════════════ -->
+
+    <!-- ── 卡 · 默认（**带 1dp 发丝**）─────────────────────────────────────────
+         配方 = 卡面（colorCard + 1dp colorBorder + r12）@drawable/card_bg
+              + 抬升 @dimen/elev_1（浅 2dp / 深 0 —— values-night 全 0dp）
+         稿件依据（Oct-28 定稿）：四屏 layout 层逐字 `border: var(hairline) solid var(border)`
+           —— .fav-search / .fav-sug / 计算五卡 / .gc-about__*；r-card 12px 与 elev-1 见 theme.css。
+          ── 2026-10-28 收敛记录（队长裁定，取代 implShared 的 .Outline 双变体方案）──
+            t1 原本新增了 Widget.GridCalc.Card.Outline + card_bg_line.xml 两个共享件。复核发现：
+              ① 新稿所有卡都带外框，唯一的「无外框」特例是设置页 .gc-row 单行；
+              ② 该特例经查是造稿疏漏 —— 它在深色主题下 elev-row = none，会彻底失去边界；
+              ③ 两套卡面会让 t2/t4 每次选样式都可能选错。
+            ⟹ 收敛为**一张卡面 + 一个 style**：描边并入 card_bg.xml，.Outline 与 card_bg_line.xml
+              一并删除。回退只需删 card_bg.xml 里的 4 行 <stroke> 并把本 style 恢复为无描边口径。
+          ⚠ 唯一不使用本 style 的地方：自选**行与表头**（Oct-28 稿要求平铺，用 @drawable/fav_row_line），
+            以及自选**屏底计数行**（稿 .fav-foot 是透明底，t2 负责摘掉它的 Card style）。
+          ⚠ padding / clipToOutline 不进 style：各卡档位不同，留在调用点。
+          ⚠ 自选候选卡（page_fav.xml fav_sug_box）的 elevation=8dp 是用户 2026-10-14 裁定
+            （原话「太淡了加浓加浓」），显式属性覆盖本 style 的 elev_1，不许动。
+          ── 活引用（2026-10-28 grep，供交付说明对账）──────────────────────────────
+            @style/Widget.GridCalc.Card **9 处**（全部在 layout，Kotlin 0 处）：
+              page_calc.xml    x4（:77 / :345 / :681 / :886）
+              page_fav.xml     x3（:219 搜索卡 / :327 候选层 / :1371 屏底计数行 ← t2 应摘除）
+              page_settings.xml x2（:90 外观卡 / :242 关于卡）
+            本 style 的卡面 = @drawable/card_bg，该 drawable 的 XML 直接引用 **2 处**
+              （values/styles.xml 与 values-v28/styles.xml 各 1），Kotlin **0 处**
+              （MktPanel.kt:1179 的 cardBg() 是运行期 GradientDrawable，不读该 drawable）。
+            ⚠ 自选**行与表头不使用本 style**：它们是运行期拼的分片
+              （FavPanel.sliceBg / headBg），平铺背景用 @drawable/fav_row_line
+              （透明底 + 底边 1dp colorBorder，theme.css 的行线口径）。 -->
+    <style name="Widget.GridCalc.Card" parent="">
+        <item name="android:background">@drawable/card_bg</item>
+        <item name="android:elevation">@dimen/elev_1</item>
+    </style>
+
+    <!-- ════════════════════════════════════════════════════════════════════════
+         输入控件配方表（对照 theme.css §6.6「输入 / 内嵌面」）
+         稿把输入拆成**两类**写，App 侧因此有三个 drawable 落点；三类共用一条聚焦配方：
+             聚焦 = 底 colorCard（bg-surface）+ 描边 1dp colorAccentText（accent）+ 圆角 10dp
+             （theme.css:600-604 的 :focus-within / :focus 逐字）。
+           ① 容器类（稿 .fav-field / .calc-field / .calc-cell / .calc-lev，稿自身
+              `border: 1px solid transparent` ⟹ 常态**没有**可见描边，边界由内嵌底承担）
+                · drawable/input_bg.xml        自选搜索框（容器与输入体同一个 View 时的落法）
+                · drawable/calc_tile_bg.xml    计算屏参数格的容器面（surface2 + r10）
+           ② 控件本体类（稿 .mk-cnt__i / .mk-sw__in / .mk-splitbox__i：自带底色的裸输入，
+              边描 control-outline）
+                · drawable/mkt_count_box.xml   行情屏「数量」框（surface2 + 1dp colorControlOutline + r10）
+           ③ 容器内输入体（稿 .fav-field__input 一组：透明、无边框、无底）
+                · drawable/calc_input_bg.xml   计算屏七个参数输入框（常态透明，聚焦才亮框）
+         ⚠ 稿的「容器 :focus-within 亮框」在 Android **没有对应选择器**（子 View 获焦不会把
+           state_focused 传给父容器）⟹ 本 App 的等效落法是把聚焦框画在**输入体自己身上**
+           （input_bg / calc_input_bg / mkt_count_box 的 state_focused 分支），容器的底与圆角不变；
+           视觉结果与稿一致：框内出现一圈 1dp accent、面层抬到卡白。改这三件时别把聚焦分支删掉。
+         ⚠ 活引用（2026-10-28 grep）：
+             input_bg 1（page_fav.xml:279）· calc_input_bg 7（page_calc.xml）·
+             mkt_count_box 5（page_mkt.xml:412 / :466 / :676 / :692 / :707）·
+             calc_tile_bg 13（page_calc.xml）。
+         ⚠ 为什么不在本文件里出成 <style>：三个落点的宽度 / 对齐 / 输入法属性各不相同，
+           而共享的只有「底 + 圆角 + 聚焦描边」这一层 —— 那一层已经在 drawable 里，
+           再包一层 style 只是换名字，还会让 layout 多一次迁移。
+         ════════════════════════════════════════════════════════════════════════ -->
+</resources>

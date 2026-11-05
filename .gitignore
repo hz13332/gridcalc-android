@@ -31,8 +31,8 @@ draft_swipe*.png
 # 构建日志（本机噪声，不入库）
 *.log
 
-# ? ǩ����Կ����2026-10-03 �û��ö��Ƴ��ֿ⣩
-# �����ܽ��汾���ƣ��õ�������ǩ APK ð�䱾Ӧ�ø����û��豸
+# ? ǩ����Կ����2026-10-03 �û��ö��Ƴ��ֿ⣩
+# �����ܽ��汾���ƣ��õ�������ǩ APK ð�䱾Ӧ�ø����û��豸
 keystore/
 *.jks
 *.keystore
@@ -49,3 +49,15 @@ _verify_shots/
 # 正主在 D:\deepseek工作区\tools\，这批是误落到本仓库的 dryrun/scan 输出）
 tools/_ov-*
 tools/ov-migration-inventory-20261009.md
+
+# 本地临时物（截图/日志/一次性试验），不入库
+.tmp/
+_t3new/
+
+# 根目录的一次性验证截图与本地试验目录（本地产物，不入库）
+/*.png
+/emulator_*.xml
+/wrapper.log
+/_verify_shots/
+/_t3new/
+/追加参数原样透传

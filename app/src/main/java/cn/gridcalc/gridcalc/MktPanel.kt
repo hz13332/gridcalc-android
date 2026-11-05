@@ -57,12 +57,13 @@ import java.util.Locale
 //         进程内 lastSym 初值必为空 ⟹ 本进程**第一次**载入恒为 symChanged ⟹ 必回填；
 //       - saveWin() 在 lastSym 空时早退（~:490）—— 行情页没载入品种时**写不进盘**；
 //         想写就必须先载入，而载入那一下就回填了控件；
-//       - autoRefreshOnce（PREF_AUTO_REFRESH 默认开，MainActivity:3161）启动即
-//         setSym + mkLoad ⟹ applyWinDefaults，控件同样是盘里的值。
-//     ⟹ 残余差异只剩一条**极窄且纯展示**的路径：关掉「启动时刷新」+ 冷启动先进自选页
-//        + 再直接点行情 Tab（**不载入品种**）——那时控件显示布局默认 20，而不是「最后
-//        确认过的那个品种」的窗口。没有品种就没有「该品种的窗口」可言，且该状态下点
-//        「确认」写不进盘（saveWin 早退），**无数据后果**。
+//       - 启动刷新（2026-10-28 之前是设置页的「启动时刷新一次」开关、默认开；
+//         **该开关与 PREF_AUTO_REFRESH 已于 2026-10-28 t4 移除，现在每次冷启动恒执行一次**）
+//         启动即 setSym + mkLoad ⟹ applyWinDefaults，控件同样是盘里的值。
+//     ⟹ 残余差异只剩一条**极窄且纯展示**的路径：**没有任何「上次看的品种」**（首次安装、
+//        或清过 last-sym）+ 冷启动先进自选页 + 再直接点行情 Tab（**不载入品种**）——
+//        那时控件显示布局默认 20，而不是「最后确认过的那个品种」的窗口。没有品种就没有
+//        「该品种的窗口」可言，且该状态下点「确认」写不进盘（saveWin 早退），**无数据后果**。
 //   · `gridcalc_win_confirmed_sym` 指针（`winConfirmedSymKey`）+ `persistConfirmedSym()`
 //     + `confirmedSymOnDisk()`：指针的**唯一读者**就是 restoreDistWinOnce（确认制语义：
 //     只在点确认时写、只存品种名、绝不存窗口值）。读者没了 ⟹ 写者一并删。
@@ -75,30 +76,43 @@ import java.util.Locale
 
 // ---------- 行情 VPVR · 面板接线 ----------
 // 照搬设计稿 mkLoad/renderMK 的文字侧:品种+K数+周/月/季分段+查看,
-// loading/error态,OHLC条,图例,来源注。拉取放后台线程,结果回主线程。
+// loading/error态,价格块,来源注。拉取放后台线程,结果回主线程。
+//   ⚠ 2026-10-28：原注释里的「OHLC 条 / 图例」两块已按方向-B 收口从本页删除。
 
 class MktPanel(private val act: MainActivity, page: View) {
 
     private val symInp: EditText = page.findViewById(R.id.mkt_sym)
-    private val kcountInp: EditText = page.findViewById(R.id.mkt_kcount)
+    // ⚠⚠ 2026-11-04 用户裁定「填数字 → 加减控制」：输入框换成步进器（− / 读数 / +）。
+    //   读数不可编辑 ⟹ 根数的唯一真源从「输入框文本」改成 **kVal 这个 Int**，
+    //   屏上的 mkt_kval 只是它的渲染（[renderK]），两者不会打架。
+    private val kMinus: Button = page.findViewById(R.id.mkt_kminus)
+    private val kPlus: Button = page.findViewById(R.id.mkt_kplus)
+    private val kValT: TextView = page.findViewById(R.id.mkt_kval)
+
+    /** 当前根数（未确认态）。初值 20，进入页面时由 [applyWinDefaults] 覆盖为该品种已确认值。 */
+    private var kVal: Int = 20
     private val goBtn: Button = page.findViewById(R.id.mkt_go)
     // 【F-2b · 2026-10-01】周期三键 **W / M / Q**。
     //
     // ⚠️ 「Q 季线」与「M 月线」**数据来源不同**，别把它们当成同一档：
-    //   · 新浪腿  kt = "quarter"          → **源原生季线**
     //   · 其余腿  取月线(东财 klt=103)后 `toQuarterly` **三月合成**
     // 合成出来的是**真正的季 K 线**（开=季首月开、高=三月最高、低=三月最低、
     // 收=季末月收、量=求和），**不是**「拿月线冒充季线」那种静默降级。
     // 详见 MktData.fetchEastmoney 里的 klt 注释（含「兜底 ≠ 等价」那段）。
     //
     // 用户 2026-10-01 裁定：**保留季线**。
-    // 稿子删季线是因为腾讯 `klt=quarter` 返回空 —— 那是**稿子的源限制**，不是 App 的缺陷；
     // 拿「稿子做不到」当「App 该砍」正是我们要拆的那类静默降级。
     //
     // 年线：App **没有**（无 tfY，MktData 也无 "Y" 分支）。用户未要求，**未擅自添加**。
     private val tfW: Button = page.findViewById(R.id.mkt_tf_w)
     private val tfM: Button = page.findViewById(R.id.mkt_tf_m)
     private val tfQ: Button = page.findViewById(R.id.mkt_tf_q)
+
+    /** ⚠ 2026-11-04：周期轨道改为自绘药丸的 [SegTrack]（线性布局子类，单测的 LinearLayout 契约不变）。 */
+    private val tfRow: SegTrack = page.findViewById(R.id.mkt_tf_row)
+
+    /** 首次 paintTf 不许有入场动画（用户没有触发过任何动作）。 */
+    private var tfPillPlaced = false
     private val status: TextView = page.findViewById(R.id.mkt_status)
     // t106 ④ 涨跌额 / ⑥ 交易所·时点
     // ⚠️ 2026-10-02 用户裁定「这两个不要」:OHLC 四格 + Vol 已从 page_mkt.xml 整体删除,
@@ -107,7 +121,8 @@ class MktPanel(private val act: MainActivity, page: View) {
     private val chg: TextView = page.findViewById(R.id.mkt_chg)
     private val venueT: TextView = page.findViewById(R.id.mkt_venue)
     private val timeT: TextView = page.findViewById(R.id.mkt_time)
-    // 【F-2c】数量滑杆 kBar 已删（连同布局里的 mkt_kbar 节点）。根数入口现在**只有** kcountInp。
+    // 【F-2c】数量滑杆 kBar 已删（连同布局里的 mkt_kbar 节点）。
+    //   ⚠ 2026-11-04：数量**输入框**也已删，根数入口现在**只有**步进器（− / +）与「确认」。
     private val leg: TextView = page.findViewById(R.id.mkt_leg)
     // 2026-10-03 新增:图表下方的支撑价位块(替代原先那两根空分隔线)。
     // 取的是 MktView 已经算好的 info.supShow,与图上标签片**同一个数**,不会两处打架。
@@ -127,7 +142,12 @@ class MktPanel(private val act: MainActivity, page: View) {
     /** B-34 稿 L291: 前导符独立成段(那个 flexShrink:0 的 span), 与 stateline 之间 gap 8。 */
     private val statelineLead: TextView = page.findViewById(R.id.mkt_stateline_lead)
     // t103:步长阈值行 + 当前阈值(供计算页 linkN 用)
-    private val stepT: TextView = page.findViewById(R.id.mkt_stept)
+    // ⚠ 2026-10-29 t30：id `mkt_stept` / `mkt_tgt` 现在落在**行容器**（LinearLayout）上，
+    //   因为指标项改成了「label 左 / value 右」两段；文本写到 _v / _l 两个新 id。
+    //   这样原有 4 + 5 处 `tgt.visibility` / `stepT.visibility` 判据一行都不用改。
+    private val stepT: LinearLayout = page.findViewById(R.id.mkt_stept)
+    private val stepTL: TextView = page.findViewById(R.id.mkt_stept_l)
+    private val stepTV: TextView = page.findViewById(R.id.mkt_stept_v)
     @Volatile var stepTv: Double = 0.0
     @Volatile private var stepSym: String = ""
     // t108 (2) 日期范围独占行已删(稿里没有),srcNote 视图随之移除
@@ -136,19 +156,16 @@ class MktPanel(private val act: MainActivity, page: View) {
     //   **可见的「确认」**（page_mkt.xml:394-407，无 visibility=gone）。t107 时代它是「▾ 下拉」、
     //   被外层容器挤成 0 高静默消失，那份历史见 page_mkt.xml 的墓碑段。
 
-    // ⚠⚠⚠ 2026-10-04 **手动拆股 · 前复权**（用户裁定：行情界面里给开关，他自己录日期和比例）。
-    //   为什么只能手动：未复权 OHLC 里**没有**「哪天、几拆几」这条信息 ——
-    //   3:1 拆股与「真跌 3 倍」产出逐位相同的数据；实测合法涨幅上沿 2.23 与最小拆股比 3.01
-    //   只隔 1.35 倍，任何自动阈值都会在正常上涨上开火。详见 MktData.SplitBook 的说明。
-    private val splitHead: LinearLayout = page.findViewById(R.id.mkt_split_head)
-    private val splitSw: android.widget.Switch = page.findViewById(R.id.mkt_split_sw)
-    private val splitBox: LinearLayout = page.findViewById(R.id.mkt_split_box)
-    private val splitList: LinearLayout = page.findViewById(R.id.mkt_split_list)
-    private val splitDate: EditText = page.findViewById(R.id.mkt_split_date)
-    private val splitRatio: EditText = page.findViewById(R.id.mkt_split_ratio)
-    private val splitAdd: Button = page.findViewById(R.id.mkt_split_add)
-    private val splitNote: TextView = page.findViewById(R.id.mkt_split_note)
-    private val titleTx: TextView = page.findViewById(R.id.mkt_title)   // 稿 L522: 顶栏标题恒为「行情」(布局里写死), 不显示品种名
+    // ⚠⚠ 墓碑 · 2026-10-28（方向-B 收口）· **手动拆股 · 前复权 的 UI 已整体删除**。
+    //   随 page_mkt.xml 一起下线 8 个绑定：mkt_split_head / mkt_split_sw / mkt_split_box /
+    //   mkt_split_list / mkt_split_date / mkt_split_ratio / mkt_split_add / mkt_split_note，
+    //   以及开关的 setOnCheckedChangeListener、添加按钮的 click、条目渲染与提示行逻辑。
+    //   任务要求「不留空壳 findViewById」⟹ 上一轮那种「节点保留 + 恒 GONE + 早退」的空壳已清掉。
+    //   ⚠ 功能侧（前复权换算）在 MktData：`SplitBook.apply` 已是空操作，取数与缓存逻辑未动。
+    // ⚠⚠ 2026-11-04 用户裁定：**页标题「行情」整块删除**（底部 Tab 栏已经有「行情」，
+    //   页内再写一遍是重复，且它上面还压着一片空白）。稿同步删掉 `.mk-bar` 那一行。
+    //   ⟹ 原字段 `titleTx = findViewById(R.id.mkt_title)` 与节点一起下线（不留空壳）。
+    //   ⚠ 品种标识不丢：价格卡右上的 `mkt_venue`（`{中文名} {代码} · {时段}`，`t106PaintMeta` 写）承担。
     private val searchTx: TextView = page.findViewById(R.id.mkt_searchtx) // t252 稿 L527: 描边盒右侧的「搜索/收起」
     // t252 稿 L526: 描边盒左侧的品种名。值来自 symInp —— 它是品种的唯一真源(MktPanel L45)。
     private val symName: TextView = page.findViewById(R.id.mkt_symname)
@@ -157,7 +174,31 @@ class MktPanel(private val act: MainActivity, page: View) {
     //   实时走决策紫 colorPrimary，收盘/未取到走第三档灰 colorFaint。
     private val srcName: TextView = page.findViewById(R.id.mkt_srcname)
     private val price: TextView = page.findViewById(R.id.mkt_price)
-    private val tgt: TextView = page.findViewById(R.id.mkt_tgt)
+    private val tgt: LinearLayout = page.findViewById(R.id.mkt_tgt)
+    private val tgtL: TextView = page.findViewById(R.id.mkt_tgt_l)
+    private val tgtV: TextView = page.findViewById(R.id.mkt_tgt_v)
+    /** r8 B-8：「指标」小节标题（稿 `四屏-行情页.html:427` 的 `.mk-sec`）；r9 起它是**整卡容器内的卡内元素**，
+     *  **恒可见**（卡头恒在），不再承担任何底色 / 圆角 / 抬升。 */
+    private val secMetrics: TextView = page.findViewById(R.id.mkt_sec_metrics)
+    /** r9（2026-10-20）：指标卡 = **独立整卡**容器（稿 `.mk-metrics`，theme.css:428-438 整卡组）——
+     *  底色 / 四角 12dp 圆角 / 抬升**全部归它**，卡内三行只是卡内容。 */
+    private val metricsCard: LinearLayout = page.findViewById(R.id.mkt_metrics_card)
+
+    // ── r8 B-1（2026-10-19）· K 线卡头带 ──────────────────────────────────────────
+    //   稿 `四屏-行情页.html:322-336`：左「K 线」+「{周期} · {N} 根」。
+    //   ⚠ 2026-10-28 方向-B 收口：右侧 `−` / `+` / `Reset` 缩放三键**已整块删除**
+    //     （连同 zoomOut / zoomIn / zoomReset 三个绑定与 click 监听），卡头只剩左侧读数。
+    //   ⚠ `blkCard` 是**卡片容器**：卡片底/圆角/抬升的落点由 `chart` 移到它（见 paintCardSlices）。
+    private val blkCard: LinearLayout = page.findViewById(R.id.mkt_blk_card)
+    /** 卡头中段读数：`ks.size`（**实际画出来的根数**，经 MktInfo.count 带回），不是保存的窗口值。 */
+    private val blkhM: TextView = page.findViewById(R.id.mkt_blkh_m)
+
+    // ⚠⚠ 墓碑 · 2026-10-28（方向-B 收口）· **OHLC 明细表整卡已删** ⟹ 本节字段与状态随之下线：
+    //   ohlcCard / ohlcM / ohlcBody / ohHeadT·O·H·L·C（5 列表头）/ ohSortCol·ohSortDir（排序状态）/
+    //   ohRows·ohLastFlag（表体数据）/ ohBaseNames·ohA11y（表头字形与读屏语义）。
+    //   配套渲染函数（paintOhlc / rebuildOhRows / paintOhHead / onOhSort / ohHeads / ohNum /
+    //   paintOhlcNextFrame）与 init 里的表头接线一并删除 —— 任务要求「不留空壳 findViewById」。
+    //   ⚠ 只删显示层：MktInfo 的 o/h/l/c/vol 与取数链路原样保留（K 线图仍用同一批数）。
     // v4§7 美元口径说明行(数据源下方;汇率异步到达后重画)
     // t106 ⑩「美元口径」行已整条删除(稿里没有,是说明性文字)
     private val chart: MktView = page.findViewById(R.id.mkt_chart)
@@ -167,11 +208,10 @@ class MktPanel(private val act: MainActivity, page: View) {
     private val row2: LinearLayout = page.findViewById(R.id.mkt_row2)
 
     // ⚠ 2026-10-16 t52 · 方向 B 卡片（§2.4-3.2 / §6.1b）：
-    //   控制卡 = 首片 mkt_period_row + 中片 mkt_split_head + 末片 mkt_split_box（默认 GONE ⟹ 中片即末片）；
-    //   片间分隔线 mkt_card_divider 随编辑区显隐一起开关（语言层：中片变末片要补下圆角**并撤线**）。
-    //   价格卡 / K 线卡是两张**独立卡**。底色与圆角在运行期刷（见 paintCardSlices 的说明）。
+    //   控制卡 = **一整张** mkt_period_row（周期 + 数量 + 确认）。
+    //   ⚠ 2026-10-28：拆股行/编辑区删除后分片语言作废 ⟹ 片间线 mkt_card_divider 一并删除，
+    //     控制卡四角全圆；价格卡 / K 线卡是两张**独立卡**。底色与圆角在运行期刷（见 paintCardSlices）。
     private val periodRow: LinearLayout = page.findViewById(R.id.mkt_period_row)
-    private val cardDivider: View = page.findViewById(R.id.mkt_card_divider)
     private val priceCard: LinearLayout = page.findViewById(R.id.mkt_price_card)
 
     private var winPop: PopupWindow? = null
@@ -184,6 +224,14 @@ class MktPanel(private val act: MainActivity, page: View) {
     //   其余行 key 纹丝不动（新鲜缓存照旧命中、零请求）。改前的无参全量刷新配着全局窗口，
     //   正是「改一个 → 全部重取」的病灶（墓碑见文件头 2026-10-12 段）。
     var onDistCommitted: ((String) -> Unit)? = null
+
+    /**
+     * 某一轮行情数据**已落到 `MktData.LastChart`**（= 绘制的就是这一批）时通知自选页。
+     * 2026-11-02 用户报「行情页拉到新数据，自选页还是旧值」：此前行情页取完就结束，
+     * 自选页只能等自己下一轮全量抓取，5 分钟缓存还会把新数据挡在外面。
+     * ⚠ 只在 `renderAgg` 成功路径里、`LastChart.put` **之后**触发；不新增任何网络请求。
+     */
+    var onChartReady: ((String) -> Unit)? = null
 
     // 稿§4 根数范围 KMIN=15/KMAX=100,越界clamp
     private val KMIN = 15
@@ -201,24 +249,53 @@ class MktPanel(private val act: MainActivity, page: View) {
     //   progress 回填、反算 position）—— 随滑杆一并删除。
     //
     // ⚠️ **删滑杆不会让输入框变成死控件**：本文件另有一路已存在的触发 ——
-    //   `kcountInp.setOnFocusChangeListener { !hasFocus -> mkLoad() }`（失焦提交即重算）。
+    //   （原「输入框失焦即重算」随 2026-11-04 换成步进器一并作废：提交只走「确认」。）
     //   这条在删滑杆之前就存在，所以根数仍可改、仍生效。
     //   注意 **afterTextChanged 只同步上红、不发请求**（见下）—— 那是刻意的：
     //   若在每次击键都 mkLoad()，打「120」会连发三次请求，正是「并发惊群」那一族的病。
     //   触发只挂在**失焦**这一个事件上，一次编辑一次请求。
     private var tf = "M"
-    private var reqSeq = 0
+    @Volatile private var reqSeq = 0
+    /**
+     * 屏上这批 K 线所属的**请求批次代号**（= 把它画上屏那次 mkLoad 的 [reqSeq] 快照）。
+     *
+     * 【唯一写者】[renderAgg] 里 `chart.setData(show)` **之前**那一行 —— 必须在 setData 之前写：
+     *   setData → invalidate → onDraw → `chart.onInfo` 会立刻读它，把「这批数据是谁请求的」
+     *   一起交给计算页的联动（`act.linkCalc(sup, shownSeq)`）。
+     * 【为什么需要它】清空计算页时记下的屏障只允许拒「清空前那一批」的联动回调；
+     *   清空后**重新进入同品种**会产生**新批次**（mkLoad 里 reqSeq 自增），那一轮必须放行。
+     *   没有批次代号就只能按品种判断 ⟹ 「清空后同品种再进来」被永久误挡
+     *   （第 3 轮 blocker F-SAME-SYM-CLEAR-NEW-GEN）。
+     */
+    private var shownSeq = 0
     private var lastKs: List<KLine> = emptyList()
     private var lastSrc = ""
     private var lastMkt = ""
     private var lastType = ""
-    private var lastSym = ""
+    @Volatile private var lastSym = ""
     // 首家先画注记:非空时状态行显示"POC x（初步·源）",终画前清掉
     private var prelimTag: String? = null
     // v4§1/D4:换品种后「取数完成再回填」的待办标记(取数成功/失败两条路都会消费)
     private var wantRestore = false
+
+    /**
+     * 前台定时器专用入口：必须绕过内存 K 线缓存，走 MktData.acquire(refresh=true) 真正刷新。
+     * 仍先画磁盘留底，再由新批次覆盖；普通用户切品种/周期/根数仍按 mkLoad() 的缓存语义。
+     */
+    fun mkLoadQuiet() {
+        mkLoad(forceRefresh = true)
+    }
     // ⚠ 2026-10-03 「自选主动进入」标记，语义见 [setSym] 的说明。消费后立即清零。
     private var fromFav = false
+    /** True after leaving with no confirmed local batch; consumed on re-attach. */
+    private var needsConfirmedReload = false
+    /** Suppresses auxiliary threshold requests during local confirmed-batch replay. */
+    private var localReplay = false
+    /** Current historical loader identity; preserved across tab detach/attach. */
+    private var requestInFlight = false
+    private var inFlightSeq = 0
+    private var inFlightTf = ""
+    private var inFlightN = 0
 
     // D4:取数收尾(成功画完图、或已确定失败)之后才回填保存值,保证保存值赢过 linkCalc 的支撑联动
     //
@@ -249,6 +326,7 @@ class MktPanel(private val act: MainActivity, page: View) {
     //   ⟹ 不是给 repaint 加防重入（那治不了根），而是**不在绘制回调里改视图**。
     private fun finishLoad(seq: Int) {
         if (seq != reqSeq) return
+        if (seq == inFlightSeq) requestInFlight = false
         if (!wantRestore) return
         wantRestore = false
         val sym = lastSym
@@ -315,7 +393,7 @@ class MktPanel(private val act: MainActivity, page: View) {
             nameTv.ellipsize = android.text.TextUtils.TruncateAt.END
             nameTv.layoutParams = LinearLayout.LayoutParams(0,
                 ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
-                leftMargin = dp(9.5f).toInt()                   // 稿 L535 gap 10
+                leftMargin = dp(10f).toInt()                   // 稿 L535 gap 10
             }
             row.addView(symTv)
             row.addView(nameTv)
@@ -366,12 +444,12 @@ class MktPanel(private val act: MainActivity, page: View) {
 
     // ---------- 自选收藏(对标稿子favBtn) ----------
     fun paintStar() {
-        val s = symInp.text.toString().trim().uppercase(Locale.US)
+        val s = MktData.canonicalSym(symInp.text.toString())
         favBtn.text = if (s.isNotEmpty() && FavStore.isFav(act, s)) "★" else "☆"
     }
 
     private fun toggleFav() {
-        val s = symInp.text.toString().trim().uppercase(Locale.US)
+        val s = MktData.canonicalSym(symInp.text.toString())
         if (s.isEmpty()) return
         if (FavStore.isFav(act, s)) FavStore.remove(act, s)
         else FavStore.add(act, s, MktData.symType(s))
@@ -384,27 +462,47 @@ class MktPanel(private val act: MainActivity, page: View) {
     fun curTyp(): String = MktData.symType(lastSym)
     fun curPx(): Double? = lastKs.lastOrNull()?.c
 
-    /** ⚠ 2026-10-03 用户裁定「把行情换成该交易品种的名字」：顶栏显示品种名，不再恒为「行情」。
+    /**
+     * 已发出的最大请求批次代号（只读，计算页清空时取屏障用）。
+     *
+     * 屏障 = 清空那一刻本值。行情回调携带**它自己那一批**的代号：
+     * `批次代号 <= 屏障` ⟹ 清空前那一批（含清空时正在飞的那次请求）⟹ 拒；
+     * 清空后重新进入同品种的 mkLoad 会拿到更大的代号 ⟹ 放行（Pl/Ph 回填、自动网格恢复）。
+     * ⚠ 只是**读取**代号：本函数不推进它，也不解除任何阻断。
+     */
+    fun reqSeqNow(): Int = reqSeq
+
+    /** UI-thread identity gate for a loader's immutable symbol/sequence snapshot. */
+    private fun loadCurrent(loadSym: String, loadSeq: Int): Boolean =
+        loadSeq == reqSeq &&
+            MktData.canonicalSym(symInp.text.toString()) == loadSym &&
+            lastSym == loadSym
+
+    /** ⚠⚠ 2026-11-04 用户裁定：**页标题「行情」整块删除**（底栏已有同名 tab，页内重复且白占顶部空白）。
+     *   下面这些「标题恒为『行情』/ 标题回到 XML 默认值」的描述**只描述当时**；
+     *   现状是**本页没有标题节点**（`mkt_title` 与 `titleTx` 已一并下线），品种标识由 `mkt_venue` 承担。
+     *
+     * ⚠ 2026-10-03 用户裁定「把行情换成该交易品种的名字」：顶栏显示品种名，不再恒为「行情」。
      *
      * 传入的是**空串时回退显示代码** —— 搜索结果那条路径拿不到中文名
      * （MktSuggest 的项只有 s + tag，tag 是「美股/币/韩股」这类市场标签）。
      *
-     * ⚠ 这**偏离稿**：稿 v2.html:2062 是 `<AppBar title="行情"/>`，标题恒为「行情」。
-     *   产品裁定，不是移植对齐。
-     * ⚠ 只改标题文字，**不碰返回键、不碰 URL 语义**：‹返回仍回自选页。
+     * ⚠⚠ r8 B-9（2026-10-19）· **本函数不再写顶栏标题**。
+     *   沿革：2026-10-03 曾按用户裁定把品种名写进顶栏（当时的实况是「标题 = 品种名/代码」）；
+     *   而本文件 `titleTx` 声明处的注释、稿 `四屏-行情页.html:244-247` 的 `<AppBar title="行情"/>`
+     *   都写着「标题恒为『行情』」⟹ 三处互相矛盾（报告 §4-R5 实测 dump `text='PLTR'`、墨迹高 11.64dp = 16sp）。
+     *   r8 按稿收口：**删掉这里的 `titleTx.text = …`**（连同 [mkLoad] 里 `symChanged` 那处），
+     *   标题回到布局 XML 的默认值「行情」，字阶按稿升到 `fs_data`(20sp)。
+     *   ⟹ 品种标识**没有丢**：价格卡右上的 `mkt_venue`（`{代码} · {时段}`，由 [t106PaintMeta] 写）承担，
+     *     与稿一一对应；顶栏只剩标题（稿 :243-247 逐字）。
+     * ⚠ `symFallback` 形参**保留**：调用点 `MainActivity.kt:2808` 仍按两参调用它（那不在本组 inScope）；
+     *   本函数现只记 `dispName`。`dispName` 因此变成**只写不读**的字段（登记：删除它要一起动调用点，
+     *   属另一轮/另一组的活；本轮只把注释与实现对齐，不做跨文件清理）。
      */
     fun setDispName(n: String, symFallback: String) {
+        @Suppress("UNUSED_PARAMETER")
+        val ignored = symFallback
         dispName = n
-        // ⚠ 2026-10-13 用户裁定：**显示名字时代码同屏**（"名字 代码"），不再让名字顶掉代码。
-        //   用户实报「XOM 显示了英文名字就没有代码了」。改前 `n.ifBlank{symFallback}` 是
-        //   二选一；现在空名回退纯代码、有名则"名字 代码"（与 cmdty 标题「黄金 XAUUSD」同规则）。
-        //   ⚠ 中文名优先级：favName 先查 CNNAME 再落 NameBook 英文名 ⟹ 表里补了
-        //     埃克森美孚/太空探索技术公司后，这两个品种标题自动变中文名+代码。
-        titleTx.text = when {
-            n.isBlank() -> symFallback
-            n == symFallback -> n
-            else -> n + " " + FavStore.displaySym(symFallback)
-        }
     }
 
     /** 自选行带来的中文名。空串 ⟹ 标题回退显示代码。 */
@@ -430,12 +528,15 @@ class MktPanel(private val act: MainActivity, page: View) {
  */
 fun setSym(s: String) {
         fromFav = true          // ← 显式进入，允许回填
-        symInp.setText(s)
-        symInp.setSelection(s.length)
+        // The explicit favourite-entry mkLoad owns this re-entry; avoid a duplicate attach reload.
+        needsConfirmedReload = false
+        val canonical = MktData.canonicalSym(s)
+        symInp.setText(canonical)
+        symInp.setSelection(canonical.length)
         paintStar()
         // ④ 「启动时刷新一次」要有个对象才能刷: 记住上次看的品种, 下次冷启动才有东西可刷。
         // 不记的话每次冷启动 symInp 都是空的, 开关就几乎永不触发 —— 那还是骗人。
-        persistLastSym(s)
+        persistLastSym(canonical)
     }
 
     /**
@@ -452,15 +553,16 @@ fun setSym(s: String) {
      *   ⟹ 本键现在只剩两个用途：「启动时刷新」与按品种取的步长阈值（与确认无关，未动）。
      */
     private fun persistLastSym(s: String) {
-        if (s.isEmpty()) return
+        val canonical = MktData.canonicalSym(s)
+        if (canonical.isEmpty()) return
         try { act.getSharedPreferences("gridcalc", android.content.Context.MODE_PRIVATE)
-            .edit().putString("mkt_last_sym", s).apply() } catch (_: Exception) {}
+            .edit().putString("mkt_last_sym", canonical).apply() } catch (_: Exception) {}
     }
 
     /** ④ 启动时取回上次看的品种; 没有就返回空串(首次安装, 什么都还没看过)。 */
     fun lastSymPersisted(): String = try {
-        act.getSharedPreferences("gridcalc", android.content.Context.MODE_PRIVATE)
-            .getString("mkt_last_sym", "") ?: ""
+        MktData.canonicalSym(act.getSharedPreferences("gridcalc", android.content.Context.MODE_PRIVATE)
+            .getString("mkt_last_sym", "") ?: "")
     } catch (_: Exception) { "" }
 
     // ── 墓碑 · 2026-10-12（裁定 B 改）：「最后**确认过**的品种」指针已整块删除 ──
@@ -476,12 +578,11 @@ fun setSym(s: String) {
     // 稿§4根数:范围15≤n≤100(KMIN/KMAX),越界clamp不报错;空值回落该品种已确认默认
     fun curN(): Int = (rawN() ?: confirmedN()).coerceIn(KMIN, KMAX)
 
-    // 稿§4 根数**原始值**:读输入框原文、round 之后返回;空/非数字返回 null(=沿用已确认默认)。
-    // 为什么必须单独留这个:判下限**不能**用 curN()——curN() 已 coerceIn(KMIN,KMAX),
-    // 用户填 10 会被它变成 15,`raw < KMIN` 于是永远不成立,提示就永远不会出现。
-    // 这正是 v4 移植漏掉「提示并中止」那一半的原因(规格只写了 clamp 那半句)。
-    private fun rawN(): Int? =
-        kcountInp.text.toString().trim().toDoubleOrNull()?.let { Math.round(it).toInt() }
+    // 稿§4 根数**原始值**：步进器把值约束在 KMIN..KMAX 内，所以这里恒等于 [kVal]。
+    // ⚠ 保留这个间接层是**故意的**：`raw < KMIN` 那条「提示并中止」分支仍在（见 loadNow），
+    //   将来若允许键盘直输/长按越界，这里就是唯一需要改的地方；删掉它会让下游的
+    //   「rawN 可能 < KMIN」前提无声失效。
+    private fun rawN(): Int? = kVal
 
     private fun confirmedN(): Int = loadWin().second
 
@@ -515,11 +616,28 @@ fun setSym(s: String) {
      *   后者绝不能被当成合法值去冻结,否则等于凭空造了一次确认。
      */
     private fun loadWinOrNull(sym: String): Pair<String, Int>? {
-        if (sym.isEmpty()) return null
+        val canonical = MktData.canonicalSym(sym)
+        if (canonical.isEmpty()) return null
         try {
-            val s = winPref.getString(sym, null)
-            if (!s.isNullOrEmpty()) {
-                val p = s.split("|")
+            var keyUsed = canonical
+            var raw = winPref.getString(canonical, null)
+            // Canonical wins when both records exist. Legacy aliases are read only as
+            // compatibility and migrated immediately so future writes have one key.
+            if (raw.isNullOrEmpty() && canonical == "NG00Y") {
+                for (legacy in MktData.NATGAS_ALIASES) {
+                    val legacyRaw = winPref.getString(legacy, null)
+                    if (!legacyRaw.isNullOrEmpty()) {
+                        raw = legacyRaw
+                        keyUsed = legacy
+                        break
+                    }
+                }
+                if (!raw.isNullOrEmpty()) {
+                    winPref.edit().putString(canonical, raw).remove(keyUsed).apply()
+                }
+            }
+            if (!raw.isNullOrEmpty()) {
+                val p = raw.split("|")
                 val wtf = p[0]
                 val nv = p.getOrNull(1)?.toIntOrNull()
                 if ((wtf == "W" || wtf == "M" || wtf == "Q") && nv != null) {
@@ -535,20 +653,105 @@ fun setSym(s: String) {
         loadWinOrNull(lastSym) ?: ("M" to 20) // 未确认过:初始默认20(稿§4示例)
 
     private fun saveWin() {
-        if (lastSym.isEmpty()) return
+        val canonical = MktData.canonicalSym(lastSym)
+        if (canonical.isEmpty()) return
         try {
-            winPref.edit().putString(lastSym, tf + "|" + curN()).apply()
+            val e = winPref.edit().putString(canonical, tf + "|" + curN())
+            if (canonical == "NG00Y") {
+                for (legacy in MktData.NATGAS_ALIASES) e.remove(legacy)
+            }
+            e.apply()
         } catch (_: Exception) {
         }
     }
 
-    // 换品种载入默认:周期按钮与根数输入框同源显示该品种已确认值
+    // 换品种载入默认:周期按钮与根数步进器同源显示该品种已确认值
     private fun applyWinDefaults() {
         val (wtf, wn) = loadWin()
         tf = wtf
         paintTf()
-        val typed = kcountInp.text.toString().trim()
-        if (typed != wn.toString()) kcountInp.setText(wn.toString())
+        setKVal(wn)
+    }
+
+    // ---------- 根数步进器（2026-11-04 用户裁定「填数字 → 加减控制」）----------
+    // 设计要点：
+    //   · 值只在 KMIN..KMAX 内游走，到边界就把对应键禁用（不是静默 clamp，用户看得见「到顶了」）；
+    //   · 单击 ±1；长按 320ms 后每 60ms 连发，抬手即停（连续调参不必点几十下）；
+    //   · 每次变化只更新读数与按键态，**不自动发请求** —— 提交仍走「确认」（用户 2026-10-03 的裁定）。
+    private fun setKVal(n: Int) {
+        val v = n.coerceIn(KMIN, KMAX)
+        if (v == kVal) return
+        kVal = v
+        renderK()
+        scheduleKApply()
+    }
+
+    // ⚠⚠ 2026-11-04 用户报「k线图没有变化」的第二半：光让「确认」重画还不够 ——
+    //   步进器每点一下就变一个值，用户预期是**图跟着变**，而不是点 20 下再点确认。
+    //   这里做**防抖即时应用**（400ms 内连续点击只发一次请求）：
+    //     · 图立即按新根数重画（所见即所得）；
+    //     · 盘上**仍不写**（`gridcalc_win_v1` 只在「确认」时保存）——「不确认就不存」的契约不变；
+    //     · 不拉确认的后果仍是老的：离开页面由 onLeave() 还原成上次确认值。
+    private val kApplyHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val kApplyRunnable = Runnable { if (lastSym.isNotEmpty()) mkLoad() }
+
+    private fun scheduleKApply() {
+        kApplyHandler.removeCallbacks(kApplyRunnable)
+        kApplyHandler.postDelayed(kApplyRunnable, 400)
+    }
+
+    private fun stepK(dir: Int) = setKVal(kVal + dir)
+
+    private fun renderK() {
+        kValT.text = kVal.toString()
+        kMinus.isEnabled = kVal > KMIN
+        kPlus.isEnabled = kVal < KMAX
+        val ink = act.attrColor("colorInk")
+        val faint = act.attrColor("colorFaint")
+        kMinus.setTextColor(if (kMinus.isEnabled) ink else faint)
+        kPlus.setTextColor(if (kPlus.isEnabled) ink else faint)
+        t106SyncKCount()
+    }
+
+    /** 按下：缩到 .94 + 320ms 后开始连发；抬手：回弹并把「是否已连发」折算成一次单击。 */
+    private fun wireStepButton(b: Button, dir: Int) {
+        val ui = android.os.Handler(android.os.Looper.getMainLooper())
+        var held = false
+        var repeated = false
+        var tick: Runnable? = null
+        fun stop() {
+            tick?.let { ui.removeCallbacks(it) }
+            tick = null
+        }
+        // 无障碍/键盘激活走 performClick（触屏路径由下面的 onTouch 自己处理，不会重复计数）
+        b.setOnClickListener { stepK(dir) }
+        b.setOnTouchListener { v, e ->
+            when (e.actionMasked) {
+                android.view.MotionEvent.ACTION_DOWN -> {
+                    held = true
+                    repeated = false
+                    v.animate().scaleX(0.94f).scaleY(0.94f).setDuration(90).start()
+                    val r = object : Runnable {
+                        override fun run() {
+                            if (!held) return
+                            repeated = true
+                            stepK(dir)
+                            if (kVal != if (dir > 0) KMAX else KMIN) ui.postDelayed(this, 60)
+                        }
+                    }
+                    tick = r
+                    ui.postDelayed(r, 320)
+                }
+                android.view.MotionEvent.ACTION_UP,
+                android.view.MotionEvent.ACTION_CANCEL -> {
+                    held = false
+                    stop()
+                    v.animate().scaleX(1f).scaleY(1f).setDuration(140).start()
+                    if (e.actionMasked == android.view.MotionEvent.ACTION_UP && !repeated) stepK(dir)
+                }
+            }
+            true
+        }
     }
 
     // ══════ 墓碑 · 2026-10-12 用户裁定 B 改：「冷启动恢复已确认窗口」整段删除 ══════
@@ -589,9 +792,76 @@ fun setSym(s: String) {
     // ⚠ **「自动存」与「确认键」是两套互斥语义**，别同时开着：
     //     都开 = 确认键形同虚设（反正离开就存了）。
     //   要回自动存：把这一行改回 saveWin()，并把 mkt_win 按钮再次隐藏，两处成对。
+    /**
+     * Repaint the last confirmed window from same-period local data only.
+     * Returns false when a normal mkLoad is needed after re-attach.
+     */
+    private fun replayConfirmedBatch(): Boolean {
+        if (lastSym.isEmpty()) return false
+        val loadTf = tf
+        val loadSym = lastSym
+        val loadSeq = reqSeq
+        val type = lastType
+        val loadKey = when (type) {
+            "gold", "silver", "cmdty" -> MktData.fetchKeyOf(loadSym)
+            else -> loadSym
+        }
+        val ck = MktData.MktCache.key(loadKey, loadTf, MktData.FETCH_N)
+        var fromSaved = false
+        val vs = MktData.MktCache.get(ck) ?: MktData.MktSave.saved(ck)?.also { fromSaved = true }
+            ?: return false
+        if (fromSaved) {
+            t2SrcSaved = true
+            t2SrcSavedAgeMs = MktData.MktSave.savedAgeMs(ck)
+        } else {
+            t2SrcFresh()
+        }
+        localReplay = true
+        try {
+            when (type) {
+                "stock", "kr" ->
+                    renderAgg(
+                        MktData.aggregate(listOf(MktData.pickStockWinner(vs)), loadKey),
+                        lastMkt, loadSeq, loadSym, loadTf, allowAuxRequests = false)
+                "crypto" ->
+                    renderAgg(
+                        MktData.aggregate(vs, loadKey),
+                        lastMkt, loadSeq, loadSym, loadTf, allowAuxRequests = false)
+                else ->
+                    renderAgg(
+                        MktData.aggregate(vs, loadKey),
+                        lastMkt, loadSeq, loadSym, loadTf, allowAuxRequests = false)
+            }
+        } finally {
+            localReplay = false
+        }
+        return t2ShownTf == MktData.tfName(loadTf) && lastKs.isNotEmpty()
+    }
+
     fun onLeave() {
         if (lastSym.isEmpty()) return
+        val (confirmedTf, confirmedN) = loadWin()
+        val cleanWindow = tf == confirmedTf &&
+            kVal == confirmedN
+        val confirmedRequestInFlight = cleanWindow && requestInFlight &&
+            inFlightSeq == reqSeq && inFlightTf == confirmedTf && inFlightN == confirmedN
+        val screenAlreadyConfirmed = cleanWindow &&
+            t2ShownTf == MktData.tfName(confirmedTf) && t2ShownCount == confirmedN
+        // A clean confirmed request may finish while the page is detached; keep its
+        // generation alive instead of forcing a duplicate fetch on re-entry.
+        if (confirmedRequestInFlight || screenAlreadyConfirmed) {
+            applyWinDefaults()
+            lastTf = tf
+            needsConfirmedReload = false
+            return
+        }
+        // Dirty controls or a stale screen invalidate the old generation, then replay
+        // the confirmed window locally or defer one normal mkLoad until re-attach.
+        reqSeq++
+        requestInFlight = false
         applyWinDefaults()
+        lastTf = tf
+        needsConfirmedReload = !replayConfirmedBatch()
     }
 
     // 「确认」按钮 → **直接落盘**，不弹任何对话框。
@@ -614,7 +884,7 @@ fun setSym(s: String) {
         val n = curN()
         val tfName = MktData.tfName(tf)
         // 稿§4：确认才把(周期+根数)写成该品种已确认默认；输入框归一到 clamp 值
-        kcountInp.setText(n.toString())
+        setKVal(n)
         // ⚠ 2026-10-12 裁定 B 改：这里原有两句 `commitDistWin()`（把窗口冻结进**全局** DistWin）
         //   与 `persistConfirmedSym()`（记「最后确认过的品种」，供冷启动恢复查表）——
         //   两者都只服务**全局窗口**，自选页改读每品种后一并删除（取舍见文件头 2026-10-12 墓碑）。
@@ -627,27 +897,42 @@ fun setSym(s: String) {
         //   （回调接线见 MainActivity:2754 附近 → refreshFavDist(only = setOf(sym))）。
         //   lastSym 空（行情页没载入品种，saveWin 也早退、盘里没变）→ 交给接收方判空后跳过。
         onDistCommitted?.invoke(lastSym)
+        // ⚠⚠ 2026-11-04 **补上「确认即重画」**（用户报「k线图没有变化」）：
+        //   改前本函数只落盘、不取数 —— 屏上的 K 线是靠**输入框失焦**那条隐式路径刷新的
+        //   （`kcountInp.setOnFocusChangeListener { !hasFocus -> mkLoad() }`）。
+        //   2026-11-04 输入框换成步进器后，那条隐式路径整体消失 ⟹ 点「确认」只存盘、图不动。
+        //   实测证据：prefs 已写 `STX=M|22`，屏上仍是「月线 · 17 根」、源行还是「Nasdaq · 2 分钟前」。
+        //   ⟹ 确认的语义本就该是「存盘 **且** 按新窗口重画」，这里显式补一次 mkLoad()。
+        //   ⚠ 只在已载入品种时刷（lastSym 空时 saveWin 也早退，没有可画的东西）。
+        if (lastSym.isNotEmpty()) mkLoad()
         android.widget.Toast.makeText(act, "已保存：$tfName · $n 根",
             android.widget.Toast.LENGTH_SHORT).show()
     }
 
-    // ── 2026-09-30 整段删除: syncGrid() ──
-    //   它原先做什么: 在 row2 每次布局后按 row2.width 把「周/月/季三键 + ▾」均分成
-    //   k/k/末键, 再给 kcountInp 与 winBtn 写死宽度 —— 整套建立在一个**错前提**上:
-    //   「行情页存在周期三键栅格行」。稿里没有这条规则。稿 L544 的 Seg 是 inline-flex、
-    //   按内容收窄; #55/#56 之后 mkt_row2(page_mkt.xml)是竖向的数量块, 里面只有
-    //   「标签+值」那一行 + mkt_kbar + gone 的 mkt_win, **一个周期键都没有**。
-    //   为什么删: 三键那段在 t405 已经摘掉, 剩下的 kcountInp / winBtn 两段是同一套
-    //   死假设的遗物。kcountInp 那段会把 XML 已改对的 wrap_content 按回 ~2/3 行宽
-    //   (数字浮在行内, 违反稿 L546 的 space-between), 已在 S11 摘掉; winBtn 那段
-    //   改的是 gone 视图, 视觉零影响。留着一半错前提的代码, 下一个读到它的人
-    //   还得重新推一遍「这函数现在还管什么」—— 删掉比留着省事。
-    //   它最坏的一次: 那段 tfW/tfM/tfQ 改宽把 XML 里已经改对的 wrap_content 又按成
-    //   三等分, 于是「源码对、APK 对、真机量出来是旧的」, 是这一轮最难查的现象。
-    //   ⚠ row2(mkt_row2)这个字段**故意留着**: 它是 id 与 findViewById 的活绑定,
-    //   硬约束「所有现有 id 与 findViewById 绑定不许断」, 不因删函数就摘掉。
-    //   ⚠ mkt_win 视图与它的点击/弹窗逻辑(toggleWinPop)也**一律没动**, t107 ③ 的
-    //   判断仍然成立: 视图 gone 但逻辑留着, 将来若恢复入口不必重建。
+    /**
+     * 一行布局（2026-10-29 t28）下的控制行收口。
+     *
+     * 稿 `四屏-行情页.html:91-99`：`.mk-ctl { display:flex; align-items:center;
+     * justify-content:space-between; gap: sp-2; padding: sp-2 sp-1 }` —— 周期段与数量组
+     * 在**同一行**，周期段是 `inline-flex`（内容宽），数量组是 `.mk-cnt { display:flex; gap: sp-1 }`。
+     *
+     * ⟹ 本函数**不再分配任何宽度**。三处宽度已全部回到 XML 声明：
+     *   · `mkt_tf_row` 与三个 `mkt_tf_w/m/q`：`wrap_content`（内容宽，同稿 inline-flex）；
+     *   · `mkt_kstep`（2026-11-04 取代 `mkt_kcount` 输入框）：轨道 36dp，键 32dp×2、读数 minWidth 44dp；
+     *   · `mkt_win`：`wrap_content` + `minWidth=48dp` + `singleLine`（2026-10-27「确认被挤成竖排两字」的防回归）。
+     *
+     * ⚠ 别把宽度分配加回来：运行期写回 `lp.width` 会把 `wrap_content` 覆盖掉，那正是
+     *   2026-10-29 用户看到的「药丸被均分铺满整行」。要度量请读 `measuredWidth`（只读）。
+     * ⚠ 保留本函数是因为 `init{}` 的 `post{}` 与 `MktPeriodLayoutTest` 的 bridge 仍在调用它；
+     *   它也仍然守着「确认键永远可用、可点」这条状态契约。
+     */
+    private fun syncGrid() {
+        // A measured row must never leave the action as a zero-width/disabled child.
+        winBtn.isEnabled = true
+        winBtn.isClickable = true
+        // 旧实现开头是 `val w = row2.width; if (w <= 0) return` —— 那是「等 row2 量完再算三列栅格」
+        // 的前置。栅格没了，这个早退分支与它的依赖一起删除（一行布局的内容宽与行宽无关）。
+    }
 
     // 回车/查看:下拉开着且有选中行→用选中项,否则按输入框文字直接加载
     private fun pickOrLoad() {
@@ -663,7 +948,7 @@ fun setSym(s: String) {
 
     private fun scheduleSug() {
         sugRunnable?.let { sugHandler.removeCallbacks(it) }
-        val q = symInp.text.toString().trim().uppercase(Locale.US)
+        val q = MktData.canonicalSym(symInp.text.toString())
         if (q.isEmpty()) {
             hideSug()
             return
@@ -672,6 +957,13 @@ fun setSym(s: String) {
             val seq = ++sugSeq
             val local = MktSuggest.local(q)
             showSug(local, seq)
+            // ⚠ 2026-11-03 t11（t3 finding 3）：已下线市场在本地/远端都必然空 ⟹ 下拉一藏就完事
+            //   的话用户只会以为"没反应"。直接在这一行说清「不支持…」，并且**不发远端请求**
+            //   （MktSuggest.remote 对 unsupported 本来就是空，这里连调用都省掉）。
+            if (MktData.symType(q) == "unsupported") {
+                paintUnsupported(q)
+                return@Runnable
+            }
             Thread {
                 val remote = MktSuggest.remote(q)
                 if (seq != sugSeq) return@Thread
@@ -689,7 +981,9 @@ fun setSym(s: String) {
         // ⚠ 2026-10-04 手动拆股簿也要预载进内存：`aggregate` 是静态入口、没有 Context，
         //   只能靠 ensure() 提前读一次（与 FX.ensure 同一形状）。
         MktData.SplitBook.ensure(act)
-        initSplitUi()
+        // ⚠ 2026-10-29 t30：这里原调 `paintCardSlices()`（t3 删拆股时把它从 paintSplitUi 接管过来，
+        //   为的是保住五块卡的底色与抬升）。**按稿去卡片化后它就是要拆的东西** ⟹ 调用已删，
+        //   函数本体与依据见本类「卡片分片体系整体下线」那段墓碑。别再调回来。
         // ⚠ 2026-10-03 **源状态行的展开/收起点击监听整块删除**。
         //   它挂在 srcRow 上，而 srcRow 已随「源状态行」按用户裁定删除（见 page_mkt.xml 墓碑）。
         //   配套的 syncLegRows/paintLegRows 一并删除 —— 后者是 dispatchDraw 闪退的元凶，
@@ -703,8 +997,29 @@ fun setSym(s: String) {
         goBtn.setOnClickListener { pickOrLoad() }
         favBtn.setOnClickListener { toggleFav() }
         paintStar()
-        // ▾确认菜单(t107 ③ 已 gone, 逻辑留着)。原先按实际宽算的那套栅格代码已随 syncGrid() 删除。
+        // ▾确认按钮：宽度由 row2 的三列网格在布局完成后统一计算。
         winBtn.setOnClickListener { toggleWinPop() }
+        row2.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> syncGrid() }
+        row2.post { syncGrid() }
+        periodRow.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+            override fun onViewAttachedToWindow(v: View) {
+                if (lastSym.isEmpty()) return
+                // ⚠⚠ 2026-11-02 用户报「数量没点确认就切页，回来时输入框回退了、行情图没回退」。
+                //   旧逻辑只在 `needsConfirmedReload`（= 离开时本地回放失败）时才重载，
+                //   而回放**成功**时画面已经按未确认的根数重绘过 ⟹ 输入框回退了、图还是旧的。
+                //   ⟹ 这里加一条**与已确认窗口比对**的闸：屏上画的不是已确认的(周期,根数)就重载一次。
+                //   比对用 t2ShownTf/t2ShownCount（= 屏上这批数据的真实身份），不看输入框。
+                val (ctf, cn) = loadWin()
+                val mismatch = t2ShownTf != MktData.tfName(ctf) || t2ShownCount != cn
+                if (!needsConfirmedReload && !mismatch) return
+                needsConfirmedReload = false
+                t2MarkStale()
+                mkLoad()
+            }
+            override fun onViewDetachedFromWindow(v: View) = Unit
+        })
+        // ⚠ 2026-10-28：K 线缩放三键（zoomOut/zoomIn/zoomReset）的 click 监听与 OHLC 表头
+        //   三态排序的接线**随控件一并删除**，这里不再留任何空接线。
         val done = { v: View, after: () -> Unit ->
             act.hideKeyboard(v)
             after()
@@ -749,42 +1064,15 @@ fun setSym(s: String) {
                 symName.text = if (t.isEmpty()) "—" else t
             }
         })
-        kcountInp.setOnEditorActionListener { v, actionId, _ ->
-            if (actionId == EditorInfo.IME_ACTION_DONE) {
-                done(v) { if (symInp.text.toString().trim().isNotEmpty()) mkLoad() }
-                true
-            } else false
-        }
-        // 【F-2c】数量滑杆已删。K数变更即重算靠**失焦提交**（setOnFocusChangeListener，见下）。
-        // afterTextChanged 这里**只同步上红、不发请求** —— 每次击键都 mkLoad() 会连发多次请求，
-        // 属于「并发惊群」那一族的病。触发只挂在失焦这**一个**事件上：一次编辑，一次请求。
-        kcountInp.addTextChangedListener(object : android.text.TextWatcher {
-            override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
-            override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
-            override fun afterTextChanged(s: android.text.Editable?) { t106SyncKCount() }
-        })
-        // ⚠⚠ 2026-10-03 用户裁定：「输入框也没有**光标最右功能**（无论怎么点，光标都会出现在最右方）」。
-        //   ⟹ **后半句是用户要的行为，不是问题描述**。我第一轮把它读反了，
-        //     当成「问题=光标总在右边」，于是去缩盒子的内边距/最小宽度 —— **方向整个反了**，
-        //     而且顺带把 minWidth 从 56dp 缩到 39dp、又按稿改回 66.8dp，来回两轮都没碰到这件事。
-        //   用户要的是：**点盒子任意位置，光标一律落到末尾**（像「跳到末尾」型输入框）。
-        //
-        //   为什么默认行为不满足：`mkt_kcount` 是数字输入、只 2~3 位，
-        //   盒子里两位数之间本来就有可点空隙，点进去光标就停在两位中间（真机截图证实）。
-        //
-        //   实现：`setOnClickListener` 在默认 touch 处理**之后**触发，
-        //   把选区强制推到 text.length —— 每次点击都覆盖掉默认落点。
-        //   ⚠ 返回 false 的 onTouch 不需要；这里用 onClick 已足够且不会吞掉输入法行为。
-        kcountInp.setOnClickListener {
-            val n = kcountInp.text?.length ?: 0
-            if (kcountInp.selectionStart != n || kcountInp.selectionEnd != n) {
-                kcountInp.setSelection(n)
-            }
-        }
+        // ⚠ 2026-11-04：原 `kcountInp.setOnEditorActionListener`（数字键盘「完成」提交）随输入框删除；
+        //   步进器没有 IME 路径，提交仍走「确认」。
+        // ⚠⚠ 2026-10-03 用户裁定「输入框没有光标最右功能」那一整段（选中文末/失焦提交）
+        //   随输入框一并作废 —— 2026-11-04 输入框已换成步进器，没有光标这回事了。
+        //   步进器的提交路径见下方 wireStepButton / renderK。
         t106SyncKCount()
-        kcountInp.setOnFocusChangeListener { _, hasFocus ->
-            if (!hasFocus && symInp.text.toString().trim().isNotEmpty()) mkLoad()
-        }
+        wireStepButton(kMinus, -1)
+        wireStepButton(kPlus, +1)
+        renderK()
         val tfClick = { t: String ->
             tf = t
             paintTf()
@@ -801,8 +1089,14 @@ fun setSym(s: String) {
         t108PaintTitle(info)
             // 稿 renderMK(764):supShow(现价之下支撑)→linkCalc 软联动(计算页最低价/目标爆仓价上限)
             val sup = info.supShow
-            act.linkCalc(sup)
+            // ⚠ 2026-10-26 **带上这批数据的批次代号**：onInfo 由 onDraw 触发，重绘（缩放/十字光标）
+            //   也会再来一次 —— 计算页清空后必须能认出这是「清空前那一批」而拒掉；
+            //   清空后重新进入同品种的新批次则必须放行。代号来自 [shownSeq]（renderAgg 在
+            //   chart.setData 前写入的唯一写者），不是"回调发生时的当前 reqSeq"。
+            act.linkCalc(sup, shownSeq)
             // t106 ⑪ 支撑图例行删掉(稿里没有,信息已由线上标签片承担),
+            // ⚠ 2026-10-28 方向-B 复核：本屏**没有任何图例说明条**（K 线下方也不补）——
+            //   稿里的「实心▲涨 / 实心▼跌 / 实线支撑 / 虚线现价 / 1屏≤500根」一律不上屏。
             //      底部改成 ⑫ 状态行「· N 根月线已更新」
             // #33 稿 L581-582: 状态与来源是【两个兄弟元素】,不再拼进同一个 TextView。
             //   状态 → stateline,带稿 L291 的前导符号「·」(成功态恒为默认档)
@@ -844,7 +1138,7 @@ fun setSym(s: String) {
             // 两套真相), 稿 L582 的 StateLine 在非 ok 态也不该显示「N 根已更新」。
             if (sup.isEmpty()) mkStatus("—无支撑 · 数据已到，但该周期算不出支撑位（腰斩法未命中）", false)
             t102PaintSourceRow(info.count)
-            t103PaintStepT(symInp.text?.toString()?.trim()?.uppercase(Locale.US) ?: "")
+            t103PaintStepT(MktData.canonicalSym(symInp.text?.toString() ?: ""))
             // 稿:成功态不显示"支撑xxx"状态文字(mktstatus默认display:none)
             // ⚠ t322: 这里**只能收 mkt_status, 不能走 mkStatus("")**。
             //   mkStatus 的 else 分支会连 stateline 一起收掉, 而 stateline 此刻
@@ -854,229 +1148,40 @@ fun setSym(s: String) {
         }
     }
 
-    // ══════════════ 手动拆股 · 前复权（UI）══════════════
+    // ══════════════ 手动拆股 · 前复权（UI）· 2026-10-28 已整块删除 ══════════════
     //
-    // 【职责边界】这里只做三件事：显示当前品种的条目、把用户输入的文本**解析**成 (日期, 比例)、
-    //   把结果写回 [MktData.SplitBook]。**不做任何检测、不推断、不替用户补默认值** ——
-    //   「哪天、几拆几」是数据里没有的信息，猜出来就是错的价格。
-    //
-    // 【为什么改完要重载】拆股是在 `MktData.aggregate` 里现算的，缓存里存的是复权前的数据
-    //   （写盘顺序 fxify → MktCache.put → aggregate），所以改一条拆股**不需要重新联网**，
-    //   只需重跑一次渲染。`reloadAfterSplit` 走的是既有 mkLoad 路径，命中内存缓存就不发请求。
+    // 原有的三件职责（显示当前品种条目 / 解析用户输入的日期与比例 / 写回 MktData.SplitBook）
+    // 随 UI 一并下线：表单控件、条目渲染、提示行、reloadAfterSplit 全部删除。
+    // MktData 侧的 SplitBook 仍是空操作（2026-10-27 裁定「功能也不要」），取数与缓存逻辑未动。
+    // ⚠ 要恢复：得同时把 page_mkt.xml 的 mkt_split_* 节点、本节绑定与监听整体捡回来 ——
+    //   别再试图「只加一个开关」。
 
     // ══════════════════════════════════════════════════════════════════════════
-    // 2026-10-16 t52 · 方向 B §2.4-3.2 卡片 / §6.1b 卡片分片（行情屏）
+    // ⚠⚠ 2026-10-29 t30 · **卡片分片体系整体下线**（用户裁定「按稿彻底去卡片化」）。
     //
-    // 【为什么底色与圆角在代码里刷，而不是在 XML 挂 drawable】
-    //   ① 分片要的是**每个角不同**的圆角（首片上圆角 / 中片 0 / 末片下圆角），而 res/drawable 里
-    //      现成的卡片 drawable（card_bg）是**统一 12dp 圆角**（2026-10-16 t1「方案 A」起已无 1dp 描边）⟹ 挂上去会把分片圆角盖成
-    //      统一圆角、接缝处露出两段圆弧；且方向 B 的卡片在浅色靠阴影、深色靠色调阶梯，
-    //      **不靠描边**（§2.3）⟹ 静态卡面（含现在的 card_bg）都表达不了分片；card_bg 本身是**屏内卡专用**，零浮层消费者。
-    //   ② 末片是谁**取决于运行期状态**（拆股编辑区开关 = 2026-10-04 用户裁定）⟹ 静态 XML 写不出。
-    //   GradientDrawable.cornerRadii 正好吃「每个角一个半径」这口饭。
-    // 【深色】elevation 取 elev_row / elev_1，而 values-night 里这两个 dimen **都是 0**
-    //   ⟹ 深色自动零阴影、层次交给色调阶梯（§2.3 / M5），本函数不需要任何主题分支。
-    // 【边界】卡片底色 = colorCard（= bg-surface），画布 = colorCanvas ⟹ 浅色靠阴影抬升、
-    //   深色靠 #0E1116 → #161B22 的色调差，与原型 `theme.css` §6.1 同一条配方。
+    // 这个位置原有三个函数，已**连同两处调用（init{} 与 mkLoad 的 symChanged 分支）一并删除**：
+    //   · cardBg(view, top, bottom) —— 造 GradientDrawable：底 = colorCard + 逐角 12dp 圆角；
+    //   · paintCardSlices()         —— 运行期把它挂到 控制行 / 现价块 / K 线块 / 指标块 / 支撑块，
+    //                                  再分别抬升（elev_row / elev_1），并把 chart 与指标卡三行的背景清空；
+    //   · isDarkNow()               —— 只被 paintCardSlices 的 elevCtrl 判据用过（唯一调用点随之失效）。
+    //
+    // 依据：稿 `theme.css` §6.1 的透明组逐字包含 `.mk-blk, .mk-price, .mk-sw, .mk-metrics,
+    //   .mk-sup, .mk-ohlc, .mk-tblwrap { background: transparent; border-radius: 0; box-shadow: none; }`
+    //   ⟹ 行情屏**本来就没有卡**（2026-10-29 t29 人眼核时发现 App 仍是 5 张白卡，是本轮移植漏项）。
+    //   边界改由**面层阶梯 + 控件自身**表达（稿 §2.4-3.2），**不加发丝线**（稿 `.mk-hair { display:none }`）。
+    //
+    // ⚠ 别把这段恢复回来：要加回卡面必须先改稿（真值源），否则闸 2 / 闸 4 会同时判红。
+    // ⚠ 深色下 elev_* 原本也都是 0（values-night）⟹ 这次删除对深色**只去掉 colorCard 底色**。
+    // ⚠ `isDarkNow()` 若日后别处要用，重写一个即可（原来是 `(resources.configuration.uiMode and
+    //    UI_MODE_NIGHT_MASK) == UI_MODE_NIGHT_YES` 的一行实现），别为它把本节整块捡回来。
     // ══════════════════════════════════════════════════════════════════════════
 
-    /** 卡片底：colorCard + 指定角圆角（§2.3 圆角档：卡 = 12dp，只用 r-card 这一档）。
-     *  ⚠ 资源从**控件自己**取（`v.resources`），不走构造形参 `page` —— 本类的 `page` 不是属性，
-     *    方法体里看不见它（L856 那条注释就是这个坑），所以 `findViewById` 只能在属性初始化器里用。 */
-    private fun cardBg(v: View, top: Boolean, bottom: Boolean): android.graphics.drawable.GradientDrawable {
-        val r = 12f * v.resources.displayMetrics.density       // r-card = 12
-        val z = 0f
-        return android.graphics.drawable.GradientDrawable().apply {
-            shape = android.graphics.drawable.GradientDrawable.RECTANGLE
-            setColor(act.attrColor("colorCard"))
-            // cornerRadii 顺序 = 左上 / 右上 / 右下 / 左下（每角两个分量）
-            cornerRadii = floatArrayOf(
-                if (top) r else z, if (top) r else z,
-                if (top) r else z, if (top) r else z,
-                if (bottom) r else z, if (bottom) r else z,
-                if (bottom) r else z, if (bottom) r else z
-            )
-        }
-    }
-
-    /**
-     * 把行情屏的卡片刷成方向 B 的形态。**编辑区显隐一变就要重刷**（末片会换人）。
-     *
-     * ⚠ 这里同时是「off 态中片变末片」的落点：语言层 §6.1b 规定
-     *   `[data-split-state="off"] .mk-split { 下圆角 + 撤掉片间线 }` ——
-     *   编辑区 GONE 时拆股行就是卡片的末片，圆角与分隔线都得跟着改。
-     */
-    private fun paintCardSlices() {
-        // ⚠ 资源/尺寸一律从**控件自己**取（page 不是属性，方法体里看不见 —— 见 cardBg 的注释）
-        val elevRow = splitBox.resources.getDimension(R.dimen.elev_row)
-        val elev1 = splitBox.resources.getDimension(R.dimen.elev_1)
-        val boxOn = splitBox.visibility == View.VISIBLE
-        // ⚠ 末片是谁要**两个条件一起看**：拆股行本身也会整块收起（品种为空时 paintSplitUi 把它 GONE）
-        //   ⟹ 那种情况下控制卡只剩首片，首片要自己带上**下圆角**（否则卡片下缘是直角）。
-        val headOn = splitHead.visibility == View.VISIBLE
-        val firstIsLast = !headOn
-        // 控制卡三片（首 / 中 / 末）
-        periodRow.background = cardBg(periodRow, top = true, bottom = firstIsLast)
-        periodRow.elevation = elevRow
-        splitHead.background = cardBg(splitHead, top = false, bottom = !boxOn)   // 编辑区关时它就是末片
-        splitHead.elevation = elevRow
-        splitBox.background = cardBg(splitBox, top = false, bottom = true)
-        splitBox.elevation = elevRow
-        // 语言层：中片变末片 ⟹ 撤掉片间分隔线（编辑区关、或拆股行整块收起时都没有中片）
-        cardDivider.visibility = if (boxOn && headOn) View.VISIBLE else View.GONE
-        // 两张独立卡（§2.4-3.2：现价卡 / K 线卡）
-        priceCard.background = cardBg(priceCard, top = true, bottom = true)
-        priceCard.elevation = elev1
-        chart.background = cardBg(chart, top = true, bottom = true)
-        chart.elevation = elev1
-        // 支撑价位块（默认 GONE，2026-10-03 起只在有支撑时显示）同样按卡片给底
-        supBlock.background = cardBg(supBlock, top = true, bottom = true)
-        supBlock.elevation = elev1
-        // 「指标卡」= 机构目标均价（首片）+ 步长阈值（末片），§2.4-3.2。
-        // ⚠ 这两行的显隐是**各自独立**的（tgt 4 处 / stepT 5 处切换），这里按「两行都在」的
-        //   常见态给分片圆角；单行可见时圆角会略偏 —— 不为它加 8 处联动重算（见 page_mkt.xml 的说明）。
-        tgt.background = cardBg(tgt, top = true, bottom = false)
-        tgt.elevation = elevRow
-        stepT.background = cardBg(stepT, top = false, bottom = true)
-        stepT.elevation = elevRow
-    }
-
-    /** [splitSw] 的监听回调用它做程序化 setChecked，必须静音，否则会回写成用户操作。 */
-    private var suppressSplitCb = false
-
-    private fun initSplitUi() {
-        // ⚠ 资源取法：本类只有构造形参 `page`，它不是属性；Activity 专属的 `resources` / `theme`
-        // 在这里都不可见。settings 页那段写法（MainActivity 内用 `resources.getDrawable(id, theme)`）
-        // 搬不过来 ⟹ 统一从控件自身取 context，不新开成员。
-        splitSw.setTrackDrawable(
-            splitSw.resources.getDrawable(R.drawable.switch_track, splitSw.context.theme)
-        )
-        splitSw.setOnCheckedChangeListener { _, on ->
-            if (suppressSplitCb) return@setOnCheckedChangeListener
-            val sym = curSym()
-            if (sym.isBlank()) {
-                mkStatus("先选一个品种，再开手动拆股", true)
-                suppressSplitCb = true
-                splitSw.isChecked = false
-                suppressSplitCb = false
-                return@setOnCheckedChangeListener
-            }
-            MktData.SplitBook.setEnabled(act, sym, on)
-            paintSplitUi()
-            reloadAfterSplit()
-        }
-        splitAdd.setOnClickListener { addSplitFromInput() }
-    }
-
-    /** 当前品种的开关状态 → 开关、编辑区、条目列表、提示行，四样一起刷新。 */
-    fun paintSplitUi() {
-        val sym = curSym()
-        val has = sym.isNotBlank()
-        splitHead.visibility = if (has) View.VISIBLE else View.GONE
-        if (!has) {
-            splitBox.visibility = View.GONE
-            paintCardSlices()      // 拆股行整块收起时，控制卡只剩首片（圆角/线一并归位）
-            return
-        }
-        val on = MktData.SplitBook.enabled(sym)
-        suppressSplitCb = true
-        splitSw.isChecked = on
-        suppressSplitCb = false
-        // ⚠ 2026-10-16 t52（F-5 同族站点 · 交接 §5.1-① 第 2 处）：thumb 的**开态**色。
-        //   开态轨道 = colorAccentFill（t49 的 switch_track：浅 #2A5BD7 / 深 #3D6BE0）
-        //   ⟹ 白滑块压它 浅 5.87:1 / 深 **4.80:1** ✓（改前轨道是 colorPrimary，
-        //      深色 #987DEF 压白只有 3.22:1）。白即 on-accent 的取值，**不动共享 token**。
-        //   关态改 **colorThumbOff**（方向 B §2.4-3.7：--thumb-off 浅 #333C48 / 深 #C3CBD6）：
-        //   改前用 colorFaint，在深色下与轨道 #1E242D 的对比不足（§3.7 实算表要求 ≥3:1）。
-        splitSw.thumbTintList = android.content.res.ColorStateList.valueOf(
-            if (on) act.attrColor("colorOnPrimary") else act.attrColor("colorThumbOff")
-        )
-        splitBox.visibility = if (on) View.VISIBLE else View.GONE
-        // ⚠ 编辑区显隐一变，控制卡的「末片」就换人 ⟹ 分片圆角与片间线必须跟着重刷（§6.1b）
-        paintCardSlices()
-        if (!on) return
-
-        val list = MktData.SplitBook.list(sym)
-        splitList.removeAllViews()
-        for (s in list) {
-            val row = LinearLayout(act).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = android.view.Gravity.CENTER_VERTICAL
-                setPadding(0, 4, 0, 4)
-            }
-            val tv = TextView(act).apply {
-                text = s.toString()
-                setTextColor(act.attrColor("colorInk"))
-                textSize = 13f
-                layoutParams = LinearLayout.LayoutParams(0,
-                    LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-            }
-            val del = TextView(act).apply {
-                text = "×"
-                setTextColor(act.attrColor("colorFaint"))
-                textSize = 17f
-                setPadding(22, 0, 4, 0)
-                // 删除不弹二次确认（与计算页「清空数据」同一裁定：即时反馈胜过弹窗）。
-                // ⚠ 但删除只影响该品种的复权系数，原始数据没动 ⟹ 可原样再加回来，不是不可撤销。
-                setOnClickListener {
-                    val rest = MktData.SplitBook.list(sym).filter { it.date != s.date }
-                    MktData.SplitBook.put(act, sym, rest)
-                    paintSplitUi()
-                    reloadAfterSplit()
-                }
-            }
-            row.addView(tv)
-            row.addView(del)
-            splitList.addView(row)
-        }
-        splitNote.text = when {
-            list.isEmpty() -> ""
-            else -> "${list.size} 条 · 累计 ${fmtRatio(list.fold(1.0) { a, b -> a * b.ratio })}"
-        }
-    }
-
-    private fun fmtRatio(r: Double): String =
-        if (r == Math.floor(r) && r < 1e9) r.toLong().toString() + ":1"
-        else (Math.round(r * 100.0) / 100.0).toString() + ":1"
-
-    /**
-     * 解析两格输入并入库。
-     * ⚠ **看不懂就明说**：日期或比例解析失败时只写提示行、不改数据、不猜默认值。
-     *   这与本仓「拿不到就说拿不到，不拿兜底糊弄」的规矩一致。
-     */
-    private fun addSplitFromInput() {
-        val sym = curSym()
-        if (sym.isBlank()) return
-        val d = splitDate.text?.toString()?.trim().orEmpty()
-        val r = splitRatio.text?.toString()?.trim().orEmpty()
-        if (d.isEmpty() || r.isEmpty()) {
-            splitNote.text = "日期和比例都要填。格式：2022-08-25  与  3:1"
-            return
-        }
-        val sp = MktData.SplitBook.parseLine("$d $r")
-        if (sp == null) {
-            splitNote.text = "看不懂「$d $r」。日期要 YYYY-MM-DD，比例写 3 或 3:1（反向拆股写 1:10）"
-            return
-        }
-        val old = MktData.SplitBook.list(sym)
-        val replaced = old.any { it.date == sp.date }
-        MktData.SplitBook.put(act, sym, old + sp)   // 同日重复录入由 put 覆盖
-        splitDate.setText("")
-        splitRatio.setText("")
-        splitNote.text = (if (replaced) "已覆盖 " else "已添加 ") + sp.toString()
-        paintSplitUi()
-        reloadAfterSplit()
-    }
-
-    /** 改完拆股只重画、不重取：mkLoad 会先查内存缓存/留底，命中就不发网络请求。 */
-    private fun reloadAfterSplit() {
-        val s = curSym()
-        if (s.isBlank()) return
-        if (symInp.text.toString().trim().uppercase(java.util.Locale.US) !=
-            s.trim().uppercase(java.util.Locale.US)) {
-            symInp.setText(s)
-        }
-        mkLoad()
+    /** r8 B-1：卡头中段读数 = **实际画出来的根数**（`MktInfo.count` = `vp.ks.size`，不是保存的窗口值）。 */
+    private fun paintBlkh(n: Int) {
+        val t = MktData.tfName(tf) + " · " + n + " 根"
+        // ⚠ 值相同就不写：本函数在 onInfo 里被**每帧**调用（十字光标拖动时也调），
+        //   无条件 setText 会让 TextView 每帧走一次 relayout 检查。
+        if (blkhM.text.toString() != t) blkhM.text = t
     }
 
     // t102 第3步:源状态行。**只读 MktData.legsOf(curSym())(2026-10-12 t2 起按品种取),
@@ -1102,7 +1207,6 @@ fun setSym(s: String) {
  * 在没有拉取到行情数据的情况下」）。
  *
  * 【症状】屏上标题写着 `XAUUSD`，但价格 84,988 / 预测价值 114,637 / 支撑 59,225.18
- *   全是**上一个品种**的；右上角写着「实时 · 百度股市通」（股票源）配黄金标题。
  *
  * 【根因】`t123PaintNoData()` 只清两样东西：
  * ```
@@ -1231,7 +1335,6 @@ private fun clearForNewSymbol() {
     /**
      * 价格块右上那行的**唯一口径**：源名 + 「实时 / 收盘价」（t10 / 评审 N2）。
      *
-     * @param vendor 源名（Nasdaq / 腾讯 / Naver / Binance…）。取不到腿名时**不要**调它 —— 调用方直接写「未取到」。
      * @param q      **本轮那份报价快照**（`t2Snap`）。
      * @param live   这一轮**有没有命中腿**（"真取到了数"）。
      *
@@ -1303,8 +1406,11 @@ private fun clearForNewSymbol() {
             "周线" -> cal.add(java.util.Calendar.DAY_OF_MONTH, 6)
         }
         cal.add(java.util.Calendar.DAY_OF_MONTH, -1)   // 桶的**最后一天**（月/季桶的起点是 1 号）
+        // ⚠⚠ 2026-11-05 这里**必须按 UTC 格式化**：上面的 cal 已经在 UTC 里把桶推到
+        //   「桶内最后一天 00:00Z」，再按 GMT-4 显示就会退到前一天（实测 11/30 → 11/29），
+        //   而这一行正是「收盘价 · 源名 · <日期>」的日期来源。桶本身是 UTC 定的，显示也用 UTC。
         val f = java.text.SimpleDateFormat("MM/dd", Locale.US)
-        f.timeZone = java.util.TimeZone.getTimeZone("GMT-4")
+        f.timeZone = utc
         return f.format(cal.time)
     }
 
@@ -1326,6 +1432,42 @@ private fun clearForNewSymbol() {
                 " 快照=" + q.price + " ts=" + q.tradeTs + " sym=" + lastSym)
         }
     }
+
+    /**
+     * ⚠ 2026-10-27 用户裁定：价格卡右上那行**不再写「实时 / 收盘价」**，改写
+     * **「源名 · 多久之前」**（例：`Nasdaq · 3 分钟前`）。
+     *   · 同批改动：自选行移除了「旧 N 分钟前」（见 `FavPanel.flagOf`）——
+     *     数据新鲜度现在**只在这一处**显示。
+     *   · 年龄由 [t118Ago] 从**本批腿的产生时刻**算（`legsAt`），不是"画上屏那一刻"；
+     *     拿不到时刻就只写源名，**不写"刚刚"**（没有时刻就是不知道，不编）。
+     *   · [t2QuoteLabel] 保留但已无调用点：它是「实时 / 收盘价 + 成交时刻 / 日期」那套口径的
+     *     唯一实现，日后要恢复"实时"字样直接换回来即可。
+     */
+    /**
+     * 源名行给的是**这个价的时刻**，不是这一轮取数的时刻。
+     *
+     * ⚠⚠ 2026-11-05 用户实报：「标签显示刚抓取到数据，但是价格并未更新」。
+     *   病根就在这里 —— 改前一行恒为 `源名 · N 秒前`，而 N 是 **legs 的取数时刻**：
+     *   收盘后每刷新一次它都重新报「刚刚」，可屏上那个价是最近一个交易日的收盘价（不再变）。
+     *   标签替数据说了"我很新"，正是本项目反复要消灭的那类谎。
+     *   ⟹ 股票（Nasdaq）：盘中写**成交时刻**（`12:22 ET`），收盘写**成交日 + 收盘**
+     *     （`11/04 收盘`）；非股票维持原样（盘中/24h 源，命中腿就是当时的价）。
+     */
+    private fun t2PriceLabel(vendor: String, legsAt: Long): String {
+        val q = t2Snap
+        if (vendor == "Nasdaq") {
+            if (q != null && q.realtime) {
+                val ck = MktData.liveClock(q.tradeTs)
+                return vendor + (if (ck.isEmpty()) "" else " · " + ck)
+            }
+            val d = q?.tradeDay?.takeIf { it.isNotEmpty() } ?: t2DataDate()
+            return vendor + (if (d.isEmpty()) "" else " · " + d + " 收盘")
+        }
+        return t2AgeLabel(vendor, t118Ago(legsAt))
+    }
+
+    private fun t2AgeLabel(vendor: String, age: String): String =
+        if (age.isEmpty()) vendor else "$vendor · $age"
 
     /** 「3 分钟前 / 2 小时前 / 刚刚」——只说得出事实的粒度，不编。 */
     private fun t2Ago(ms: Long): String {
@@ -1385,6 +1527,12 @@ private fun clearForNewSymbol() {
         t2SrcSavedAgeMs = 0L
     }
 
+    /** A fresh network result supersedes an earlier same-cycle disk fallback. */
+    private fun t2SrcFresh() {
+        t2SrcSaved = false
+        t2SrcSavedAgeMs = 0L
+    }
+
     /** 取数中 / 失败：把「屏上是上一个周期的数据」写进唯一可见的那一行。 */
     private fun t2MarkStale(failed: Boolean = false) {
         // ⚠⚠ 2026-10-16 t10（评审 t7 的 N1）**空屏不许沉默**。
@@ -1440,11 +1588,16 @@ private fun clearForNewSymbol() {
                 srcName.setTextColor(act.attrColor("colorFaint"))
             }
             tgt.visibility = View.GONE
-            tgt.text = ""
+            tgtL.text = ""
+            tgtV.text = ""
             sup1.text = ""
             sup2.text = ""
             supBlock.visibility = View.GONE
             chart.clear()
+            // ⚠ 2026-10-28：图上已经清空 ⟹ 卡头读数必须一起回 0（否则新品种还没取到数时，
+            //   卡头挂着上一个品种的「N 根」）。OHLC 表体随整卡删除，不再有「回 5 行 —」这一步。
+            paintBlkh(0)
+            paintBlkh(0)
         } catch (e: Throwable) {
             // ⚠⚠ 2026-10-15 t6（评审 F3）**不许再空吞**。改前这里 `catch (_: Throwable) {}`：
             //   一旦哪个 View 是 null，屏上会**静默**留下上一个品种的价格/支撑/图 ——
@@ -1483,6 +1636,26 @@ private fun clearForNewSymbol() {
         // 真机用 logcat 按 tag 核对「空文案时状态点绝不能是实心」; t6 验完即删。
     }
 
+    /**
+     * 已下线市场（港股 00700 / A 股 sh688825）的**可见**提示。
+     *
+     * 【为什么要单独一支】2026-11-03 t11（t3 实测）：取数入口虽然抛了 [MktData.unsupportedText]，
+     *   但那条文案被 [mkStatus] 写进页底 `stateline` —— 它在布局里是 `gone`，
+     *   uiautomator dump 里连节点都没有；屏上只剩 [t123PaintNoData] 的「未取到」，
+     *   用户读不出"这个市场不支持"，只会当成源挂了、反复重试。
+     * ⟹ 改写到全屏唯一可见的 `mkt_srcname`（[srcName]），颜色按错误档（colorRed）；
+     *   隐藏的源名/页底行同步写同一句（**不新增布局、不改结构、不改可见性**）。
+     * ⚠ 文案唯一来源是 [MktData.unsupportedText]：这里不另写措辞，免得两处说岔。
+     */
+    private fun paintUnsupported(su: String) {
+        val msg = MktData.unsupportedText(su)
+        srcName.text = msg
+        srcName.setTextColor(act.attrColor("colorRed"))
+        srcDot.setBackgroundResource(R.drawable.srcdot_off)
+        srcMain.text = msg
+        mkStatus(msg, true)
+    }
+
     /** 状态点是否实心。判据必须看背景 drawable,不能看文本 —— 圆点已按 t393 的结论
      *  换成 srcdot_on/off; 系统字体里那两个圆点字形是两套独立字形,取不到环的描边粗细。
      *  记的是一条硬纪律: Drawable 的 `==` 比的是**引用**不是内容, 同一个 drawable 资源
@@ -1509,6 +1682,9 @@ private fun clearForNewSymbol() {
     //   （二分法确认：停掉本函数即不复现）。源状态行本就已按用户裁定删除，
     //   这套行插入机制是它的残留物 —— 一起删干净，不留空壳。
 
+
+    /** 「多久之前」的自刷 token：见 [t102PaintSourceRow] 末尾。 */
+    private var srcAgeTick = 0
 
     private fun t102PaintSourceRow(count: Int) {
         // ⚠⚠ 2026-10-12 t2：**按当前品种取腿**（`MktData.legsOf(curSym())`），
@@ -1572,7 +1748,7 @@ private fun clearForNewSymbol() {
         //   ⟹ 口径按市场分开：**只有 Nasdaq 走快照闸**，其余「命中腿即实时」（见 [t2QuoteLabel]）。
         srcName.text = when {
             // 有命中腿：按**命中的那条腿**报源名，再按该市场的口径定「实时 / 收盘价」
-            hitVendor != null -> t2QuoteLabel(hitVendor, lq, live = true)
+            hitVendor != null -> t2PriceLabel(hitVendor, legsAt)
             // ⚠⚠⚠ 2026-10-16 t10（评审 t7 的 N2）**这一支也必须读同一份 `t2Snap` 定口径**。
             //   改前写的是 `"收盘价 · " + (hitVendor ?: "未决")` —— 两个毛病：
             //     ① 口径没定：**只要没有命中腿就一律说"收盘价"**，而那一轮完全可能拿到了
@@ -1585,13 +1761,16 @@ private fun clearForNewSymbol() {
             //     腿链再改，文案自动跟随；拿不到腿名才退成"未取到"（不编源名）。
             else -> {
                 val nm = runCatching { MktData.legNames(curSym()).firstOrNull() }.getOrNull()
-                if (nm.isNullOrEmpty()) "未取到" else t2QuoteLabel(nm, lq, live = false)
+                // ⚠ 2026-11-05 同一口径：这里也必须走 [t2PriceLabel]。改前用取数年龄，
+                //   于是「有腿名但没有命中腿」这一支仍会把收盘价标成「Nasdaq · 33 秒前」。
+                if (nm.isNullOrEmpty()) "未取到" else t2PriceLabel(nm, legsAt)
             }
         }
-        // ⚠ 颜色跟着**写出来的口径**走（不能只看快照 —— 非 Nasdaq 的"实时"不靠快照挣）
-        srcName.setTextColor(act.attrColor(
-            if (srcName.text?.toString()?.startsWith("实时") == true) "colorPrimary" else "colorFaint"
-        ))
+        // ⚠ 2026-10-27 文案里已经没有「实时」二字，颜色改按**数据是否真实时**判（判据与改前同源）：
+        //   非 Nasdaq 命中腿即实时；Nasdaq 只认快照 `realtime`（口径说明见 [t2QuoteLabel]）。
+        val liveNow = if (hitVendor != null && MktData.symType(curSym()) != "stock") true
+                      else lq?.realtime == true
+        srcName.setTextColor(act.attrColor(if (liveNow) "colorPrimary" else "colorFaint"))
         // ⚠ 2026-10-15 t6（评审 F2 的回归断言）：屏上价格与这份快照必须同源
         t2AssertSameSource()
         // t118:这一行**只说用户需要知道的事**:数据从哪来、有多新、多少根。
@@ -1609,11 +1788,24 @@ private fun clearForNewSymbol() {
             // 没取到但有留底 —— 如实说"这是上次的",不点任何源名
             srcDot.setBackgroundResource(R.drawable.srcdot_off)
             srcMain.text = "显示上次的数据 · " + count + " 根 · " + t118Ago(legsAt)
+        } else if (legs.isNotEmpty()) {
+            // 留底确实有数据，但旧格式没保存产生时刻：不要显示「0 秒前」或「暂无源」。
+            srcDot.setBackgroundResource(R.drawable.srcdot_off)
+            srcMain.text = "显示上次的数据 · " + count + " 根 · 时间未知"
         } else {
             srcDot.setBackgroundResource(R.drawable.srcdot_off)
             srcMain.text = "暂无可用源"
         }
         srcMore.text = if (legDetail.visibility == View.VISIBLE) "收起" else "展开"
+        // ⚠ 2026-10-27 **相对时间必须自己走**：这一行只在取数/回填时重画，
+        //   照字面写上去就"冻住"了 —— 屏上「13 秒前」十分钟后还是「13 秒前」，
+        //   那是新的骗人（本次改动的初衷正是不许冒充新鲜度）。
+        //   ⟹ 每 30s 自刷一次；每次绘制递增 token，旧 tick 自动失效（不累积定时器）。
+        //     离开行情页（isShown=false）就不再续链，回来时由正常渲染重新起链。
+        val tick = ++srcAgeTick
+        srcName.postDelayed({
+            if (tick == srcAgeTick && srcName.isShown) t102PaintSourceRow(t2ShownCount)
+        }, 30_000L)
         // t31 收尾: 这里原来调一个状态点自检函数(整函数已删) —— mktpage 加的自检,
         // 真机用 logcat 按 tag 核对「空文案时状态点绝不能是实心」; t6 验完即删。
         // ⚠ 2026-10-03 paintLegRows 调用点已删（函数本身与源状态行一起移除，见上方 init 处的墓碑）
@@ -1660,6 +1852,7 @@ private fun clearForNewSymbol() {
     /** 幂等闸用的：当前显示的原因文案，避免同一句反复重画。 */
     private var stepWhyShown: String = ""
     private fun t103PaintStepT(sym: String) {
+        if (localReplay) return
     /** 幂等闸用的：当前显示的原因文案，避免同一句反复重画。 */
         // 稿:1188 —— 换品种先清零,防旧品种阈值参与新区间
         if (stepSym != sym) { stepSym = sym; stepTv = 0.0; stepT.visibility = View.GONE }
@@ -1683,7 +1876,11 @@ private fun clearForNewSymbol() {
     if (!wantOn && why.isEmpty() && stepTv == 0.0 && stepT.visibility == View.GONE) return@runOnUiThread
       if (!wantOn && why == stepWhyShown && stepTv == 0.0 && stepT.visibility == View.VISIBLE) return@runOnUiThread
                     stepTv = t!!
-                    stepT.text = "步长阈值 " + MktData.mkFmt(t * 100.0) + "%"
+                    stepTL.text = "步长阈值"
+                    stepTV.text = MktData.mkFmt(t * 100.0) + "%"
+                    stepTV.setTextColor(act.attrColor("colorInk"))
+                    // ⚠ 上一次可能走的是「原因」分支（把标签染成灰了）⟹ 正常值回来时必须把标签色复位。
+                    stepTL.setTextColor(act.attrColor("colorSub"))
                     stepT.visibility = View.VISIBLE
                 } else if (why.isNotEmpty()) {
        // ⚠⚠⚠ 2026-10-05 没算出来时**把原因显示出来**，不再无声隐藏那一行。
@@ -1691,9 +1888,12 @@ private fun clearForNewSymbol() {
    // 改前 else 支只做 GONE ⟹「正在取/网络不通/日线不够」在屏上长得一模一样。
   stepTv = 0.0
          stepWhyShown = why
-       stepT.text = "步长阈值 " + why
-  stepT.setTextColor(android.content.res.ColorStateList.valueOf(0xFF9AA0A6.toInt()))
-  stepT.visibility = View.VISIBLE
+       // ⚠「没算出来的原因」是**一整句话**（如「日线不够」），不是数值 ⟹ 放左侧标签位、
+       //   右侧数值位清空（行高由标签撑）；墨色仍走原来的灰（9AA0A6）。
+       stepTL.text = "步长阈值 " + why
+       stepTV.text = ""
+       stepTL.setTextColor(android.content.res.ColorStateList.valueOf(0xFF9AA0A6.toInt()))
+       stepT.visibility = View.VISIBLE
    } else {
           stepTv = 0.0
  stepWhyShown = ""
@@ -1725,28 +1925,34 @@ private fun clearForNewSymbol() {
         //   （压浅色药丸 #FFFFFF = 18.32:1、压深色药丸 #272E38 = 13.4:1）。
         //   ⚠ 若沿用改前的 colorOnPrimary（白）：浅色下白字压白药丸 = **1.00:1 完全不可读** ——
         //     这是本次移植里最容易被漏掉的一处，drawable 换了而 paint 没换就会静默变白。
-        //   on-accent 口径留给**真正的主色实底**：mkt_go（查看）、paintSugSel（候选选中行）、
-        //   拆股 thumb —— 那三处仍是 accentFill 底 + 白字（浅 5.87 / 深 4.80）。
+        //   on-accent 口径留给**真正的主色实底**：mkt_go（查看）、paintSugSel（候选选中行）
+        //   —— 那两处仍是 accentFill 底 + 白字（浅 5.87 / 深 4.80）；第三处「拆股 thumb」已随
+        //   手动拆股整行于 2026-10-28 删除。
         // ⚠ 2026-10-16 t52 · **§5.2-B8 按压态**：方向 B 把分段器的按压反馈定成**字色**
-        //   （theme.css §6.4 末行 `:active { color: ink }`；seg_unsel.xml 的注释同样写明
-        //   「底在常态与按压态都是透明」）⟹ 未选段用 ColorStateList 给一个按压档
-        //   （按下 → colorInk），底与圆角都不变。这是 state list，不是 setOnTouchListener ——
-        //   键盘/无障碍触发按压时同样生效。
-        val unsel = android.content.res.ColorStateList(
-            arrayOf(intArrayOf(android.R.attr.state_pressed), intArrayOf()),
-            intArrayOf(ink, ink2)
+        //   （theme.css §6.4 末行 `:active { color: ink }`）。
+        // ⚠⚠ 2026-11-04 用户裁定「设计一些他的动画」后，按压反馈改为**缩放 + 字色**两条：
+        //   缩放由 [SegTrack.attachPress] 负责（0.97 / 90ms 按下、140ms 回弹），
+        //   字色仍由本函数的中选/未选切换负责 ⟹ 不再需要独立的 pressed 档 ColorStateList。
+        // ⚠⚠ 2026-11-04 改造：选中态从「按钮自己换底」改为「轨道上的一颗共享药丸」——
+        //   药丸是同一个对象在三个位置间移动，所以能做出连续位移（稿原先零动画，本轮为用户新设计）。
+        //   · 底：由 `tfRow`（SegTrack）自绘，按钮底一律透明；
+        //   · 字：换色 150ms 交叉（字重不可插值，同步切换粗体）；
+        //   · 位移：180ms / cubic-bezier(0.2,0.8,0.2,1)（稿 --dur-2 / --ease）。
+        //   首次绘制不带动画（没有用户动作就不该有入场动画）。
+        val idx = when (tf) { "W" -> 0; "Q" -> 2; else -> 1 }
+        val dark = (act.resources.configuration.uiMode and
+            android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
+            android.content.res.Configuration.UI_MODE_NIGHT_YES
+        // 药丸配色 + 阴影：浅色有 elev-1（自绘，模器也能看见），深色无（稿 --elev-1: none）。
+        tfRow.setPillColors(
+            pill = act.attrColor("colorSurfaceRaised"),
+            shadow = 0x1A101828,          // rgba(16,24,40,~.10) ≈ 稿 elev-1 合成值
+            withShadow = !dark,
         )
-        for ((b, t) in listOf(tfW to "W", tfM to "M", tfQ to "Q")) {
-            if (tf == t) {
-                b.setBackgroundResource(R.drawable.seg_sel)
-                b.setTextColor(ink)
-                b.setTypeface(null, android.graphics.Typeface.BOLD)   // 稿 600
-            } else {
-                b.setBackgroundResource(R.drawable.seg_unsel)
-                b.setTextColor(unsel)                                  // 常态 ink2 / 按压 ink
-                b.setTypeface(null, android.graphics.Typeface.NORMAL)  // 稿 400
-            }
-        }
+        tfRow.attachPress(listOf(tfW, tfM, tfQ))
+        tfRow.moveTo(idx, animate = tfPillPlaced)
+        tfRow.animateTextColors(listOf(tfW, tfM, tfQ), idx, ink, ink2)
+        tfPillPlaced = true
     }
 
     // t174:【非错误一律隐藏】与稿相反 —— 稿的源状态行是「写文本 + err 时加红」,
@@ -1773,15 +1979,10 @@ private fun clearForNewSymbol() {
      *     · 写死那句 = 「东财 · Naver **两条腿都问了、都取不到**」⟹ 读起来像品种/代码有问题。
      *   把前者说成后者，用户会去反复检查代码拼写 —— 这正是用户此前实报过的误判形状。
      *
-     *  【为什么现在能收窄】那句文案是 2026-10-04 写下的**事实陈述**（**当时**腾讯韩股只回 1 根、
-     *   东财确实不可达 —— ⚠ 这是**旧事实**，腾讯腿 2026-10-10 已被 Naver 取代，见下段）。
      *   2026-10-10 事实变了：东财实测一直好（HTTP 200 / 240 根），t6 又把「熔断键只有源名 ⟹
      *   黄金那边东财超时把韩股东财腿一起熔断」的跨链连坐修掉，并补了第三类文案。
      *   ⟹ 继续**无条件**断言「两腿皆无」会掩盖真实状态。
      *
-     *  ⚠⚠ 2026-10-10 **文案本身也得跟着腿链走（t12）**：韩股第二腿已由 t8 从**腾讯换成 Naver**
-     *   （`MktData.stockLegs` 的 kr 分支现在是 `[东财|kr, Naver|kr]`；腾讯腿对韩股恒回 1 根、
-     *   从不产出，是它占着位置却不干活）。原句「腾讯只回 1 根 · 东财不可达」于是**与取数链矛盾**：
      *   真到兜底那一刻，屏上会指着一个**根本不在链上**的源名，用户与后来的人都会读错。
      *   ⟹ 现文案 =「韩股：东财 · Naver 两腿皆无 → 本品种无源」。
      *   ⚠ **耦合规则（下次改腿链必须一起改这里）**：本句点名的源必须与 `MktData.stockLegs`
@@ -1798,7 +1999,7 @@ private fun clearForNewSymbol() {
      *   ⚠ 非韩股品种**逐字不变**：新增的第一条分支对它们本来就落在 `else -> msg`（同一个字符串）。
      */
     private fun t210FailText(msg: String?, sym: String? = null): String {
-        val su = sym?.trim()?.uppercase(Locale.US)
+        val su = sym?.let { MktData.canonicalSym(it) }
         val isKr = su != null && MktData.symType(su) == "kr"
         // 「真的两腿皆无」：msg==null，或 MktData 报的是前两类（都投了、都失败/都空）
         val bothTried = msg == null || msg.contains("都没有该品种数据") || msg.contains("都不可达")
@@ -1843,7 +2044,6 @@ private fun clearForNewSymbol() {
         // #33: 走 mkStatus 就说明进入七态里的非成功档,成功态那行要让位(否则两套真相同屏)。
         // t321 #77 稿 L286-295 / L582: 七态**全都**写在页底那个 StateLine(stateline)上。
         // 改前写的是 status(mkt_status), 而它挂在价格块【上方】(page_mkt.xml:265-273),
-        // 真机上「百度股市通 / 腾讯 竞速中…」紫字印在现价正上方 —— 位置与稿相反。
         // mkt_status 全工程零外部引用(只有本函数 4 处), 所以留着不用、不删 view。
         if (t.isNotEmpty()) {
             // ⚠ 2026-10-03 同上:状态行按用户裁定不再上屏,去掉 visibility = View.VISIBLE。
@@ -1862,7 +2062,7 @@ private fun clearForNewSymbol() {
         }
     }
 
-    fun mkLoad() {
+    fun mkLoad(forceRefresh: Boolean = false) {
         // ---- 根数下限校验:整段 mkLoad 的**第一件事**(稿「K线数量至少填」下限校验 ----
         //   const count=Math.round(parseFloat($('kcount').value));
         //   if(!(count>=KMIN)){mkStatus('K线数量至少填'+KMIN,true);return;}
@@ -1884,14 +2084,14 @@ private fun clearForNewSymbol() {
             return // 中止本次加载:不发任何K线请求、不改图表、不写支撑
         }
         hideSug()
-        val s = symInp.text.toString()
-        if (s.trim().isEmpty()) {
+        val su = MktData.canonicalSym(symInp.text.toString())
+        if (su.isEmpty()) {
             mkStatus("先输入品种", true)
             return
         }
-        val type = MktData.symType(s)
+        // All downstream request/cache/persistence paths use this canonical UI boundary.
+        val type = MktData.symType(su)
         lastType = type
-        val su = s.trim().uppercase(Locale.US)
         val symChanged = su != lastSym
         // ⚠⚠⚠ 2026-10-15 t2 **周期切换也要认出来**（用户实报「切周线/月线/季线毫无反应」）。
         //   改前 mkLoad 只认 `symChanged`，周期变了没有任何动作：
@@ -1910,8 +2110,10 @@ private fun clearForNewSymbol() {
         lastSym = su
         // ⚠ 2026-10-03 顶栏显示品种名：**换品种时清掉上一品种的名字**，
         //   否则从「美光」切到 BTC 后标题还挂着「美光」。
-        //   清空后本次 mkLoad 里标题会回退成代码（除非紧接着有 setDispName 送来名字）。
-        if (symChanged) { dispName = ""; titleTx.text = su }
+        //   清空后本次 mkLoad 里标题**不会**再被改写（2026-11-04 起本页已无标题节点，见 [setDispName]）。
+        // ⚠ r8 B-9：这里原来那句 `titleTx.text = su` **已删**（改前它把品种代码写进顶栏，与稿
+        //   `四屏-行情页.html:244-247` 的 `<AppBar title="行情"/>` 相反）。保留下来的只有 `dispName` 的清空。
+        if (symChanged) { dispName = "" }
         // 稿§4:换品种→载入该品种已确认默认(周期+根数,互不串);同品种刷新保留敲过的值
         if (symChanged) applyWinDefaults()
         // 根数:空→该品种已确认默认;越界→clamp(15..100),不报错不崩(稿KMIN/KMAX)
@@ -1932,9 +2134,9 @@ private fun clearForNewSymbol() {
             "crypto" -> "币 $su"
             "gold" -> "黄金 $su"
             "silver" -> "白银 $su"
-            "hk" -> "港股 $su"
             "kr" -> "韩股 $su"
-            "ashare" -> "A股 $su"
+            // ⚠ 2026-11-03 港股/A股已下线：给**明确提示**（MktData.unsupportedText），不许冒充「美股」。
+            "unsupported" -> MktData.unsupportedText(su)
             else -> "美股 $su"
         }
         prelimTag = null
@@ -1964,35 +2166,40 @@ private fun clearForNewSymbol() {
             //   这里不再传/抄任何"屏上周期"的局部变量 —— 那个抄写正是 F1 要拆掉的耦合。
             t2MarkStale()
         }
-        // ⚠ 2026-10-04 换品种要同步刷新手动拆股区：开关状态与条目都是**按品种**存的，
-        //   不刷的话上一只票的开关/条目会挂在新品种头上 —— 看着像给新票配了拆股。
-        //   位置在 lastSym 赋值之后（1169），curSym() 才拿得到新品种。
-        if (symChanged) paintSplitUi()
+        // ⚠ 2026-10-29 t30：这里原是 `if (symChanged) paintCardSlices()`（换品种重刷卡面）。
+        //   去卡片化后没有卡面要刷 ⟹ 调用已删（`cardBg` / `isDarkNow` / `paintCardSlices` 一并下线）。
+        //   ⚠ 换品种该刷的其它东西（t2MarkStale / stepThrFor / 图表）都不在本行，未受影响。
         // ⚠⚠ 2026-10-03 步长阈值改为**按当前品种**取（用户报「大量品种的网格数量没有自动计算」）。
         //   原先 stepThr 只由 loadStepThr 写一次、取的是 mkt_last_sym 那**一个**品种，
         //   于是算别的品种时它属于别人或为 null ⟹ autoGridN 恒返回 null ⟹ 永远不自动算。
         //   详见 MainActivity.stepThrFor 的注释。
         if (symChanged) act.stepThrFor(su)
         val seq = ++reqSeq
+        requestInFlight = true
+        inFlightSeq = seq
+        inFlightTf = tf
+        inFlightN = curN()
+        // ⚠⚠ 2026-11-03 t11（t3 实测）：已下线市场必须**可见地说**，不能只说「未取到」。
+        //   改前它走 loadStockParallel → fetchStocks 抛 unsupportedText → 被 mkStatus 写进
+        //   页底 stateline —— 而 stateline 在布局里是 `gone`，屏上读不到（t3 的 dump 里只有
+        //   `mkt_srcname=未取到`）。⟹ 这里**不走取数**，直接把文案写到全屏唯一可见的
+        //   `mkt_srcname`（见 [paintUnsupported]），并且不发任何请求。
+        if (type == "unsupported") {
+            paintUnsupported(su)
+            finishLoad(seq)          // 复位 requestInFlight（seq == inFlightSeq 才生效）
+            return
+        }
         // ⚠ 绝不落入下方商品兜底（ashare 漏分支是同类事故）。
-        if (type == "stock" || type == "hk" || type == "kr" || type == "ashare") {
-            // 港/韩/A股与美同走股票串行腿(稿§6);绝不落到下方商品(gold/silver/cmdty)兜底
-            //
-            // ⚠⚠⚠ 2026-10-04 **补 "ashare"**。原来这份白名单只有 stock/hk/kr，
-            //   A 股于是**掉进下方的贵金属/商品分支**，被拿 `fetchMetals` 去查一个股票代码 ——
-            //   实测表现：自选行有数据（+4.32%），行情页却是「—」+「未取到」，冷启动也复现。
-            //   和 `FavPanel.badge` 漏 `ashare` 是**同一个病**：加了枚举值、漏改穷举分支。
-            //   ⟹ 教训照抄进墓碑：**`symType` 每多返回一个值，这里、`badge()`、`curOf()`、
-            //     `isUs`、`tz`、`phase` 全都要跟着核一遍。**
-            loadStockParallel(s, fetchN, mkt, seq)
+        // ⚠ 2026-11-03：这份白名单只剩「美股 / 韩股」两种 —— 已下线市场在上面就返回了。
+        if (type == "stock" || type == "kr") {
+            loadStockParallel(su, fetchN, mkt, seq, forceRefresh)
             return
         }
         if (type == "crypto") {
-            loadCryptoParallel(s, fetchN, mkt, seq)
+            loadCryptoParallel(su, fetchN, mkt, seq, forceRefresh)
             return
         }
         // 贵金属/商品东财单源(稿ysym:gold→GC=F、silver→SI=F、cmdty→原码*00Y,
-        // 经EMID映射到101.GC00Y/101.SI00Y与17种商品*00Y),Yahoo贵金属线已删;
         // K线用当前控件值加载,不受距离窗口冻结影响
         // ⚠ 2026-10-12 t2：这条映射**收敛到 MktData.fetchKeyOf**（原来这里是同一个 when 的副本）。
         //   值逐字等价：`symType` 内部先 trim+uppercase ⟹ symType(s)==symType(su)；
@@ -2001,9 +2208,12 @@ private fun clearForNewSymbol() {
         //   （屏上 XAUUSD ↔ 投出去的 GC=F）—— 两处各写一份 when 迟早漂移，
         //   漂移的后果是黄金自己的源名行被自己的别名判成「不是当前品种」。
         val ysym = MktData.fetchKeyOf(su)
+        val loadTf = tf
+        val loadSym = su
+        val loadSeq = seq
+        val loadKey = ysym
         // ⚠ 2026-10-15 t6：源名**从真实腿链派生**（贵金属/商品 = 东财单源，见 MktData.metalLegs）。
-        //   原来这句写死「百度股市通 / 腾讯…」——那是股票腿的旧文案，抄到贵金属这条路上就是编来源。
-        mkStatus(MktData.legsText(su), false)
+        mkStatus(MktData.legsText(loadSym), false)
         t123PaintNoData()   // t123:取数中不先打实心点
         // ⚠⚠⚠ 2026-10-03 **贵金属补上缓存回底**（用户裁定「补」）。
         //   起因是用户一句「为什么拉不到不能用之前的数据呢」——
@@ -2021,10 +2231,14 @@ private fun clearForNewSymbol() {
         //   ⚠ 键用 **ysym**（GC=F / SI=F / 原码），不是屏幕上的显示名 ——
         //     fetchMetals 收的是 ysym，MktSave.store 存的也是 ysym 的键，
         //     用 su 会读不到自己写的那份。
-        val ckM = MktData.MktCache.key(ysym, tf, fetchN)
-        MktData.MktCache.get(ckM)?.let { vs ->
-            renderAgg(MktData.aggregate(vs, ysym), mkt, seq)
-            return   // ← 命中内存缓存，与另两条路径同：不再发后台请求
+        val ckM = MktData.MktCache.key(loadKey, loadTf, fetchN)
+        if (!forceRefresh) {
+            MktData.MktCache.get(ckM)?.let { vs ->
+                val cacheAt = MktData.MktCache.atOf(ckM)
+                MktData.publishCachedLegs(loadKey, vs, if (cacheAt > 0L) cacheAt else -1L)
+                renderAgg(MktData.aggregate(vs, loadKey), mkt, loadSeq, loadSym, loadTf)
+                return   // 普通加载命中内存缓存就复用；定时刷新会跳过此早退
+            }
         }
         var hadSavedM = false
         MktData.MktSave.saved(ckM)?.let { sv ->
@@ -2032,37 +2246,31 @@ private fun clearForNewSymbol() {
             // ⚠ t8：标出"这批是留底"（只认同周期 ⟹ 标注要写「上次取到的」，不是「上一周期」）
             t2SrcSaved = true
             // ⚠ t12（R2-1）：记下**数据真实年龄**（不是画上屏那一刻）
-            t2SrcSavedAgeMs = MktData.MktSave.savedAgeMs(ckM)
+            val savedAgeMs = MktData.MktSave.savedAgeMs(ckM)
+            t2SrcSavedAgeMs = savedAgeMs
             // 留底已是美元价(_u=1)，**不再 fxify** —— 二次折算会让价格越刷越小。
-            renderAgg(MktData.aggregate(sv, ysym), mkt, seq)
-            mkStatus(MktData.legsText(su), false)   // t6:源名从真实腿链派生（同上）
+            // savedAgeMs=-1 表示老留底没有时间戳，传未知哨兵，绝不算成 now+1 ⟹「0 秒前」。
+            val savedAt = if (savedAgeMs >= 0L) System.currentTimeMillis() - savedAgeMs else -1L
+            MktData.publishCachedLegs(loadKey, sv, savedAt)
+            renderAgg(MktData.aggregate(sv, loadKey), mkt, loadSeq, loadSym, loadTf)
+            mkStatus(MktData.legsText(loadSym), false)   // t6:源名从真实腿链派生（同上）
         }
-        if (!hadSavedM) mkStatus(MktData.legsText(su), false)
+        if (!hadSavedM) mkStatus(MktData.legsText(loadSym), false)
         Thread {
             try {
-                val vs = MktData.fetchMetals(ysym, tf, fetchN)
-                // 【F-2a · 修 B-1】第三条消费点，同样按返回值把关。
-                // 贵金属/商品本身是美元，fxify 恒返回 true；这里是为了让「三条消费点一律把关」
-                // 成为**结构上不可绕过**的规则，而不是靠人记住这一条是例外。
-                if (!MktData.FX.fxify(vs, ysym)) {
-                    act.runOnUiThread {
-                        if (seq != reqSeq) return@runOnUiThread
-                        mkStatus("汇率未取到 · " + curSym() + " 不出 K 线（避免用原币当美元）", true)
-                        t123PaintNoData()
-                        finishLoad(seq)
-                    }
-                    return@Thread
-                }
-                MktData.MktCache.put(ckM, vs)
-                MktData.MktSave.store(ckM, vs) // 稿:1422-1423
-                val ag = MktData.aggregate(vs, ysym)
+                // ⚠ 2026-11-02 改走唯一取数口（同股票路径）：取数 + 折算 + 缓存/留底都在 acquire 里。
+                val vs = MktData.acquire(loadKey, loadTf, refresh = true)
+                if (vs.isEmpty()) throw IllegalStateException("null")
+                if (loadSeq != reqSeq || lastSym != loadSym) return@Thread
+                val ag = MktData.aggregate(vs, loadKey)
                 act.runOnUiThread {
-                    if (seq != reqSeq) return@runOnUiThread
-                    renderAgg(ag, mkt, seq)
+                    if (!loadCurrent(loadSym, loadSeq)) return@runOnUiThread
+                    t2SrcFresh()
+                    renderAgg(ag, mkt, loadSeq, loadSym, loadTf)
                 }
             } catch (e: Exception) {
                 act.runOnUiThread {
-                    if (seq != reqSeq) return@runOnUiThread
+                    if (!loadCurrent(loadSym, loadSeq)) return@runOnUiThread
                     // ⚠⚠ 2026-10-03 **有留底就不报错**（用户裁定「补」缓存回底）。
                     //   贵金属只有东财一个源，东财一限流就是「彻底无源」；
                     //   但上一次成功的数据还躺在 MktSave 里 —— 那就画它，
@@ -2076,20 +2284,30 @@ private fun clearForNewSymbol() {
                         // ⚠ 这里**不要**再调 t123PaintNoData()：它会把留底画好的图抹掉。
                         //   改前这段无条件报错时会走 t123PaintNoData，那是"没有图"的语境；
                         //   现在有图（留底），抹掉反而更糟。
+                        // The fallback is useful, but it is not the requested fresh batch.
+                        t2MarkStale(true)
                     } else {
                         // ⑩ 不再把异常整个丢掉: MktData 已经分好了 none/down, 这里翻成稿的原文
                         mkStatus(t210FailText(e.message, curSym()), true)
                         // ⚠ 2026-10-15 t2：保留旧数据 + 标注「上一周期（X）数据 · N 分钟前」（同 loadStockParallel）
                         t2MarkStale(true)
                     }
-                    finishLoad(seq) // D4:失败也要消费标记,否则下次同品种不再回填
+                    finishLoad(loadSeq) // D4:失败也要消费标记,否则下次同品种不再回填
                 }
             }
         }.start()
     }
 
-    private fun renderAgg(ag: Agg, mkt: String, seq: Int) {
-        if (seq != reqSeq) return
+    private fun renderAgg(
+        ag: Agg,
+        mkt: String,
+        seq: Int,
+        loadSym: String,
+        loadTf: String,
+        allowAuxRequests: Boolean = true,
+    ) {
+        // Render only the immutable loader identity that produced this aggregate.
+        if (!loadCurrent(loadSym, seq) || loadTf != tf) return
         // ── t44【F-2c③】**显示侧**分离:画最后 curN() 根 ─────────────────────────
         // 取数是按 MktData.FETCH_N 定档拿回来的(可能 240 根),显示只画用户填的那个数。
         // 在这里统一切,三条腿(renderStock / renderCrypto / 商品贵金属)都经过 renderAgg,
@@ -2120,9 +2338,20 @@ private fun clearForNewSymbol() {
         //   （价与涨跌不同刻）。保留旧快照时，价/涨跌/源名**三处仍来自同一份**，
         //   源名还带着那份报价的成交时刻（`12:57 PM ET`）—— 用户读得出它是什么时候的。
         //   ⚠ 换品种时 `clearForNewSymbol` 会把它清掉（那是另一个品种的价，绝不能留）。
-        MktData.liveQuoteOf(lastSym)?.let { t2Snap = it }
+        MktData.liveQuoteOf(loadSym)?.let { t2Snap = it }
+
         // ⚠ 2026-10-07 自选复用：把刚画完的K线发布给FavDist（同批同口径，免得自选再打一次API还算出另一个支撑）。
-        try { MktData.LastChart.put(lastSym, tf, show) } catch (_: Exception) {}
+        try { MktData.LastChart.put(loadSym, loadTf, show) } catch (_: Exception) {}
+        // ⚠ 2026-11-02：数据落地后**通知自选页**（丢弃它的旧距离缓存并按这一批重算）。
+        //   放在 LastChart.put 之后、任何渲染之前就是「数据已就绪」的确切时刻；
+        //   用 loadSym（本轮取数的品种），不是 curSym()（用户可能已经又换了品种）。
+        try { onChartReady?.invoke(loadSym) } catch (_: Exception) {}
+        // ⚠ 2026-10-28 缩放三键删除后，r8 B-1 的「数据重载后自动 Reset 缩放」**随之作废**
+        //   （`chart.resetZoom()` 的调用点已删，viewBox 缩放不再上屏）。
+        // ⚠ 2026-10-26「屏上这批数据」的批次代号**唯一写者**：必须在 chart.setData 之前写，
+        //   onInfo（→ linkCalc）要拿它当这批数据的身份交回计算页；写到 setData 之后就会
+        //   让下一次重绘把上一批说成新批次。本行之外不许再写 shownSeq。
+        shownSeq = seq
         chart.setData(show)
         // t108 (2) 日期范围独占行已删(稿 2-quote 没有这一行)。
         // 原来在这里写 srcNote.text = "起始~结束" 的代码一并移除。
@@ -2139,7 +2368,7 @@ private fun clearForNewSymbol() {
         //   而这里随后只按"快照是不是 realtime"重写价格 —— 一旦快照过期，
         //   就出现"价是实时价 + 涨跌是 historical 首尾差"的同屏不同源。
         //   ⟹ 现在：源名由 `onInfo` 那次画（同一份快照），**价与涨跌在这里一起收口**。
-        val live = t2Snap?.takeIf { it.realtime }
+        val live = t2Snap?.takeIf { it.dayOk }
         price.text = MktData.mkFmt(live?.price ?: show.lastOrNull()?.c)
         if (live != null) {
             chg.text = "%+.2f (%+.2f%%)".format(live.netChg, live.pct)
@@ -2148,14 +2377,14 @@ private fun clearForNewSymbol() {
         paintFx()
         // D4:onInfo(linkCalc/linkPhigh)已经跑完,此刻再回填=保存值最终赢
         finishLoad(seq)
-        paintTgt(ag, seq)
+        if (allowAuxRequests) paintTgt(ag, seq)
         // ⚠ 2026-10-15 t2 **画完了就把「上一周期」的标注撤掉**（用户裁定：失败态才保留+标注；
         //   成功态屏上就是本周期的数据，标注留着又变成新的骗人）。
         //   ⚠ 位置必须在 `chart.setData()` **之后**：onInfo 里那次 t102PaintSourceRow 还是
         //     带标注的（那一刻屏上确实还没换成本周期），这里收尾才清。
         // ⚠⚠ 2026-10-15 t6（评审 F1）：**这里是「屏上数据的周期」唯一的写者** ——
         //   只有真画上去了才写，且与 `lastTf`（请求周期）无关。
-        t2ShownTf = MktData.tfName(tf)
+        t2ShownTf = MktData.tfName(loadTf)
         t2ShownAt = System.currentTimeMillis()
         t2ShownCount = show.size
         // ⚠ t8：把"这批数据是哪来的"一起记下来 —— 标注靠它区分「上次取到的」与「上一周期」
@@ -2171,6 +2400,10 @@ private fun clearForNewSymbol() {
     //   **字段本身全部保留** —— K 线图取数走 MktView/MktData,不经过本函数。
     private fun t106PaintMeta(info: MktInfo) {
         val ink = act.attrColor("colorInk")
+        // ⚠ r8 B-1 / B-11（2026-10-19）· 本函数由 `MktView.onDraw` 里的 `onInfo` 调用（**绘制途中**）
+        //   ⟹ 这里只能做**文本/可见性**这类轻改动，**不许**改视图树（OHLC 表体的下一帧装配已随卡片删除）。
+        //   · 卡头中段读数 = info.count = **实际画出来的根数**（vp.ks.size），无数据时是 0；
+        paintBlkh(info.count)
         // ⚠⚠⚠ 2026-10-15 t2 **美股涨跌必须跟现价同一个口径**（用户实报：屏上现价是
         //   10/14 收盘 200.97，涨跌却写 +10.88 (+5.72%) —— 那是 historical 序列**首尾差**
         //   （200.97 − 190.09），不是「今天涨了多少」）。
@@ -2180,7 +2413,7 @@ private fun clearForNewSymbol() {
         //     而 netChange 仍是"上一交易日 vs 上上交易日"的口径，两者不同源，混用就是新的骗人。
         //   ⚠⚠ 2026-10-15 t6（评审 F2）：报价**只读本轮快照**（`t2Snap`，`renderAgg` 开头读一次），
         //     不再在这里另读一次 `liveQuoteOf` —— 与 `price` / 源名 共用同一份，天然同源。
-        val live = t2Snap?.takeIf { it.realtime }
+        val live = t2Snap?.takeIf { it.dayOk }
         val col = when {
             live != null -> if (live.netChg >= 0) act.attrColor("colorTeal") else act.attrColor("colorRed")
             info.chgUp -> act.attrColor("colorTeal")
@@ -2217,7 +2450,6 @@ private fun clearForNewSymbol() {
             }
         }
         // ⑤ Vol 已于 2026-10-02 随整行删除(见 page_mkt.xml 墓碑)。
-        //   连带作废的坑:t341 记过「竞速赢新浪腿时 vol 整条缺失」,当时用「—」显式说明;
         //   既然整行不要了,那个缺字段场景不再有显示面,info.vol 字段本身保留即可。
         // ⑥ 交易所 · 收盘时点
         val sym = lastSym
@@ -2228,11 +2460,12 @@ private fun clearForNewSymbol() {
         // 硬性要求:拿不准就写市场类别,那才是诚实的。
         val ty = if (sym.isEmpty()) "" else MktData.symType(sym)
         // 时区:只有美股用 GMT-4 的 marketPhase;亚洲市场不能拿美股时区冒充
-        val isUs = ty != "crypto" && ty != "hk" && ty != "kr" && ty != "gold" &&
-            ty != "silver" && ty != "cmdty" && ty != "ashare"
+        // ⚠ 2026-11-03：港股/A股已下线 ⟹ 非美股的亚洲市场只剩韩股（KRW/KST）。
+        val isUs = ty != "crypto" && ty != "kr" && ty != "gold" &&
+            ty != "silver" && ty != "cmdty" && ty != "unsupported"
         val phase = if (isUs) when (MktData.marketPhase()) {
             "open" -> "开盘"; "pre" -> "盘前"; "post" -> "盘后"; else -> "收盘"
-        } else if (ty == "hk" || ty == "kr" || ty == "ashare") t122Phase(ty) else "收盘"
+        } else if (ty == "kr") t122Phase(ty) else "收盘"
         // ⚠ 2026-10-02 用户裁定删掉行情页顶部的品种搜索框后，**品种代码原本只出现在那一处**，
         //   直接删掉会让「现在看的是哪个品种」在屏上消失。这里把代码补进价格块右上角，
         //   与现行稿一致：稿 v2.html:2117 逐字 `{shortSym(S_)}{…' · 行情中'}`，即 **代码 + 时段**。
@@ -2240,10 +2473,21 @@ private fun clearForNewSymbol() {
         //   shortSym 对齐稿：币种去掉 USDT 后缀（BTCUSDT → BTC）；其余原样（App 内部
         //   港股/韩股本就不带 .HK/.KS 后缀，见 MktSuggest）。
         val showSym = if (sym.endsWith("USDT")) sym.dropLast(4) else sym
+        // ⚠⚠ 2026-11-03 t14（t9 实测：「行情页整页不见中文名」）：**身份行加中文名**。
+        //   格式 = 「中文名 + 现有代码位 + 时段」，如 `希捷科技 STX · 盘前` / `比特币 BTC · 实时`
+        //   / `黄金 XAUUSD · 收盘` / `SK海力士 000660 · 收盘`。
+        //   ⚠ 代码位口径**一字不动**：crypto 仍去报价币（BTCUSDT → BTC），其余原样；
+        //     不为此改 curSym / canonicalSym 或去报价币逻辑。
+        //   ⚠ 名字唯一来源是 [MktSuggest.favName]（= UsNames.zhOf：us_dir → names_extra → 空）；
+        //     名字为空的正股（如 DNUT/SGP/ARM）**退回现状**（只显示代码），
+        //     绝不出现空串、双空格或占位符。
+        //   ⚠ 页面大标题仍是「行情」（稿定）；这里只动这一行的文本，不新增节点、不改字号/布局。
+        val nameZh = if (sym.isEmpty()) "" else MktSuggest.favName(sym)
+        val head = if (nameZh.isEmpty()) showSym else nameZh + " " + showSym
         venueT.text = when {
             sym.isEmpty() -> ""
-            crypto -> showSym + " · 实时"
-            else -> showSym + " · " + phase
+            crypto -> head + " · 实时"
+            else -> head + " · " + phase
         }
         // t292 稿 L566 的 GMT-4 是**美股那一个例子**(AAPL), 稿没规定其他市场的时区。
         // 改前这里是 else 一律 GMT-4, 于是 crypto/gold/silver/cmdty 全被按成美东时区 ——
@@ -2252,27 +2496,24 @@ private fun clearForNewSymbol() {
         // 因为 MktData.marketClock 内部把 tz 覆盖掉了(t292 一并修)。
         // gold/silver/cmdty 各家结算时区不同, **编不出来, 就不写时区** ——
         // 这是 t122 自己定的规矩(L891-892「拿不准一律说『收盘』,不编」), 不是新规矩。
-        val tz = when (ty) {
-            "hk" -> "GMT+8"
-            "ashare" -> "GMT+8"          // ⚠ 同港股时区；漏了会落到 else 写成 GMT-4（美东）
-            "kr" -> "GMT+9"
-            "crypto" -> "UTC"          // 24h 市场, 日线按 UTC 结算, 这是事实
-            "gold", "silver", "cmdty" -> ""   // 拿不准, 不编
-            else -> "GMT-4"            // 美股(stock)
-        }
-        timeT.text = if (tz.isEmpty()) hhmm(info.tEnd) else MktData.marketClock(info.tEnd, tz)
+        // ⚠ 2026-10-27 用户裁定：**这一行「收盘时点」不再上屏**（原 `mkt_time`，灰色小字）。
+        //   理由：黄金/商品那一路恒显示 `00:00:00`，看了也不知道指什么；美股虽然给的是
+        //   20:00:00 GMT-4，但同一块里 `{代码} · 收盘` 已经说了盘口状态，这一行是重复。
+        //   ⚠ 节点与绑定**保留**（page_mkt.xml 里改成 visibility=gone）：删节点会让
+        //     `findViewById(R.id.mkt_time)` 拿到 null 并 NPE —— 本仓既有教训。
+        //   ⚠ 连带作废的是下面那张 tz 表（hk/ashare/kr/crypto/美股/gold），它只喂这一行；
+        //     日后若要恢复「收盘时点」，把 tz 表与本行一起捡回来，口径依据见上方 t291/t292 记录。
     }
 
-    /** t122:亚洲市场时点。港股/韩股的交易时段与美股不同,这里按其本地时区粗判;
+    /** t122:亚洲市场时点。**只剩韩股**（港股/A股已下线，2026-11-03）；
      *  拿不准一律说「收盘」,**不编**。真正的开闭市状态应由交易所日历给,本轮不引入。 */
     private fun t122Phase(ty: String): String {
-        val tz = java.util.TimeZone.getTimeZone(if (ty == "kr") "GMT+9" else "GMT+8")
-        val cal = java.util.Calendar.getInstance(tz)
+        val cal = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("GMT+9"))
         val dow = cal.get(java.util.Calendar.DAY_OF_WEEK)
         val min = cal.get(java.util.Calendar.HOUR_OF_DAY) * 60 + cal.get(java.util.Calendar.MINUTE)
         val weekend = dow == java.util.Calendar.SATURDAY || dow == java.util.Calendar.SUNDAY
-        val lo = if (ty == "kr") 9 * 60 else 9 * 60 + 30      // 09:00 / 09:30 开盘
-        val hi = if (ty == "kr") 15 * 60 + 30 else 16 * 60     // 15:30 / 16:00 收盘
+        val lo = 9 * 60          // KRX 09:00 开盘
+        val hi = 15 * 60 + 30    // KRX 15:30 收盘
         return when {
             weekend -> "休市"
             min in lo until hi -> "开盘"
@@ -2294,7 +2535,7 @@ private fun clearForNewSymbol() {
         // 两者必须**同时**成立,免得出现「已经提示拒绝计算支撑、值却还是黑的」。
         // 空/非数字 = 沿用该品种已确认默认(必 >= KMIN),按【不是不足】处理,不上红。
         val raw = rawN()
-        kcountInp.setTextColor(act.attrColor(if (raw != null && raw < KMIN) "colorRed" else "colorInk"))
+        kValT.setTextColor(act.attrColor(if (raw != null && raw < KMIN) "colorRed" else "colorInk"))
     }
 
     /** t108 (1) 顶部标题显示品种名(稿:右上「搜索」文字入口) */
@@ -2322,7 +2563,7 @@ private fun clearForNewSymbol() {
     fun fxArrived() {
         if (lastSym.isEmpty()) return
         paintFx()
-        if (symInp.text.toString().trim().uppercase(Locale.US) == lastSym) mkLoad()
+        if (MktData.canonicalSym(symInp.text.toString()) == lastSym) mkLoad()
     }
 
     // TGT 预测价行。⚠⚠ 2026-10-03 用户加了新规则，**这里是三条来源**：
@@ -2342,36 +2583,58 @@ private fun clearForNewSymbol() {
         val cur = ag.ks.lastOrNull()?.c ?: 0.0
         val sym = lastSym
         val isStock = lastType == "stock"
-        // ⚠ 2026-10-03 港股也接目标价（etnet 源，见 MktData.fetchTgtEtnet 的说明）。
-        //   原来这里只有 `isStock`（**仅美股**）才走机构目标价，港股的 lastType 是 "hk"
-        //   ⟹ 掉进 [predTarget]，而它只认 crypto/贵金属/商品，对港股 `else -> return null`
-        //   ⟹ 港股这一行恒空。这是「两层都断了」，不是港股没这个数据。
-        val isHq = lastType == "hk"
+        //   现在只有美股走 [MktData.fetchTgt]（Nasdaq 官方 analyst/targetprice，NYSE 票同样有）。
         val kind = MktData.symType(sym)   // crypto / cmdty / gold / silver / ...
         /** 品种是否还是当前显示的那个。**两道守卫缺一不可**，见下方墓碑。 */
         fun stillSame(): Boolean =
-            seq == reqSeq && symInp.text.toString().trim().uppercase(Locale.US) == sym
+            seq == reqSeq && MktData.canonicalSym(symInp.text.toString()) == sym
         // 步长阈值那条腿可能还没跑完，先等它把日线缓存写进来再算预测价
         val run = { ->
             Thread {
                 // ⚠ 2026-10-08 用户报「机构预测价是不是没保存，每次点进行情都要重新拉一次」——**属实**：
-                //   grep 全项目**没有 tgtSave/tgtLoad**，`fetchTgt`（美股）与 `fetchTgtEtnet`（港股）
-                //   **零缓存**，每次进行情页各打一次请求；而币/商品走的 `predTarget` 自带
-                //   MktSave.predSave 按天缓存 —— 同一个「预测价」，三类品种两种待遇。
-                //   修法：**只给缺缓存的这两类补上**，且与 predTarget 用**同一份**按天缓存
-                //   （一个品种一个预测价，不关心它来自机构均价还是历史最高），日界取同一天。
+                //   当时 `fetchTgt`（美股）零缓存，每次进行情页各打一次请求；而币/商品走的
+                //   `predTarget` 自带 MktSave.predSave 按天缓存 —— 同一个「预测价」，两类品种两种待遇。
+                //   修法：给股票腿补上**同一份**按天缓存（一个品种一个预测价），日界取同一天。
                 //   ⚠ 不把 predTarget 再包一层：它内部已是同一份缓存，再包等于重复查询。
-                val ck = sym.trim().uppercase(Locale.US)
+                val ck = MktData.canonicalSym(sym)
                 val day = java.time.LocalDate.now().toString()
-                val v: Double? = if (isStock || isHq) {
-                    MktData.MktSave.predLoad(ck, day) ?: run {
-                        val t = if (isStock) MktData.fetchTgt(sym)?.avg
-                        else MktData.fetchTgtEtnet(sym)?.avg
-                        if (t != null && t > 0) MktData.MktSave.predSave(ck, day, t)
-                        t
-                    }
-                } else if (lastType == "kr") MktData.fetchTgtKrManual(ck)?.avg // 2026-10-13 手动快照+折美元
-                else MktData.predTarget(sym)
+                val prevDay = java.time.LocalDate.now().minusDays(1).toString()
+                // ⚠⚠ r8 B-14（2026-10-19）· **股票腿补「查前一天」兜底**。
+                //   病（与 `predTarget` 当年同一个）：当天缓存 miss 就整行消失 —— 用户 2026-10-08 报的
+                //   「隔日缓存态下机构目标均价不渲染」正是这条。`MktData.predTarget`（`:2725-2731`）
+                //   早就做了「当天 miss → 先查昨天缓存」的兜底，本条只是把**同一个口径**搬到股票腿
+                //   （`MktSave.predLoad` 的载荷是 `当天|值|前一天|值`，`dayGet` 两段/四段都认 ⟹
+                //    传 `prevDay` 查的正是那份顺移进来的旧值）。
+                //   ⚠ 2026-11-04 用户裁定：「机构预测价旁边不需要显示前一日的字样」——
+                //     尾注去掉；**兜底保留在取数失败之后**，不整行消失。
+                //   ⚠⚠ 同日第二裁定（用户问「为什么要查前一天缓存，查不到吗」）· **顺序修正**：
+                //     旧顺序是「今天缓存 → 昨天缓存 → 联网」，而 `dayGet` 只认当天/前一天两档 ⟹
+                //     只要昨天有值就恒命中、**联网那步永远走不到**，屏幕整日显示旧目标价
+                //     （这正是「（前一日）」标注存在的原因）。
+                //     现顺序：**今天缓存 → 联网取 → 昨天缓存兜底**（同一天不重复请求的诉求不变）。
+                //   ⚠ 两条都 miss 时**保持 GONE**（下游 `v == null` 分支），**不许编造值**。
+                val v: Double? = if (isStock) {
+                    MktData.MktSave.predLoad(ck, day)
+                        ?: run {
+                            val t = MktData.fetchTgt(sym)?.avg
+                            if (t != null && t > 0) {
+                                MktData.MktSave.predSave(ck, day, t)
+                                t
+                            } else {
+                                MktData.MktSave.predLoad(ck, prevDay)
+                            }
+                        }
+                } else if (lastType == "kr") {
+                    // 2026-11-04 用户裁定：韩股目标价改**真取数**（Naver consensusInfo.priceTargetMean）。
+                    //   手写快照已删除 ⟹ 取数失败时不再有快照兜底，只剩「昨天缓存」这一层。
+                    //   缓存口径与股票腿一致：当天缓存 → 取数 → 昨天缓存。
+                    MktData.MktSave.predLoad(ck, day)
+                        ?: run {
+                            val tv = MktData.fetchTgtKr(ck)?.avg
+                            if (tv != null && tv > 0) MktData.MktSave.predSave(ck, day, tv)
+                            tv ?: MktData.MktSave.predLoad(ck, prevDay)
+                        }
+                } else MktData.predTarget(sym)
                 act.runOnUiThread {
                     // ⚠⚠ 2026-10-03 用户报「预测价混了策略」——**实测确认是这个串台**：
                     //   屏上是 01211(港股)，mkt_tgt 却写着 `预测价(最高×1.2) 115,045.76`，
@@ -2396,10 +2659,16 @@ private fun clearForNewSymbol() {
                     //   是两种不同的不新鲜，文案必须分开（原来只判 rateStale()，
                     //   兜底值会被写成「（旧汇率 ）」：dateStr 为空，括号里是空的）。
                     val staleNote = if (lastType == "kr") MktData.FX.staleNote("KRW") else ""
-                    tgt.text = tgtLabel(kind) + " " + MktData.mkFmt(v) + staleNote
+                    // t30：label 左 / value 右（稿 .mk-metric）。尾注（旧汇率）跟着**数值**走。
+                    // ⚠ 2026-11-04 用户裁定：原「（前一日）」尾注已移除；旧汇率 staleNote 保留。
+                    tgtL.text = tgtLabel(kind)
+                    tgtV.text = MktData.mkFmt(v) + staleNote
                     tgt.visibility = View.VISIBLE
                     // 稿PH(406-414):预测价>现价且>当前最低价才写计算页最高价(同值不扰手改)
-                    act.linkPhigh(v, cur)
+                    // ⚠ 2026-10-26 带上 seq：本闭包属于 paintTgt(seq) 那一批请求（seq 在入口
+                    //   已按 reqSeq 校验过），它可能是清空前排队、清空后才落地的回调 ——
+                    //   计算页要靠这个代号把「旧批次」与「清空后重新进入的新批次」分开。
+                    act.linkPhigh(v, cur, seq)
                 }
             }.start()
         }
@@ -2420,12 +2689,19 @@ private fun clearForNewSymbol() {
         else -> "机构目标均价"
     }
 
-    // ---------- 股票三源并行(Nasdaq+YahooDaily+东方财富)+首家先画 ----------
-    private fun renderStock(v: VendorKs, mkt: String, seq: Int, prelim: String?) {
-        if (seq != reqSeq) return
+    // ---------- 股票单腿渲染（Nasdaq；韩股 Naver 同走本函数） ----------
+    private fun renderStock(
+        v: VendorKs,
+        mkt: String,
+        seq: Int,
+        prelim: String?,
+        loadSym: String,
+        loadTf: String,
+        loadKey: String,
+    ) {
+        if (!loadCurrent(loadSym, seq) || loadTf != tf) return
         prelimTag = prelim
-        // ⚠ 这里没有 `s` 形参（品种只存在于 lastSym）—— 一度写成 `s` 编译不过。
-        renderAgg(MktData.aggregate(listOf(v), lastSym), mkt, seq)
+        renderAgg(MktData.aggregate(listOf(v), loadKey), mkt, seq, loadSym, loadTf)
     }
 
     /**
@@ -2438,7 +2714,12 @@ private fun clearForNewSymbol() {
      *
      * @param cnt 屏上当前画出来的根数（调用方已算好，避免在这里再 aggregate 一次）
      */
-    private fun t2RefreshLive(s: String, seq: Int, cnt: Int) {
+    private fun t2RefreshLive(
+        s: String,
+        seq: Int,
+        cnt: Int,
+        loadSym: String,
+    ) {
         MktData.refreshLiveQuote(s) { q ->
             // ⚠⚠ 2026-10-15 t6（评审 F2/F3）**回调必须 post 到 UI 线程**。
             //   `MktData.refreshLiveQuote` 是在自己的后台 Thread 里回调的（见它的实现），
@@ -2446,8 +2727,13 @@ private fun clearForNewSymbol() {
             //   轻则丢帧/不刷新，重则 CalledFromWrongThreadException。
             //   改前那句判断也不是没有：它只是把"序号不对"当早退，没管线程。
             act.runOnUiThread {
-                if (seq != reqSeq) return@runOnUiThread
-                if (!q.realtime) return@runOnUiThread
+                if (!loadCurrent(loadSym, seq)) return@runOnUiThread
+                // ⚠⚠ 2026-11-05 判据从 `realtime` 改成 `dayOk`（最近交易日）。
+                //   改前收盘后这里直接早退 ⟹ 快照不落地（`t2Snap` 仍是 null）⟹
+                //   价与涨跌一起退回「historical 末根 开→收」，美股实测涨跌写成月线涨跌
+                //   （MRVL -16.58%，同日真实日涨跌 -7.08%）。见 MktData.LiveQuote.dayOk。
+
+                if (!q.dayOk) return@runOnUiThread
                 // ⚠ 这一轮渲染的报价快照也一起更新：现价/涨跌/源名三处必须仍是**同一份**
                 //   （否则源名走新报价、涨跌走旧快照，又回到同屏不同源）
                 t2Snap = q
@@ -2461,11 +2747,21 @@ private fun clearForNewSymbol() {
 
     // t44:形参由 `n` 改名 `fetchN` —— 它收到的是 **mkLoad 的取数档位 MktData.FETCH_N(240)**，
     // 不是用户填的根数。改名前它叫 `n`,与同屏的 curN() 同名,极易被误当成显示数再取一次。
-    private fun loadStockParallel(s: String, fetchN: Int, mkt: String, seq: Int) {
-        val ck = MktData.MktCache.key(s, tf, fetchN)
-        MktData.MktCache.get(ck)?.let { vs ->
+    private fun loadStockParallel(
+        s: String, fetchN: Int, mkt: String, seq: Int, forceRefresh: Boolean = false
+    ) {
+        val loadTf = tf
+        val loadSym = MktData.canonicalSym(s)
+        val loadSeq = seq
+        val loadKey = loadSym
+        val ck = MktData.MktCache.key(loadKey, loadTf, fetchN)
+        if (!forceRefresh) MktData.MktCache.get(ck)?.let { vs ->
             val win = MktData.pickStockWinner(vs)
-            renderStock(win, mkt, seq, null)
+            // 缓存命中也要把「这批数据来自哪个源」记进账本，否则源名行只能显示「未取到」。
+            MktData.MktCache.atOf(ck).let { cacheAt ->
+                MktData.publishCachedLegs(loadKey, vs, if (cacheAt > 0L) cacheAt else -1L)
+            }
+            renderStock(win, mkt, loadSeq, null, loadSym, loadTf, loadKey)
             // ⚠ 2026-10-15 t2：缓存命中**不发取数请求**，但实时价照样要刷 ——
             //   否则 3–5 分钟那个窗口里屏上会拿旧价配「收盘价」（见 MktData.refreshLiveQuote）。
             //   只是那一个小请求（~1.2 KB），K 线/缓存/腿链一概不动。
@@ -2482,7 +2778,7 @@ private fun clearForNewSymbol() {
             //     ③ 现价/涨跌/源名三处都读**同一份**快照（`t2Snap`）⟹ 不会同屏不同源。
             //   ⛔ 不要"顺手"把它改成每轮都重刷：那会把 28 品种的自选页口径拉回每轮多打一次，
             //     且与 t7 的 R2 裁定相反。
-            t2RefreshLive(s, seq, MktData.aggregate(listOf(win), s).ks.size)
+            t2RefreshLive(loadKey, loadSeq, MktData.aggregate(listOf(win), loadKey).ks.size, loadSym)
             return
         }
         // 稿源状态行:有留底时:没有新鲜的、但上次抓过(关掉App也在)→
@@ -2491,8 +2787,7 @@ private fun clearForNewSymbol() {
         // 留底已是美元价(_u=1/usd=true),**不再 fxify**——二次折算会让价格越刷越小。
         var hadSaved = false
         // ⚠⚠⚠ 2026-10-15 t6 **源名从真实腿链派生**（MktData.legsText ⟸ legNames ⟸ stockLegs 的分支）。
-        //   改前这里是**写死**的「百度股市通 / 腾讯 竞速中 · 失败腿不回退重试」，而那两家里
-        //   一家已不在任何股票腿上（①之后美股只东财、韩股只 Naver、A股/港股只腾讯）⟹ 就是编来源。
+        //   2026-11-03 数据源收敛后腿链只剩「美股 Nasdaq / 韩股 Naver」，文案照样自动跟随。
         //   顺带清掉原来那个**已无使用者**的 `val t = MktData.symType(s)`（编译警告点名的那个）。
         //   ⚠ 与 t210FailText 的「限流冷却中…」同源：**取数与文案都只看腿链一处**，改链不用回来改文案。
         val legsTxt = MktData.legsText(s)
@@ -2501,12 +2796,15 @@ private fun clearForNewSymbol() {
             // ⚠ t8：标出"这批是留底"（只认同周期 ⟹ 标注要写「上次取到的」，不是「上一周期」）
             t2SrcSaved = true
             // ⚠ t12（R2-1）：记下**数据真实年龄**（不是画上屏那一刻）
-            t2SrcSavedAgeMs = MktData.MktSave.savedAgeMs(ck)
-            renderStock(MktData.pickStockWinner(sv), mkt, seq, null)
+            val savedAgeMs = MktData.MktSave.savedAgeMs(ck)
+            t2SrcSavedAgeMs = savedAgeMs
+            // 留底同样要有账可查；缺少旧时间戳时传未知值，不能用 now-(-1) 伪造新鲜度。
+            val savedAt = if (savedAgeMs >= 0L) System.currentTimeMillis() - savedAgeMs else -1L
+            MktData.publishCachedLegs(loadKey, sv, savedAt)
+            renderStock(MktData.pickStockWinner(sv), mkt, loadSeq, null, loadSym, loadTf, loadKey)
             mkStatus(legsTxt, false)
         }
         if (!hadSaved) mkStatus(legsTxt, false)
-        // v4.2/t97:股票K线只用东方财富单源(用户要求「不切源」,不再回退 Nasdaq/腾讯/Yahoo),
         // 失败文案由 fetchStocks 按「抛异常=东财不可达 / 返回空=没有该品种数据」两类如实给出;
         // 这里**透传**它,不再一律盖成泛化的「行情拉取失败(网络或品种名不对)」——
         // 那句会让用户以为是自己填错了品种。美/港/韩同走 fetchStocks;
@@ -2514,22 +2812,32 @@ private fun clearForNewSymbol() {
         Thread {
             var res: List<VendorKs>? = null
             var why: String? = null
+            var fxBad = false
             try {
-                // ⚠ 2026-10-15 t2：把**请求序号闸**交给取数侧 —— 屏上画的是序号最新的那一轮，
-                //   实时价也必须来自那一轮（慢的那轮不许把快的覆盖掉）。
-                // ⚠⚠ 2026-10-15 t6（评审 F7）：**`wantLive = true` 只有行情页传** ——
-                //   自选页（FavDist）不显示实时价，让它也去调 `/info` 是白花 28 次请求
-                //   （每品种 +0.6–2.4s、最坏 +33 KB/轮），而且它**会把 LIVE 覆盖掉**
-                //   （F2 点名的第三个写者）。收成一个写者：只有传了 wantLive 的调用方才写。
-                res = MktData.fetchStocks(
-                    s, tf, fetchN, stillCurrent = { seq == reqSeq }, wantLive = true)
+                // ⚠ 2026-11-02 **改走唯一取数口** [MktData.acquire]（用户裁定：一个软件不能有两个
+                //   行情拉取口）。它内部负责 fetchStocks + 汇率折算 + MktCache/MktSave 写入；
+                //   本页只保留「先画留底、再拿新数据重绘」的显示逻辑。
+                //   ⚠ `wantLive = true` 仍然只有行情页传（自选页不显示实时价，也不许当第三个写者）。
+                //   ⚠ `stillCurrent` 序号闸照旧透传。
+                res = MktData.acquire(
+                    loadKey, loadTf, refresh = true,
+                    wantLive = true, stillCurrent = { loadSeq == reqSeq })
+            } catch (_: MktData.FxMissing) {
+                fxBad = true
             } catch (e: Exception) {
                 why = e.message
             }
             val out = res
             val err = why
             act.runOnUiThread {
-                if (seq != reqSeq) return@runOnUiThread
+                if (!loadCurrent(loadSym, loadSeq)) return@runOnUiThread
+                if (fxBad) {
+                    // 折算失败 ⟹ 不给 K 线，走既有的「无源」态（未折算的值绝不能上屏/入缓存）。
+                    mkStatus("汇率未取到 · " + curSym() + " 不出 K 线（避免用原币当美元）", true)
+                    t2MarkStale(true)
+                    finishLoad(loadSeq)
+                    return@runOnUiThread
+                }
                 if (out == null || out.isEmpty()) {
                     // 稿 原稿(已被 B-标杆迁移.html 取代):`if(!got.length){if(!fst&&!sv)throw ...;return;}`
                     // —— **有留底就不报错**,继续用留底顶着,状态行维持「拉取中 · 同一源不重试」。
@@ -2554,24 +2862,16 @@ private fun clearForNewSymbol() {
         //     —— 见 [t2Stale]。所以这里调 t2MarkStale(true)，**不再调 t123PaintNoData()**
         //     （那句只说「未取到」，读不出屏上是什么；而且用户明确没选清空）。
         //   ⚠ 这一轮没拿到价，实时标记必须撤掉 —— 否则「未取到」与「实时 · Nasdaq」同屏打架。
-        MktData.clearLiveQuote(lastSym)
+        MktData.clearLiveQuote(loadSym)
         t2MarkStale(true)
-                    finishLoad(seq) // D4
+                    finishLoad(loadSeq) // D4
                     return@runOnUiThread
                 }
-                // 【F-2a · 修 B-1】折算失败 ⟹ **不给 K 线**，走既有的「无源」态。
-                // 改前 fxify 是静默 return，这里拿不到任何信号，会把原币 K 线
-                // 缓存下来并画上屏（港股支撑位/y轴/支撑线全在原币上，状态行却什么都不说）。
-                if (!MktData.FX.fxify(out, s)) {
-                    // **不进缓存、不落盘、不渲染** —— 未折算的值绝不能继续往下走。
-                    mkStatus("汇率未取到 · " + curSym() + " 不出 K 线（避免用原币当美元）", true)
-                    t123PaintNoData()
-                    finishLoad(seq)
-                    return@runOnUiThread
-                }
-                MktData.MktCache.put(ck, out)
-                MktData.MktSave.store(ck, out) // 稿 原稿(已被 B-标杆迁移.html 取代):抓成功后内存+落盘都写
-                renderStock(MktData.pickStockWinner(out), mkt, seq, null)
+                // 【F-2a · 修 B-1】折算失败已被 acquire 以 FxMissing 报上来了（见上面的 fxBad 分支），
+                // 走到这里说明数据已折算、且已由 acquire 写入 MktCache/MktSave ⟹ 直接画。
+                if (!loadCurrent(loadSym, loadSeq)) return@runOnUiThread
+                t2SrcFresh()
+                renderStock(MktData.pickStockWinner(out), mkt, loadSeq, null, loadSym, loadTf, loadKey)
             }
         }.start()
     }
@@ -2579,23 +2879,40 @@ private fun clearForNewSymbol() {
     // ---------- 币多腿:单线程按 cryptoLegs() 顺序**串行**,命中即停(稿L856-863) ----------
     // 与 loadStockParallel 同构:一条腿命中即 renderCrypto + return,后续腿不再发请求,
     // 不再发多余请求浪费大等待时间;BTCUSDT 的 legs 只有 BN 一条,行为不变。
-    private fun renderCrypto(vs: List<VendorKs>, mkt: String, seq: Int, prelim: String?) {
-        if (seq != reqSeq) return
+    private fun renderCrypto(
+        vs: List<VendorKs>,
+        mkt: String,
+        seq: Int,
+        prelim: String?,
+        loadSym: String,
+        loadTf: String,
+        loadKey: String,
+    ) {
+        if (!loadCurrent(loadSym, seq) || loadTf != tf) return
         prelimTag = prelim
-        renderAgg(MktData.aggregate(vs, lastSym), mkt, seq)   // 同 renderStock：品种取 lastSym
+        renderAgg(MktData.aggregate(vs, loadKey), mkt, seq, loadSym, loadTf)
     }
 
     // 同上:形参是**取数档位**,不是用户填的根数。
-    private fun loadCryptoParallel(s: String, fetchN: Int, mkt: String, seq: Int) {
-        val ck = MktData.MktCache.key(s, tf, fetchN)
-        MktData.MktCache.get(ck)?.let { vs ->
-            renderCrypto(vs, mkt, seq, null)
+    private fun loadCryptoParallel(
+        s: String, fetchN: Int, mkt: String, seq: Int, forceRefresh: Boolean = false
+    ) {
+        val loadTf = tf
+        val loadSym = MktData.canonicalSym(s)
+        val loadSeq = seq
+        val loadKey = loadSym
+        val ck = MktData.MktCache.key(loadKey, loadTf, fetchN)
+        if (!forceRefresh) MktData.MktCache.get(ck)?.let { vs ->
+            // 缓存命中也要把来源记进账本，否则源名行显示「未取到」（用户实报 BTC）。
+            MktData.MktCache.atOf(ck).let { cacheAt ->
+                MktData.publishCachedLegs(loadKey, vs, if (cacheAt > 0L) cacheAt else -1L)
+            }
+            renderCrypto(vs, mkt, loadSeq, null, loadSym, loadTf, loadKey)
             return
         }
         // 稿源状态行:有留底时(同 loadStockParallel):先画留底顶着 + 「拉取中 · 同一源不重试」
         var hadSaved = false
         // ⚠ 2026-10-15 t6：币腿的源名同样**从真实腿链派生**（MktData.cryptoLegs）——
-        //   原来写死的「百度股市通 / 腾讯」与币腿一个源都不沾（币腿根本不走百度/腾讯）。
         // ⚠ 2026-10-15 第二轮：cryptoLegs 已收成**币安单源**（用户裁定「行情数据源改为一家」）。
         val legsTxtC = MktData.legsText(s)
         MktData.MktSave.saved(ck)?.let { sv ->
@@ -2603,16 +2920,19 @@ private fun clearForNewSymbol() {
             // ⚠ t8：标出"这批是留底"（只认同周期 ⟹ 标注要写「上次取到的」，不是「上一周期」）
             t2SrcSaved = true
             // ⚠ t12（R2-1）：记下**数据真实年龄**（不是画上屏那一刻）
-            t2SrcSavedAgeMs = MktData.MktSave.savedAgeMs(ck)
-            renderCrypto(sv, mkt, seq, null)
+            val savedAgeMs = MktData.MktSave.savedAgeMs(ck)
+            t2SrcSavedAgeMs = savedAgeMs
+            // 留底也要有账可查；缺少旧时间戳时传未知值，不能用 now-(-1) 伪造新鲜度。
+            val savedAt = if (savedAgeMs >= 0L) System.currentTimeMillis() - savedAgeMs else -1L
+            MktData.publishCachedLegs(loadKey, sv, savedAt)
+            renderCrypto(sv, mkt, loadSeq, null, loadSym, loadTf, loadKey)
             mkStatus(legsTxtC, false)
         }
         if (!hadSaved) mkStatus(legsTxtC, false)
-        val legs = MktData.cryptoLegs(s)
+        val legs = MktData.cryptoLegs(loadKey)
         // ⚠⚠⚠ 2026-10-03 **竞速改替补**（用户裁定：「取消竞速模式，采用替补模式」）。
         //   改前：所有腿并行发，`got.compareAndSet` 让**先回来的赢**，其余一律丢弃。
         //   ⟹ 赢的是**网络最快的那条**，不是**数据最全的那条**。
-        //     黄金那条就是被这个坑掉的：新浪响应快但 `volume` 恒为 0，
         //     抢在东财前面赢 ⟹ VPVR 整片空白，且**谁赢不确定** ⟹ 「第一次有、第二次没了」。
         //   现在：**按 cryptoLegs 的顺序依次试**，第一条成功的即胜出，
         //   后面的腿**根本不发请求**。结果确定，不受网络快慢影响。
@@ -2624,11 +2944,11 @@ private fun clearForNewSymbol() {
             var hitLeg = ""
             val legStates = mutableListOf<MktData.LegInfo>()
             for (leg in legs) {
-                if (seq != reqSeq) return@Thread
+                if (loadSeq != reqSeq) return@Thread
                 var v: VendorKs? = null
                 var threw = false
                 try {
-                    v = MktData.fetchCryptoLeg(leg, s, tf, fetchN)
+                    v = MktData.fetchCryptoLeg(leg, loadKey, loadTf, fetchN)
                 } catch (_: Exception) {
                     threw = true
                 }
@@ -2648,26 +2968,29 @@ private fun clearForNewSymbol() {
             val legName = hitLeg
             val states = legStates.toList()
             act.runOnUiThread {
-                if (seq != reqSeq) return@runOnUiThread
+                if (!loadCurrent(loadSym, loadSeq)) return@runOnUiThread
                 if (v != null) {
                     // 【F-2a · 修 B-1】同上：折算失败就不出 K 线。加密腿当前是 USD（fxify 直接 true），
                     // 但**规则不能靠「今天是美元」来兜底** —— 哪天多一条非美元腿，
                     // 这里就会重演 B-1。所以三条消费点一律按返回值把关。
-                    if (!MktData.FX.fxify(listOf(v), s)) {
+                    if (!MktData.FX.fxify(listOf(v), loadKey)) {
                         mkStatus("汇率未取到 · " + curSym() + " 不出 K 线（避免用原币当美元）", true)
-                        t123PaintNoData()
-                        finishLoad(seq)
+                        // Keep any visible batch, but make its cycle/cache provenance explicit.
+                        t2MarkStale(true)
+                        finishLoad(loadSeq)
                         return@runOnUiThread
                     }
+                    if (!loadCurrent(loadSym, loadSeq)) return@runOnUiThread
                     MktData.MktCache.put(ck, listOf(v))
                     MktData.MktSave.store(ck, listOf(v))
                     MktData.publishFavLegs(
-                        s,
+                        loadKey,
                         listOf(MktData.LegInfo(legName, hit = true, failed = false, skipped = false)))
                     // ⚠ 墓碑 · 2026-10-12：这里曾写 `MktData.lastLegsCount = fetchN`（t324 为稿 L318 的「· 42 根」），
                     //   已随 t2 删除 —— 该字段**零读取点**（屏上「· N 根」t45 就去掉了），而旧注释还声称
                     //   「被 FavPanel 读去拼「· N 根」」，注释与代码矛盾。需要根数时的正确来源是 legsOf 那批的 info.count。
-                    renderCrypto(listOf(v), mkt, seq, null) // 命中即停
+                    t2SrcFresh()
+                    renderCrypto(listOf(v), mkt, loadSeq, null, loadSym, loadTf, loadKey) // 命中即停
                 } else {
                     // 全灭：与改前同款收尾（留底顶着 / 泛化失败文案）
                     // 稿 L516 down: '各行情源均不可达 · 展示 09:31:04 缓存数据（3 小时前）'。
@@ -2687,10 +3010,10 @@ private fun clearForNewSymbol() {
                     else mkStatus("行情拉取失败(网络或品种名不对)", true)
                     // ⚠ 2026-10-15 t2：与 loadStockParallel 的失败分支**同一句话同一判据** ——
                     //   保留旧数据 + 标注「上一周期（X）数据 · N 分钟前」（见 [t2Stale]）。
-                    MktData.clearLiveQuote(s)
+                    MktData.clearLiveQuote(loadKey)
                     t2MarkStale(true)
                 }
-                finishLoad(seq)
+                finishLoad(loadSeq)
             }
         }.start()
     }

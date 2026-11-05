@@ -9,9 +9,11 @@
         **别再把滑杆加回来**，也别照它去同步什么「镜像」。
      ③ OHLC / ⑤ Vol:**已删除**(2026-10-02 用户裁定「这两个不要」),见下方墓碑
     ④ 涨跌额:独立成行,涨绿跌红
-    ⑥ 交易所/时点:「NASDAQ · 收盘」/「09:31:04 GMT-4」
+    ⑥ 交易所/时点:「NASDAQ · 收盘」保留;**「09:31:04 GMT-4」收盘时点那行恒不上屏**(2026-10-27 裁定)
     ⑩ 「美元口径(该品种以美元报价)」整行删除(稿里没有,是说明性文字)
     ⑬ 机构目标均价/步长阈值保留,并排进价格块,不单独占大块
+    ⑭ 2026-10-28 方向-B 收口:手动拆股·前复权整行、OHLC 明细整卡、K 线缩放三键全部移除
+       (XML 节点与 Kotlin 绑定一起删,不留 GONE 空壳);K 线标题去掉「形态示意」;不新增图例条。
 -->
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
@@ -19,16 +21,18 @@
     android:layout_height="match_parent"
     android:fillViewport="true"
     android:scrollbars="none"
-    android:clipToPadding="false">
+    android:clipToPadding="false"
+     android:clipChildren="false">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:paddingLeft="@dimen/space_4"
-        android:paddingRight="@dimen/space_4"
-        android:paddingTop="@dimen/space_3"
-        android:paddingBottom="@dimen/space_8">
+        android:paddingLeft="@dimen/space_2"
+        android:paddingRight="@dimen/space_2"
+        android:paddingTop="0dp"
+        android:paddingBottom="@dimen/space_3"><!-- ⚠ 2026-11-04 删标题后顶部再收一档：原来标题上方那 12dp
+             在标题消失后没有意义（页面内容直接从状态栏下方开始）。 -->
 
     <!-- t385 统一 16dp: 改前**两层**嵌套容器各带一份 space_4 ⟹ 标题/数量/现价/
          图表/源状态行全是 32dp，OHLC/StateLine/品种块再各加 16 ⟹ 48dp，
@@ -38,45 +42,21 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:paddingTop="@dimen/space_3"
-        android:paddingBottom="0dp">
+        android:clipChildren="false"
+         android:paddingBottom="0dp"><!-- ⚠ 2026-11-04 删标题后，这里原先那份 paddingTop(space_3)
+             与外层容器的 space_3 叠成了 24dp 双份留白；标题没了就只留外层那一份。 -->
         <!-- ⚠⚠ 2026-10-03 用户裁定删掉源状态行与状态行之后，这层 paddingBottom 成了「没人认领的空白」。
-             原值 @dimen/space_8(30.5dp)：**这一层的闭合在下面 L647，紧接着就是 mkt_supblock**，
-             于是 30.5dp 底距 + mkt_supblock 自己的 marginTop(11.4dp) = 41.9dp。
-             真机实测: mkt_stept 底 567.6dp → mkt_supblock 顶 609.5dp = **41.9dp，一字不差**。
-             那 30.5dp 原本是给「· N 根月线已更新」预留的；那行已被裁定删除，底距就没人认领了。
+             原值 @dimen/space_8(32dp)：**这一层的闭合在下面 L647，紧接着就是 mkt_supblock**，
+             于是 32dp 底距 + mkt_supblock 自己的 marginTop(12dp) = 41.9dp。
+             真机实测: mkt_stept 底 568dp → mkt_supblock 顶 6010dp = **41.9dp，一字不差**。
+             那 32dp 原本是给「· N 根月线已更新」预留的；那行已被裁定删除，底距就没人认领了。
              ⚠ 外层容器(上面 L26-31)仍保留自己的 space_8，**页面底部留白不受影响**；
                去掉的只是夹在内容中间的这一份，两处别一起改。 -->
 
-        <!-- ============ 顶栏(无卡片) ============ -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
-            <!-- t201 ⑧:原本这里有个「‹」返回按钮(mkt_back), 已按稿删掉 ——
-                 稿 L522 是 <AppBar title="行情"/>, 里面【只有标题】, 没有任何左右控件。
-                 系统返回键走 OnBackPressedDispatcher(MainActivity), 未动。
-                 ⚠ 搜索入口(mkt_searchtx/mkt_search)【保留】: 稿 L527/L529 本来就有, 别再删。 -->
-            <!-- 顶栏 = 稿 L522 <AppBar title="行情"/>, 【只有标题】, 就是下面这个 mkt_title。
-                 稿 L523 把搜索块放在 AppBar【下面】的独立一块(自带底线), App 现在也是那样:
-                 紧接其下那个带 mkt_search_block 底的描边盒承载 mkt_symname + mkt_searchtx。
-                 ⚠ 本段原来写的是 t108/t201 的说法: 顶栏 = 品种名 + 右侧『搜索』入口,
-                 且说搜索块还并进顶栏行、本轮不挪。t252 已经把它挪进下面的描边盒了。 -->
-            <TextView
-                android:id="@+id/mkt_title"
-                android:letterSpacing="-0.01"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:ellipsize="end"
-                android:gravity="start"
-                android:maxLines="1"
-                android:text="行情"
-                android:textColor="?attr/colorInk"
-                android:textSize="@dimen/fs_title"
-                android:textStyle="bold" />
-        </LinearLayout>
+        <!-- ⚠⚠ 2026-11-04 用户裁定删除页标题「行情」：
+             底部 Tab 栏已经有「行情」，页内再写一遍是重复；同时收掉顶上那一片空白。
+             稿同步改：`四屏-行情页.html` 删掉 `.mk-bar` 那一行标题。
+             ⚠ 品种标识不丢：价格卡右上角 `mkt_venue`（`{中文名} {代码} · {时段}`）承担。 -->
 
         <!-- t252 稿 L522: 顶栏到此为止, 【只有标题】。
              原来并在这一行的 mkt_searchtx / mkt_search 已按稿 L523-527 移进下面的描边盒。 -->
@@ -155,7 +135,7 @@
             android:id="@+id/mkt_input_dock"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="9.5dp"
+            android:layout_marginTop="8dp"
             android:background="@drawable/mkt_search_box"
             android:orientation="vertical"
             android:visibility="gone">
@@ -163,8 +143,8 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="horizontal"
-                android:paddingLeft="12.4dp"
-                android:paddingRight="12.4dp">
+                android:paddingLeft="12dp"
+                android:paddingRight="12dp">
                     <EditText
                         android:id="@+id/mkt_sym"
                         android:layout_width="0dp"
@@ -183,7 +163,8 @@
                         android:typeface="monospace" />
                     <Button
                         android:id="@+id/mkt_go"
-                        android:layout_width="68.7dp"
+                        android:layout_width="wrap_content"
+                        android:minWidth="0dp"
                         android:layout_height="42dp"
                         android:layout_gravity="bottom"
                         android:layout_marginStart="@dimen/space_2"
@@ -235,17 +216,50 @@
             android:orientation="horizontal"
             android:gravity="center_vertical"
             android:baselineAligned="false"
-            android:layout_marginTop="@dimen/space_3"
-            android:paddingStart="@dimen/space_4"
-            android:paddingEnd="@dimen/space_4"
-            android:paddingTop="@dimen/space_3"
-            android:paddingBottom="@dimen/space_3">
-        <!-- ⚠ 2026-10-16 t52 · 方向 B 控制卡**首片**（§2.4-3.2 / theme.css §6.1b）：
+            android:layout_marginTop="@dimen/space_2"
+            android:paddingStart="@dimen/space_1"
+            android:paddingEnd="@dimen/space_1"
+            android:paddingTop="@dimen/space_2"
+            android:paddingBottom="@dimen/space_2">
+        <!-- ⚠⚠ 2026-10-29 t28 · **控制卡恢复成稿的一行布局**（用户看图裁定，覆盖 2026-10-27 的竖排两行裁定）。
+             稿 `四屏-行情页.html:91-97` `.mk-ctl { display:flex; align-items:center;
+               justify-content:space-between; gap: var(sp-2); padding: var(sp-2) var(sp-1); }`
+             （本注释省掉 CSS 取值函数与前缀 —— XML 注释体内不许出现连续两个连字符）：
+               · `display:flex` + `justify-content:space-between` ⟹ 本容器 `orientation=horizontal`
+                 + `gravity=center_vertical`，周期组靠左、数量组靠右（space-between 用中间的空 View weight 实现）；
+               · `gap: sp-2` = **8dp**（`theme.css:198`）⟹ 中间那个空 View 的 `minWidth="8dp"`；
+               · `padding: sp-2 sp-1` = **上下 8dp / 左右 4dp**（`theme.css:197-198`）⟹ 本容器的四个 padding
+                 取 `space_2`(8dp) 与 `space_1`(4dp)，**都在 7 档上**，闸 2 严格模式不受影响。
+             ⚠ 2026-10-28 t21 时这里是上下 12 / 左右 16（卡内边距）—— 那是**卡内留白**口径，不是稿 `.mk-ctl`
+               的内边距，本轮按稿改回 8/4。整卡高度 = 36dp 行 + 8×2 = **52dp**。 -->
+        <!-- t4 周期控件基线：卡内分成两行，各 **36dp**（2026-10-28 t21 按稿改，原 41dp）；
+             两行之间 **8dp**（t15 按稿 `.mk-ctl` 的 gap: sp-2 定，原 6dp）；
+             栅格横向相邻间距由 syncGrid 统一为 4dp。
+             周期行与数量行共用同一测量宽度，避免确认按钮被字体或权重挤成窄条。
+             ⚠ 2026-10-28 t21（用户裁定「全部改成稿值」）—— 控制行这几处的稿出处，逐条对应：
+               · 高度 36dp：稿 `四屏-行情页.html:105`（`.mk-cnt__i height: 36px`）
+                 + `:111`（`.mk-cnt__ok height: 36px`），C-12（px = 目标 dp，1:1）⟹ **36dp**。
+                 周期行 `mkt_tf_row` 一并取 36dp：稿对分段器轨道**没有显式高度**，它由
+                 `.mk-seg__b` 的 `padding: 5px` + 行高 token lh-note（`theme.css:184` = 1.45 × 12px = 17.4px）
+                 派生 ≈ 28px，再加轨道 `padding: 3px × 2`（`theme.css:503`）≈ **34px**
+                 ⟹ App 取 36dp 与同卡 36dp 控件同高，比原 41dp 更贴稿的派生值。
+               · 数量框最小宽 72dp：稿 `四屏-行情页.html:104`（`.mk-cnt__i width: 72px`）+ C-27 裁定。
+               · 段内横向内边距 12dp：稿 **`theme.css:508-509`** 的共享规则
+                 `.gc-seg__btn, .calc-side__item, .mk-seg__b { padding: 5px var(sp-3); }`
+                 （本注释省掉了 CSS 取值函数与 token 前缀 —— XML 注释体内不许出现连续两个连字符，
+                   本仓已踩三次，见 `theme.css:199` 的 sp-3 = 12px）
+                 ⟹ 左右各 12px（纵向 5px 早已是 5dp，C-29 已裁）。
+                 ⚠ 这条 padding 写在**共享选择器列表**里，不是 `.mk-seg__b {` 单独一块
+                   ⟹ 只 grep `.mk-seg__b {` 会找不到它。
+             ⚠ 已知偏差（登记、不在本文件处置）：36dp 低于 Android 48dp 触摸目标建议值 ——
+               这是稿本身的选择（41dp 也低于），按用户裁定「全改稿值」执行，留作无障碍类残差统一登记。 -->
+         <!-- ⚠ 2026-10-16 t52 · 方向 B 控制卡（§2.4-3.2 / theme.css §6.1b；2026-10-28 起分片作废、本卡是整张单卡）：
              底 = colorCard + 上圆角 12 + 抬升 elev_row（分片专用，负 spread 去上溢）、
              左右内边距 = space_4（卡内边距 16，方向 B 主力档）、上下 = space_3（12）。
              ⚠ 分片圆角 / 底色 / 抬升**由 MktPanel.kt 的 paintCardSlices() 在运行期刷**：
                XML 的 drawable 只能给统一圆角，而分片要的是「首片上圆角 / 中片 0 / 末片下圆角」，
-               且末片是谁要看 mkt_split_box 的显隐（off 态中片即末片）—— 这是运行期状态，写不进 XML。
+               且末片是谁要看 mkt_split_box 的显隐（off 态中片即末片）—— 那套分片语义已随拆股行/编辑区于 2026-10-28 删除，
+               本卡现在是整张单卡（四角 12dp），paintCardSlices() 只刷「整卡」。
                本文件只负责结构与内边距，别再往这里挂 card_bg（会把分片圆角盖成统一圆角）。 -->
 
         <!-- 周期行(周/月/季)。稿 L256 逐字: 稿那个 Seg 是 **inline-flex** ⟹ 整盒
@@ -254,146 +268,265 @@
              于是真机上描边框横贯整行、紫色选中段只占左侧一小截。
              父容器是 vertical, 故同时写 layout_gravity=start, 不靠默认对齐。
              旁证: page_settings.xml 里同一个 Seg 容器本来就是 wrap_content。 -->
-        <LinearLayout
+        <!-- ⚠ 2026-10-27 用户（小米 17 Pro 实机）报「确认键被挤兑」+「比例不够通用」：
+             本行原先是「周期 wrap_content 抢宽度 + 数量块 weight 1 吃剩值」，
+             一旦系统字体/显示放大，周期段变宽 ⟹ 数量块只剩几十 dp ⟹ 确认被压成竖排两字。
+             ⟹ 改成**两端按比例分配**：周期段 0.45 / 数量块 0.55；周期段三个按钮内部再各占 1/3。
+             这样任何屏宽 / 任何字体缩放下两者都按比例伸缩，不再出现"谁抢到谁"。
+             ⚠ 代价（登记）：胶囊不再"贴合内容宽度"（稿是 inline-flex），宽屏上会比文字宽一点。 -->
+        <cn.gridcalc.gridcalc.SegTrack
             android:id="@+id/mkt_tf_row"
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="start"
+            android:layout_height="36dp"
+            android:layout_gravity="center_vertical"
             android:orientation="horizontal"
             android:paddingStart="1dp"
             android:paddingEnd="1dp"
+            android:paddingTop="3dp"
+            android:paddingBottom="3dp"
             android:background="@drawable/seg_frame"
-            android:clipToOutline="true">
+            android:clipChildren="false"
+            android:clipToOutline="false"><!-- ⚠⚠ 2026-11-04 本轮改造（用户裁定「设计一些他的动画」）：
+                 ① 类型 `LinearLayout` → `cn.gridcalc.gridcalc.SegTrack`（仍是 LinearLayout 子类，
+                    单测按 LinearLayout 取它不受影响）：选中药丸改为**轨道自绘的一颗共享药丸**，
+                    在三个位置之间连续移动，而不是三块各自换底色。
+                 ② 三个按钮的底色一律 `@null`（透明），选中态只由药丸承担；按下反馈是缩放 + 字色。
+                 ③ 上一轮那两项 Boolean 仍要保留：自绘药丸的阴影是 `Paint.setShadowLayer` 画的，
+                    仍会被父容器的 clipToOutline/clipChildren 裁掉（实测有效）。 -->
+            <!-- ⚠⚠ 2026-10-29 t28 · **宽度 `match_parent` → `wrap_content`**（用户裁定的核心 bug）：
+                 稿 `theme.css:500-507` 的 `.mk-seg { display:inline-flex; flex:none; padding:3px }`
+                 ⟹ 轨道盒宽 = **内容宽**（三段按钮各按自身 padding+文字撑开），不铺满整行。
+                 改前是 `match_parent` + 三段 `0dp + weight=1` ⟹ 药丸被均分成整行宽，与稿的紧凑形态相反。
+                 本轮同时把三个 Button 改成 `wrap_content` 并删掉 weight（见下方各自标签）。
+                 ⚠ 高度仍留 36dp（t21 定的；稿对轨道无显式高度，派生 ≈34px）—— 本轮只改**宽度契约**。 -->
+            <!-- ⚠ r8 B-4（2026-10-19）· 轨道纵向内边距 = 稿 `theme.css:503-510` 的 `padding: 3px`
+                 ⟹ 3dp（1:1，R-1）。**填写说明（§4-① 第二类：稿语言层组件几何）**：
+                 3px 是稿**直接给出的控件内边距**，不属 7 档间距（4/8/12/16/20/24/32），故按稿折算值
+                 落字面量并登记；两侧的 1dp 不是内边距，是 `border:1px` 在稿里长在盒外的占位（见下段注释），
+                 一律保留、不许合并。
+                 实测（装机）：容器由 132px(48.0dp) 收到本组期望 ≈33dp；选中药丸随之内缩 3dp（改前 0）。 -->
             <!-- ⚠ 2026-10-03 这两个 padding 是**补边框占位**，不是排版需要。
                  Playwright 实测稿（.tmp/draftseg.py，从「周线」叶子往上逐层量）:
                      单格   padding 7px 11px · fontSize 12px · w=46
                      容器   display:flex · border:1px solid · x=16 · w=140
-                 按口径 ×0.9539 折 dp:  单格 43.9 / 容器 133.6
-                 App 实测:                     单格 43.6 / 容器 130.9
+                 按 R-1 全线 1:1:      单格 46 / 容器 140
+                 App 实测(旧 392.7dp 口径):  单格 43.6 / 容器 130.9 ⟹ **待复核**
                  ⟹ **单格只差 0.3dp，已经对上**；总宽差 2.7dp 全部来自边框算法:
                      稿的 border:1px 长在盒子**外** → 计入布局尺寸(140 = 3×46 + 2)
                      App 的 seg_frame 是 background 描边 → 画在盒子**内** → 不计入(130.9 = 3×43.6)
                  左右各补 1dp 让容器总宽与稿一致(130.9 + 2 = 132.9 ≈ 133.6)。
+                     ⚠ R-1 后此 1dp 补偿**待复核**：1:1 下稿容器 = 140dp，App 实测 130.9dp，差 9.1dp。
                  ⚠ 别把这 1dp 当内边距删掉 —— 它就是那圈 1px 描边在稿里的占位。 -->
+            <!-- ⚠ 2026-10-28 t21 · 三个周期按钮的高度用 **match_parent**，**不要写死 36dp**：
+                 轨道 `mkt_tf_row` 高 36dp、上下各 3dp 内边距（稿 `theme.css:503` 的 padding: 3px）
+                 ⟹ 内容盒 30dp；按钮填满内容盒，选中药丸才是「上下各留 3dp」的居中态。
+                 实测教训：写死 36dp 时按钮被量成 **33dp 且贴底**（顶 3dp / 底 0dp），药丸偏下 1.5dp，
+                 截图可见。稿对 `.mk-seg__b` **本来就没有显式高度**（由 5px padding + 行高派生 ≈28px），
+                 ⟹ 声明 match_parent 比写死任何数值都更贴稿。 -->
             <Button
                 android:id="@+id/mkt_tf_w"
                 android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
+                android:layout_height="match_parent"
                 android:background="@null"
+                android:singleLine="true"
                 android:text="周线"
                 android:textColor="?attr/colorSub"
                 android:textSize="@dimen/fs_note"
-                android:paddingStart="10.5dp"
-                android:paddingEnd="10.5dp"
-                android:paddingTop="6.7dp"
-                android:paddingBottom="6.7dp"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:paddingTop="5dp"
+                android:paddingBottom="5dp"
                 android:maxLines="1"
-                android:minWidth="0dp" />
+                android:minWidth="0dp"
+                android:minHeight="0dp" />
             <Button
                 android:id="@+id/mkt_tf_m"
                 android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
+                android:layout_height="match_parent"
                 android:background="@null"
+                android:singleLine="true"
                 android:text="月线"
                 android:textColor="?attr/colorInk"
                 android:textSize="@dimen/fs_note"
-                android:paddingStart="10.5dp"
-                android:paddingEnd="10.5dp"
-                android:paddingTop="6.7dp"
-                android:paddingBottom="6.7dp"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:paddingTop="5dp"
+                android:paddingBottom="5dp"
                 android:maxLines="1"
-                android:minWidth="0dp" />
+                android:minWidth="0dp"
+                android:minHeight="0dp" />
             <Button
                 android:id="@+id/mkt_tf_q"
                 android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
+                android:layout_height="match_parent"
                 android:background="@null"
+                android:singleLine="true"
                 android:text="季线"
                 android:textColor="?attr/colorSub"
                 android:textSize="@dimen/fs_note"
-                android:paddingStart="10.5dp"
-                android:paddingEnd="10.5dp"
-                android:paddingTop="6.7dp"
-                android:paddingBottom="6.7dp"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:paddingTop="5dp"
+                android:paddingBottom="5dp"
                 android:maxLines="1"
-                android:minWidth="0dp" />
-        </LinearLayout>
+                android:minWidth="0dp"
+                android:minHeight="0dp" />
+        </cn.gridcalc.gridcalc.SegTrack>
+        <!-- ⚠ 2026-10-29 t28 · **space-between 的等效件**：把剩余空间全部吃掉的空 View。
+             稿 `四屏-行情页.html:91-97` `.mk-ctl { justify-content:space-between; gap: var(sp-2) }`
+             ⟹ 周期组靠左、数量组靠右；稿的 8px 是**空档下限**，这里用 `0dp + weight=1` 吃余量。
+             实测（装机 412dp 宽，字号 1.0 / 1.3 / 1.5）：本空档 = 70 / 35 / 10dp（先被压缩的就是它）；
+             到字号 1.8 时被压到 **0**（LinearLayout 对加权子项不兑现 minWidth，稿的 8dp 下限在极端字号下
+             不保底）⟹ 本空 View 是**第一让步对象**，这一取舍已登记在 output 里。
+             ⚠ 别删它：删了数量组会紧贴周期组，space-between 退化成 flex-start。 -->
+        <View
+            android:layout_width="0dp"
+            android:layout_height="1px"
+            android:layout_weight="1"
+            android:minWidth="8dp" />
 
-        <!-- #55 + #56 数量块。
-             ⚠ 2026-10-02：orientation 由 vertical 改 **horizontal**、宽度 0dp + weight 1，
-             于是它与周期行并排成稿的一行（周期在左、数量块吃余量把值推到右端）。
-             改前它是 match_parent/vertical，周期与数量被拆成上下两行。 -->
+        <!-- ⚠⚠ 墓碑 · 2026-10-29 t28 · **「竖排两行 + 三列栅格」整套口径已作废**（用户看图裁定恢复稿的一行布局）。
+             作废的是这两段（保留说明只为追溯，别再照它们改）：
+               · 「t4 第二行：数量输入与确认共用三列栅格…确认由 syncGrid 写成末列宽度并右缘对齐」
+                 —— 三列栅格已不存在：`syncGrid()` 里写死 tf_w/m/q 与 kcount/win 宽度的整段**已删除**，
+                    现在宽度全由 XML 声明（周期组 `wrap_content`、kcount `72dp`、确认 `wrap_content`）。
+               · 「t15 · 本行 layout_marginTop 6dp → 8dp（sp-2 是两组间距）」
+                 —— 那个 8dp 是**纵向**间距，只在竖排两行时成立；现在两组横排，同一个 sp-2 token
+                    落在**横向**，由中间 weight 空 View 的 `minWidth="8dp"` 承担（见上方）。**本节点不再有 marginTop。**
+             稿依据没变、只是落法变了：`四屏-行情页.html:91-97` `.mk-ctl{justify-content:space-between; gap:sp-2;
+               padding:sp-2 sp-1}` ⟹ 一行 + 两端对齐 + 组间 8px；`theme.css:197-198` sp-1=4px / sp-2=8px。 -->
         <LinearLayout
             android:id="@+id/mkt_row2"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
             android:orientation="horizontal"
             android:gravity="center_vertical"
-            android:baselineAligned="false"
-            android:layout_marginStart="22.9dp">
+            android:baselineAligned="false">
+            <!-- ⚠⚠ 2026-10-29 t28 · 本节点由「竖排两行里的第二行」改成**一行布局里的数量组**：
+                 `orientation=vertical` → **`horizontal`**、`match_parent` → **`wrap_content`**、
+                 删掉 `layout_marginTop="8dp"`（那是两行之间的纵向间距；现在与周期组**同一行**，
+                 间距由中间那个 weight 空 View 的 `minWidth=8dp` 承担，横向）。
+                 稿 `四屏-行情页.html:98` `.mk-cnt { display:flex; align-items:center; gap: var(sp-1) }`
+                 ⟹ 组内三件（数量 / 输入框 / 确认）横排、垂直居中、间隔 **4dp**（`theme.css:197` sp-1）。
+                 ⚠ t15 定的那个 8dp 上边距**随之作废**（它服务的是竖排两行，那个前提已被用户 2026-10-29 裁定推翻）。 -->
             <!-- 稿 L2065-2070: 标签 + 描边输入框，同一行两端对齐。
                  值盒另留 36dp 高(可点进去改)，稿那个 input 由行高决定 ⟹ App 自有取舍。
                  ⚠ 本框宽度必须留在 wrap_content: 运行期 syncGrid 曾按栅格写死宽度, 已删除 -->
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:gravity="center_vertical"
-                android:orientation="horizontal">
+            <!-- ⚠⚠ 2026-10-29 t28 · 原文「本行**故意不贴右**（2026-10-03 用户裁定：内容收短、右侧留白）」
+                 **已作废** —— 用户 2026-10-29 看图裁定「恢复成稿的一行布局」，即 `.mk-ctl` 的
+                 `justify-content:space-between`：数量组现在**贴卡内容右缘**。
+                 所以下面那个「吃掉余量让整组靠左」的空 View **已随本轮删除**（它在两行布局里才有意义）。
+                 ⚠ 若将来又要退回「靠左留白」，改法是把 `mkt_row2` 后面补一个 `0dp + weight=1` 的空 View
+                   （而不是去改本行的宽度），别把 `wrap_content` 改回 `match_parent` —— 那会让数量组重新拉满。 -->
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
+                    android:layout_weight="0"
+                    android:layout_marginEnd="4dp"
+                    android:maxLines="1"
                     android:text="数量"
-                    android:textColor="?attr/colorFaint"
+                    android:textColor="?attr/colorSub"
                     android:textSize="@dimen/fs_note" />
+                <!-- ⚠ r8 B-12（2026-10-19）· 「数量」标签墨色由第三档 faint 升**第二档 sub**：
+                     稿 `四屏-行情页.html:101` 逐字 `.mk-cnt__l { color: var(-ink-sub) }`。
+                     改前用 colorFaint 是**掉了一档**（实测深色下 faint=#818C9B vs sub=#AAB4C2）。 -->
                 <!-- ⚠ 2026-10-03 用户指出的间距问题，已与上面 mkt_row2 的 marginStart 一起改：
-                     原状：周期段→数量 15.2dp， 数量→输入框 11.4dp
+                     原状：周期段→数量 15.2dp， 数量→输入框 12dp
                            —— 两段只差 1.33 倍，「数量+输入框」这个**标签值对**看不出来，
                               读起来像四个并列的东西挤在一行。
-                     改成：周期段→数量 **22.9dp**(space_6)， 数量→输入框 **7.6dp**(space_2)
+                     改成：周期段→数量 **24dp**(space_6)， 数量→输入框 **8dp**(space_2)
                            —— 间距拉开 3 倍，左边「周期段」与右边「数量[20]」才分成两组。
                      ⚠ 这**偏离稿**：稿 v2.html:2063 整行是 gap:16 单一间距，
                        没有「组内紧、组间松」这层层级。属产品裁定。
                      ⚠ 两处的 marginStart 都是**写死数字**不是 @dimen，
                        要调就 310 行(mkt_row2) 与下面 EditText 这行**一起改**，别只动一头。
                      ⚠ 注释别放进未闭合的标签里 —— 那会让 XML 解析失败。 -->
-                <EditText
-                    android:id="@+id/mkt_kcount"
+                <!-- ⚠⚠ 2026-11-04 用户裁定「行情页那个填数字改行情的功能，改成加减控制」：
+                     输入框 + 键盘 → **步进器**（− / 读数 / +）。读数不可编辑、不可聚焦。
+                     形态与稿 `theme.css §6.7` / `四屏-行情页.html` 的 `.mk-step` 同构：
+                       · 轨道 = seg_frame（surface-2 + r999），与周期分段器同一套「内嵌轨道」语言；
+                       · 读数 = seg_sel（surfaceRaised + r999 + 抬起），与选中药丸同一「抬起」语言；
+                       · 两个键 32dp、无底、只有字形，按下由代码做 scale .94（不做 ripple）。
+                     ⚠ 根数范围仍是 KMIN=15 / KMAX=100：到达边界时对应键禁用并转 faint。
+                     ⚠ 「确认」键**保留**（用户 2026-10-03 裁定「不确认就不存」）——本次只换输入方式。 -->
+                <LinearLayout
+                    android:id="@+id/mkt_kstep"
                     android:layout_width="wrap_content"
-                    android:layout_height="34.3dp"
-                    android:layout_marginStart="7.6dp"
-                    android:minWidth="66.8dp"
-                    android:background="@drawable/mkt_count_box"
-                    android:contentDescription="K线数量(15~100)"
-                    android:fontFeatureSettings="tnum"
-                    android:gravity="right|center_vertical"
-                    android:importantForAutofill="no"
-                    android:inputType="number"
-                    android:imeOptions="actionDone"
-                    android:singleLine="true"
-                    android:paddingLeft="5.7dp"
-                    android:paddingRight="5.7dp"
-                    android:text="20"
-                    android:textColor="?attr/colorInk"
-                    android:textColorHint="?attr/colorFaint"
-                    android:textSize="@dimen/fs_title" />
+                    android:layout_height="36dp"
+                    android:layout_marginStart="4dp"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:background="@drawable/seg_frame"
+                    android:paddingStart="2dp"
+                    android:paddingEnd="2dp"
+                    android:importantForAccessibility="yes"
+                    android:contentDescription="K线数量(15~100)">
 
-                <!-- ⚠ 2026-10-03 用户第三次说「还是这么长」+「这一栏都很长」，
-                     这次问清了：**嫌的是整行**，不是某一段。
-                     ⟹ mkt_period_row 本身是 match_parent(铺满 361dp)，无论怎么缩内部元素，
-                        行的**右缘永远顶到屏幕右边**，空档只会越变越大 —— 那是「变长」不是「变短」。
-                     ⟹ 真正能让这一栏变短的只有一个办法：**内容收短、右侧留白**。
-                        做法：「数量」标签由 weight=1 改成 wrap_content（不再撑开），
-                        输入框后补一个 0dp/weight=1 的空 View 把余量吃掉。
+                    <Button
+                        android:id="@+id/mkt_kminus"
+                        android:layout_width="30dp"
+                        android:layout_height="30dp"
+                        android:background="@drawable/seg_sel"
+                        android:elevation="@dimen/elev_1"
+                        android:stateListAnimator="@null"
+                        android:minWidth="0dp"
+                        android:minHeight="0dp"
+                        android:padding="0dp"
+                        android:includeFontPadding="false"
+                        android:singleLine="true"
+                        android:text="−"
+                        android:textColor="?attr/colorInk"
+                        android:textSize="@dimen/fs_title"
+                        android:contentDescription="减少" />
 
-                     ⚠ 这次与稿不一致，**且我上次撤过一次、又撤错了**：
-                        稿 v2.html:2066 是 justifyContent:'space-between'（输入框顶行右端），
-                        上一轮我照稿还原后你说「改前也不一致啊，我都说了长了」——
-                        也就是说**这条抱怨早于我任何一次改动，原样(space-between)就不满足**。
-                     ⚠ 代价要记清:改完之后这一行与稿不再逐像素对齐（输入框右缘 232dp vs 稿 377.7dp）。
-                        若日后要回到照稿：删掉下面这个空 View、给「数量」标签加回
-                        layout_width=0dp + layout_weight=1，一步还原。
-                        要核稿的几何时重跑 .tmp/draftrow.py，别比截图。 -->
+                    <TextView
+                        android:id="@+id/mkt_kval"
+                        android:layout_width="wrap_content"
+                        android:layout_height="30dp"
+                        android:minWidth="44dp"
+                        android:gravity="center"
+                        android:paddingStart="8dp"
+                        android:paddingEnd="8dp"
+                        android:background="@null"
+                        android:fontFeatureSettings="tnum"
+                        android:text="20"
+                        android:textColor="?attr/colorInk"
+                        android:textSize="@dimen/fs_title"
+                        android:textStyle="bold" />
+
+                    <Button
+                        android:id="@+id/mkt_kplus"
+                        android:layout_width="30dp"
+                        android:layout_height="30dp"
+                        android:background="@drawable/seg_sel"
+                        android:elevation="@dimen/elev_1"
+                        android:stateListAnimator="@null"
+                        android:minWidth="0dp"
+                        android:minHeight="0dp"
+                        android:padding="0dp"
+                        android:includeFontPadding="false"
+                        android:singleLine="true"
+                        android:text="+"
+                        android:textColor="?attr/colorInk"
+                        android:textSize="@dimen/fs_title"
+                        android:contentDescription="增加" />
+                </LinearLayout>
+
+                <!-- ⚠⚠ 墓碑 · 2026-10-03 那轮「用户第三次说还是这么长」的处置**已被 2026-10-29 的用户裁定推翻**：
+                     当年做法 = 「内容收短、右侧留白」——把「数量」标签改 wrap_content、输入框后补一个
+                     `0dp/weight=1` 的空 View 吃余量，让整组靠左、右缘留白（并登记「与稿不一致」）。
+                     2026-10-29 用户看图裁定「恢复成稿的一行布局」⟹ 稿 `四屏-行情页.html:91-97`
+                     `.mk-ctl{justify-content:space-between}` 才是准绳：数量组**贴卡内容右缘**，那个吃余量的
+                     空 View 已删（space-between 由周期组与数量组之间的 weight 空 View 实现）。
+                     ⚠ 别再照本段文字「把整组改回靠左」—— 那是已被推翻的旧裁定。 -->
+                <!-- ⚠ 2026-10-29 t28 · 数量框宽度契约（防回归，三条一起看）：
+                     ① `android:layout_width="72dp"` —— 稿 `四屏-行情页.html:104` `.mk-cnt__i{width:72px}`，
+                        C-12（px=dp）⟹ 72dp；**闸 4 的 `input_kcount_width` 断言的是 `minWidth`**，
+                        所以 `minWidth="72dp"` 必须**留着**（改它即红）。
+                     ② 高度 36dp = 稿 `:105` 的 `height:36px`（t21 定），闸 4 也钉着它。
+                     ③ 它不再是加权项：**让位顺序**是「中间的空 View（weight，先归零）→ 周期组 wrap_content
+                        按内容撑 → 数量框 72dp 保底 → 确认键永不压缩」。字体放大到极限时宁可整行溢出，
+                        也不允许把确认键压成竖排 —— 见 mkt_win 上方的三条硬约束。 -->
                 <!-- ⚠⚠ 2026-10-03 **用户裁定恢复确认键 + 二次确认**。
                      原话：「为什么没有确认键，调好的周期怎么保存，一退出去数据又没了」
                           →「要确认键继续二次确认」。
@@ -408,50 +541,64 @@
                        现已搬进本行，教训见下面那段墓碑。
                      ⚠ 若日后恢复 ▾ 形态：点击监听改回 toggleWinPop，
                        且 pop 里的「确认」项要一并接上二次确认，两处成对。 -->
+                <!-- ⚠ 2026-10-28 t15 · 横向内边距 10dp → **12dp**（闸 2 严格模式的档外值处置）。
+                     稿 `四屏-行情页.html:111` 的 `.mk-cnt__ok` 声明：`height: 36px` + 左右内边距 = sp-3
+                     （稿原文用 CSS 取值函数包着 token 写，本注释省掉包裹与前缀，理由同本文件 :212）；
+                     `theme.css:199` 定义 sp-3 = 12px；C-12 裁定「稿 px = 目标 dp，1:1」⟹ 左右各 **12dp**。
+                     ⚠ 10dp 是历史遗留（R-18 台账里 10.5 → 10 的吸档产物），无稿出处、也不在 7 档上。
+                     ⚠ 原文「按钮盒宽度不受本次改动影响（`layout_width="0dp"` 由 syncGrid 写成末列 last）」
+                       **已作废（2026-10-29 t28）**：本按钮现在是 `wrap_content`，宽度 = 文字 + 左右各 12dp，
+                       不再由 syncGrid 分配。见下面 2026-10-29 那三条防回归硬约束。 -->
+                <!-- ⚠⚠ 2026-10-29 t28 · 确认键的**三条防回归硬约束**（2026-10-27 的「确认被挤成竖排两字」就是缺它们）：
+                     ① `layout_width="wrap_content"`（不是 `0dp`！改前是 0dp，宽度由 syncGrid 写死，一旦栅格算窄就压扁）；
+                     ② `minWidth="48dp"`（稿 `.mk-cnt__ok` 无最小宽，这里取 48dp = 可点性下限；宽度不足时**保底**）；
+                     ③ `singleLine="true"` + `maxLines="1"`（任何字号下都不折行、不出「确/认」两行）。
+                     三条缺一条就会退回旧病。宽度本身由「文字 + 左右各 12dp 内边距」撑出（稿 :111 `padding: 0 sp-3`）。
+                     ⚠ 别为了对齐去把它改回 `0dp + weight` —— 那样它会重新变成「被分配」的一方。 -->
                 <Button
                     android:id="@+id/mkt_win"
                     android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginStart="@dimen/space_2"
-                    android:minWidth="0dp"
+                    android:layout_height="36dp"
+                    android:layout_marginStart="12dp"
+                    android:minWidth="48dp"
+                    android:maxLines="1"
+                    android:singleLine="true"
+                    android:minHeight="0dp"
                     android:background="@drawable/mkt_count_box"
-                    android:paddingLeft="10.5dp"
-                    android:paddingRight="10.5dp"
-                    android:paddingTop="6.7dp"
-                    android:paddingBottom="6.7dp"
+                    android:paddingLeft="12dp"
+                    android:paddingRight="12dp"
                     android:text="确认"
                     android:textAllCaps="false"
                     android:textColor="?attr/colorInk"
                     android:textSize="@dimen/fs_note" />
-                <View
-                    android:layout_width="0dp"
-                    android:layout_height="1px"
-                    android:layout_weight="1" />
-
-                    <!-- ⚠ 2026-10-03 一次改错又改回来的记录，读这条前先看下面那段墓碑：
-
-                         我一度按用户「整行太长」把「数量」标签的 weight 撤掉、并在输入框后补一个
-                         0dp/weight=1 的空 View，把「数量[20]」整组收到左边、右侧留白。
-                         **那是反的**，已全部删除。证据是 Playwright 量稿子的真实几何
-                         （脚本 .tmp/draftrow.py，frame 宽 412，按口径 ×0.9539 折 dp）：
-
-                           稿 数量标签 x=164dp · 输入框 x=308..378dp（宽 70dp）
-                           App 改前      输入框 x=338..377dp  ← 右缘与稿一致，位置本来就对
-
-                         ⟹ 稿 v2.html:2066 的 justifyContent:'space-between' 就是「标签左、框右顶两端」，
-                           **改前的 App 已经是对的**,是我凭感觉把它推歪了 145dp。
-                         ⟹ 「数量」标签已还原成 layout_width=0dp + layout_weight=1。
-                         ⚠ 别再凭肉眼把这一行改成「靠左成组」—— 那会让它离稿更远。
-                           要核就重跑 .tmp/draftrow.py 量稿,拿数字比,别比截图。 -->
+                <!-- ⚠ r8 B-3（2026-10-19）· 上面那行 `android:minHeight="36dp"` 是本项唯一改动。
+                     病：本按钮的 height 是 wrap_content，而 Button 框架默认 `minHeight=48dp` 生效
+                     ⟹ 可见边框盒 124×**132px = 48.0dp**，与同排数量框（`mkt_kcount` 36dp）差 6.9dp。
+                     稿 `四屏-行情页.html:103-111` 逐字把 `.mk-cnt__i`（数量框）与 `.mk-cnt__ok`（确认）
+                     写成**同为 `height: 36px`** ⟹ 1:1 = **36dp**（R-1 取消折算）。
+                     改后实测：本盒 = 94px = 34.18dp，与 `mkt_kcount` 94px **差 0**。
+                     ⚠ 代价（登记、不新增缺口）：点击区 36dp < 48dp 无障碍目标，与同排数量框一致取舍。 -->
+                    <!-- ⚠ 2026-10-03 一次改错又改回来的记录（**r8 改准**）：
+                         【当前实况（以本页 HTML 为准，别再照下面的历史叙述改代码）】
+                           · 「数量」标签 = `layout_width="wrap_content"`（就在本段上方那个 TextView，
+                             它**不是** weight=1）；标签与输入框间距 = `layout_marginStart="8dp"`；
+                           · 输入框 `mkt_kcount` = `wrap_content` + `minWidth="70dp"`；
+                           · 输入框之后**保留**一个 `layout_width="0dp"` + `layout_weight="1"` 的**空 View**
+                             吃余量 ⟹ 「数量[20] 确认」整组靠左、右侧留白；
+                           · `mkt_row2` 的 `layout_marginStart="24dp"`（周期段→数量块的组间松）。
+                         本段记录 2026-10-03 的两轮反复（先把「数量」改成 wrap_content + 补空 View，
+                         后又读反用户原话、按 Playwright 实测判「改前本来就对」，并把注释写成相反结论）——
+                         **结论一律以本页实况为准**，注释不再复述"已还原/已删除"这类与实况相反的话。
+                         ⚠ 2026-10-19 r8 改准（原注释与实况相反）。 -->
 
                     <!-- ⚠ 2026-10-03 用户指出两件事，一起改：
                          ①「输入框也没有光标最右功能（无论怎么点，光标都会出现在最右方）」
                          ②「这个宽度也不一样」
                          ⚠⚠ 下面 minWidth 的数**又改过一次**（56→39→70），最终值以实测为准，不是估的：
                          我原先按 HTML `size={3}` 估成「3 字符 ≈ 27px + padding = 41px」，
-                         Playwright 实测浏览器给的是 **73 CSS px**（×0.9539 = **70dp**）——
+                         Playwright 实测浏览器给的是 **73 CSS px**（1:1 ⟹ **73dp**，旧口径曾写 70dp）——
                          `size` 属性比「三个数字的宽度」宽得多。
-                         ⟹ minWidth 定为 70dp 贴实测值。
+                         ⟹ minWidth 定为 70dp 贴实测值（1:1 后需复核是否为 73dp）。
                          ⚠ 内边距 10→6dp 这次是**对的**，实测稿 padding='2px 6px'，逐字照。
                          ⚠⚠ **本段原先的结论是错的，已作废**（原话：「所以「光标总在最右」不是代码强制，
                            而是盒子宽、数字右对齐 —— 这是照稿的结果，不是 bug」）。
@@ -461,8 +608,7 @@
                            minWidth 56→39→66.8 来回两轮，**一次都没碰到这件事**。
                          ⟹ 真正的修法在 MktPanel.kt：`kcountInp.setOnClickListener { setSelection(len) }`，
                            每次点击都把选区推到末尾。那里有完整说明，别再只改这里。
-                         ⚠ 高度仍留 34.3dp 没跟稿的 18px 收：Android 最小可点区取舍，与宽度无关。 -->
-            </LinearLayout>
+                         ⚠ 高度仍留 36dp 没跟稿的 18px 收：Android 最小可点区取舍，与宽度无关。 -->
             <!-- 【F-2c · 2026-10-01】数量**滑杆**已删除。
              用户原话：「我说了不要滑动条了非常的碍事」。
              根数入口现在**只有**上面的 mkt_kcount 输入框；取值口径 KMIN=15 / KMAX=100
@@ -494,187 +640,17 @@
 
         </LinearLayout><!-- /mkt_period_row（周期 + 数量 同一行）-->
 
-        <!-- ⚠⚠⚠ 2026-10-04 **手动拆股 · 前复权**（用户裁定："在行情界面里设置一个开关，
-             我来输入拆股日期和比例，然后你计算"）。
-
-             【为什么必须是手动】数据源给的是**未复权**序列，而「哪天、几拆几」这条信息
-             在 OHLC 里根本不存在 —— 3:1 拆股和「真跌了 3 倍」产出逐位相同的数据。
-             实测合法涨幅上沿 2.23 与最小拆股比 3.01 只隔 1.35 倍，
-             自动判据（无论怎么调阈值）都必然在正常上涨上开火。
-             ⟹ 缺的那条信息只能由人给，本块只负责**录入 + 展示**，不做任何检测。
-
-             【开关语义】开 = 只用手动拆股、完全跳过自动启发式；
-                          关 = 回到自动启发式（旧的 forwardAdjust）。
-             ⟹ 两套绝不同时生效：用户录的那份是他确认过的信息，
-               让一个猜出来的结果去覆盖它是本末倒置。 -->
-        <!-- ══ 2026-10-16 t2 · **D6：补回控制卡的两片分界（原型 132.0 / 194.0 dp）** ══
-             本节点加 layout_marginTop=space_3(12dp)，把控制卡的两片**分开成 12dp 画布缝**。
-
-             【为什么是「缝」而不是「1dp colorBorder 线」—— 三条实测证据】
-               取证 §1.4 写「原型在 132/194dp 有**两条 colorBorder 线**」，该说法与原型像素不符：
-               那两处是**卡边阴影的渐变斜坡**，不是发丝。判据（全都可复跑）：
-               ① 斜坡而非平面：原型 light 在 y=264 起是 (224,227,232)→(229,232,237)→(233,236,241)
-                  →(236,239,243)→(238,241,245)→(239,242,246)→(240,243,247)→(241,244,248)
-                  连续 7~8 行单调递减；而**真** 1dp 发丝（原型 tabbar 上沿 y=1614/1615）是
-                  **精确色平面** rgb(220,227,235) 连续 2 行。取舍证脚本按「精确色」重扫即见分晓。
-               ② 深色下**完全消失**：原型 dark 在同位置只有 rgb(22,27,34)→rgb(14,17,22) 的突跳，
-                  没有任何斜坡；若真是 colorBorder 发丝，深色应是 rgb(42,49,59) 且依然存在
-                  （同图 y=1614 的 tabbar 线在深色下就仍然是 rgb(42,49,59)）。
-                  深色 `theme.css:165-168` 把 elev-row / elev-1 两个变量全设为 `none`
-                  ⟹ 阴影消失而发丝不变 —— 消失即证「它是阴影」。
-               ③ border 计算值直接量：`.mk-ctl` border-bottom = **0px none**；
-                  `.mk-split` border-bottom = **0px solid**（默认 `data-split-state="off"`，
-                  §6.1b 的 `border-bottom-width: 0` 生效）⟹ 原型控制卡内部**一条 border 都没有**。
-             再叠上 ④ 几何：原型 `.mk-ctl` = 72..132dp、`.mk-split` = 144..194dp，
-             两者之间正好是 `.mk` 的 **grid gap 12px**（DOM 实测 gap=12px）——
-             它们本来就是**两张分开的卡**，各自在**下沿**投一道影子（elev-row 两个阴影
-             都是正 y 偏移 + 负 spread，只往下投），于是看起来是「两条线」。
-             ⑤ 角型也印证「两张卡」：`.mk-ctl` radius = `12px 12px 0 0`（**下角是直角**）、
-             `.mk-split` = `0 0 12px 12px`（**上角是直角**）；像素上原型 y=263 仍顶到 x=32、
-             y=264 起才收 → 下左角确实是直角，与 t52 的分片圆角**逐值一致**。
-
-             【结论】原型真正的形态 = **两片 + 中间 12dp 画布缝**，不是「在卡里画一条线」。
-             本页照此加缝；**t52 的分片逻辑一字未动**（首片 r12 r12 0 0 / 中片 0 /
-             末片 0 0 r12 r12 / off 态中片变末片 / 片间线撤销，全部仍在 paintCardSlices 里）。
-             缝落在哪：`mkt_period_row`(108.7..180.7dp) 与 `mkt_split_head`(180.7..231.6dp)
-             原本**无缝同色拼接**成一整块白；加缝后两片分界即落在原型 132→144dp 那条缝的对应位置。
-
-             ⚠ 与原型仍有的已知差异（登记，不写成已对齐）：Android 的 `elevation` 阴影**四面都投**，
-               没有 CSS「负 spread 只往下投」的方向控制 ⟹ 缝两侧的影子比原型多一道上沿软边。
-               这是映射表 D8 早就登记的 box-shadow→elevation 落差，不是本次引入的。
-             ⚠ 缝用 space_3 = 12dp：与原型 `.mk` 的 grid gap 12px 同值。
-             ⚠ 拆股编辑区（末片）与中片之间**不加**这道缝：那一段的可见性由用户裁定默认 GONE，
-               它的分界已由 mkt_card_divider（§6.1b 的片间线）承担，本任务不动它的语义。 -->
-        <LinearLayout
-            android:id="@+id/mkt_split_head"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/space_3"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:paddingStart="@dimen/space_4"
-            android:paddingEnd="@dimen/space_4"
-            android:paddingTop="@dimen/space_3"
-            android:paddingBottom="@dimen/space_3">
-        <!-- ⚠ 2026-10-16 t52 · 方向 B 控制卡**中片**（theme.css §6.1b）：底 colorCard + 圆角 0 +
-             抬升 elev_row + 由上面的 mkt_card_divider 承担片间分隔线。
-             ⚠ 编辑区隐藏时它变**末片** ⟹ 补下圆角 + 撤线，由 MktPanel.paintCardSlices() 运行期刷。 -->
-            <LinearLayout
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:orientation="vertical">
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="手动拆股 · 前复权"
-                    android:textColor="?attr/colorInk"
-                    android:textSize="@dimen/fs_title" />
-            </LinearLayout>
-            <!-- 与设置页 set_auto_sw 同一形态：尺寸由代码 setTrackDrawable 决定轨道两态，
-                 thumb 两态由 t211PaintSwitch 同款染色。这里不写 android:track，
-                 与 page_settings.xml 保持同一来源。 -->
-            <Switch
-                android:id="@+id/mkt_split_sw"
-                android:layout_width="42dp"
-                android:layout_height="24.8dp"
-                android:contentDescription="手动拆股 前复权"
-                android:minWidth="0dp"
-                android:minHeight="0dp" />
-        </LinearLayout>
-
-        <!-- ⚠ 2026-10-16 t52 · 方向 B 控制卡的**片间分隔**（theme.css §6.1b：中片的 border-bottom）——
-             位置在**中片（拆股行）与末片（编辑区）之间**，逐字照语言层：首片 mkt_period_row 不给线、
-             中片 mkt_split_head 给线、末片 mkt_splitbox 不给线。
-             ⚠ 它必须带 id：编辑区默认 GONE（2026-10-04 用户裁定）⟹ 那时**中片就是末片**，
-               语言层规定「中片变末片要补下圆角 **并撤掉这条线**」—— 撤线只能运行期做
-               （见 MktPanel.paintCardSlices()）。写死可见会在卡片下缘留一条孤线。
-             ⚠ 线通栏、不缩进：与 §6.2 行分隔同口径（线是装饰，不承担控件边界职责）。 -->
-        <View
-            android:id="@+id/mkt_card_divider"
-            android:layout_width="match_parent"
-            android:layout_height="1dp"
-            android:background="?attr/colorBorder" />
-
-        <!-- 编辑区：开关打开才显示。列表由代码逐条渲染（每条右侧一个 × 可删）。 -->
-        <LinearLayout
-            android:id="@+id/mkt_split_box"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:paddingStart="@dimen/space_4"
-            android:paddingEnd="@dimen/space_4"
-            android:paddingTop="@dimen/space_3"
-            android:paddingBottom="@dimen/space_3"
-            android:visibility="gone">
-        <!-- ⚠ 2026-10-16 t52 · 方向 B 控制卡**末片**（theme.css §6.1b）：底 colorCard +
-             下圆角 12 + 抬升 elev_row；内边距与另两片同档（space_4 / space_3）。
-             ⚠ 默认 GONE = 2026-10-04 用户裁定（开关关 ⟹ 回到自动启发式），**不许恢复**。 -->
-            <LinearLayout
-                android:id="@+id/mkt_split_list"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical" />
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical"
-                android:layout_marginTop="@dimen/space_2">
-                <EditText
-                    android:id="@+id/mkt_split_date"
-                    android:layout_width="0dp"
-                    android:layout_weight="1.4"
-                    android:layout_height="34.3dp"
-                    android:background="@drawable/mkt_count_box"
-                    android:hint="2022-08-25"
-                    android:importantForAutofill="no"
-                    android:inputType="text"
-                    android:maxLines="1"
-                    android:paddingLeft="7.6dp"
-                    android:paddingRight="7.6dp"
-                    android:textColor="?attr/colorInk"
-                    android:textColorHint="?attr/colorFaint"
-                    android:textSize="@dimen/fs_title" />
-                <EditText
-                    android:id="@+id/mkt_split_ratio"
-                    android:layout_width="0dp"
-                    android:layout_weight="1"
-                    android:layout_height="34.3dp"
-                    android:layout_marginStart="@dimen/space_2"
-                    android:background="@drawable/mkt_count_box"
-                    android:hint="3:1"
-                    android:importantForAutofill="no"
-                    android:inputType="text"
-                    android:maxLines="1"
-                    android:paddingLeft="7.6dp"
-                    android:paddingRight="7.6dp"
-                    android:textColor="?attr/colorInk"
-                    android:textColorHint="?attr/colorFaint"
-                    android:textSize="@dimen/fs_title" />
-                <Button
-                    android:id="@+id/mkt_split_add"
-                    android:layout_width="wrap_content"
-                    android:layout_height="34.3dp"
-                    android:layout_marginStart="@dimen/space_2"
-                    android:background="@drawable/mkt_count_box"
-                    android:minWidth="0dp"
-                    android:paddingLeft="10.5dp"
-                    android:paddingRight="10.5dp"
-                    android:text="添加"
-                    android:textAllCaps="false"
-                    android:textColor="?attr/colorInk"
-                    android:textSize="@dimen/fs_note" />
-            </LinearLayout>
-            <TextView
-                android:id="@+id/mkt_split_note"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:paddingTop="@dimen/space_2"
-                android:textColor="?attr/colorFaint"
-                android:textSize="@dimen/fs_note"
-                android:text="" />
-        </LinearLayout>
+        <!-- ⚠⚠ 墓碑 · 2026-10-28（方向-B 收口）· **「手动拆股 · 前复权」整行与拆股编辑区已删**。
+             下线节点（XML 与 MktPanel 绑定一起删，不留 GONE 空壳）：
+               mkt_split_head（中片）/ mkt_split_sw（开关）/ mkt_split_box（末片）/
+               mkt_split_list / mkt_split_date / mkt_split_ratio / mkt_split_add / mkt_split_note，
+               以及只服务于「片间分隔」的 mkt_card_divider。
+             依据：2026-10-27 用户裁定「手动拆股整块移除，UI 与功能都不需要」—— 上一轮只把两片置 GONE，
+               本轮按任务要求把节点与 findViewById / 监听一起删干净。
+             ⚠ 控制卡因此**只剩首片**（mkt_period_row）⟹ 它现在是一张**完整整卡**（四角 12dp），
+               由 MktPanel.paintCardSlices() 运行期刷。「首片中片末片 / 片间线 / off 态中片变末片」
+               那套分片语言随本块作废，别再往这里加第二片。
+             ⚠ 功能侧在 MktData：`SplitBook.apply` 已是空操作，本轮**未动**取数与缓存逻辑。 -->
 
         <!-- ⚠ 墓碑 · 2026-10-16 t6：这里原来有一条**无 id、恒可见**的裸 1dp `?attr/colorBorder`
              （`<View match_parent × 1dp>`，v1/v2 稿移植件 —— 2026-10-04 提交 79920179「设计稿移植完成态」引入，
@@ -684,7 +660,8 @@
              —— theme.css:453/455-458 + §6.2「末片不画线：卡片下缘交给圆角与投影」。
              它在本页恒可见 ⟹ 渲染成**控制卡末片下缘**的一条通栏线（实测深色精确色 cov 91.85% @243.6dp），
              而方向-B 行情屏内容区**一条通栏发丝都没有**（原型只有屏顶/tabbar/底栏三条）。
-             ⚠ 片间分隔另有其主：`mkt_card_divider`（带 id，运行期按 off 态撤线），别把本 View 加回来。 -->
+             ⚠ 别把本 View 加回来：2026-10-28 起「片间分隔」这个概念本身也没有了 ——
+               mkt_card_divider 已随手动拆股行/编辑区一并删除，控制卡是整张单卡（四角 12dp）。 -->
         <TextView
             android:id="@+id/mkt_status"
             android:layout_width="match_parent"
@@ -702,11 +679,11 @@
             android:layout_height="wrap_content"
             android:gravity="bottom"
             android:orientation="horizontal"
-            android:layout_marginTop="@dimen/space_3"
-            android:paddingStart="@dimen/space_4"
-            android:paddingEnd="@dimen/space_4"
-            android:paddingTop="@dimen/space_3"
-            android:paddingBottom="@dimen/space_3">
+            android:layout_marginTop="@dimen/space_2"
+            android:paddingStart="@dimen/space_1"
+            android:paddingEnd="@dimen/space_1"
+            android:paddingTop="@dimen/space_2"
+            android:paddingBottom="@dimen/space_2">
         <!-- ⚠ 2026-10-16 t52：底 colorCard + 圆角 12 + 抬升 elev_1（独立卡，不是分片）——
              由 MktPanel.paintCardSlices() 运行期刷（本文件不挂 card_bg：那张 drawable 是**统一 12dp 圆角**、
              给不了分片圆角；方向 B 的卡片在浅色靠阴影、深色靠色调阶梯，**不靠描边**）。
@@ -729,14 +706,18 @@
                     android:fontFeatureSettings="tnum" />
 
                 <!-- ④ 涨跌额:独立一行,涨绿跌红 -->
+                <!-- ⚠ 2026-10-21 t7 · 现价与涨跌额之间的间距按稿 `四屏-行情页.html:140`
+                     `.mk-price > div:first-child{ gap: sp-1 }` = 4px = 4dp（R-1 取消折算，1:1）。
+                     改前写死 8dp ⟹ 价格卡比稿高 4dp（现价卡 99.5dp vs 稿 .mk-price 84.17dp）。 -->
                 <TextView
                     android:id="@+id/mkt_chg"
-                    android:layout_marginTop="7.6dp"
+                    android:layout_marginTop="@dimen/space_1"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text=""
                     android:textColor="?attr/colorSub"
                     android:textSize="@dimen/fs_title"
+                    android:textStyle="bold"
                     android:fontFeatureSettings="tnum" />
 
             </LinearLayout>
@@ -764,18 +745,35 @@
                     android:layout_height="wrap_content"
                     android:maxWidth="176dp"
                     android:text=""
-                    android:textColor="?attr/colorFaint"
-                    android:textSize="@dimen/fs_note" />
+                    android:textColor="?attr/colorSub"
+                    android:textSize="@dimen/fs_note"
+                    android:textStyle="bold" />
+                <!-- ⚠ r8 B-12 / B-15②（2026-10-19）· 两处墨色 + 一个字重：
+                       ① `mkt_venue`（本节点，`{代码} · {时段}`）：colorFaint → **colorSub**、
+                          并补 `textStyle="bold"`。稿 `四屏-行情页.html:155` 逐字
+                          `.mk-rt__venue { font-weight: var(-fw-semibold); color: var(-ink-sub) }`
+                          ⟹ 墨色第二档 sub + 字重 600。XML 只有 400/700 两档，落 **bold(700)**，
+                          登记平台落差（与 B-15②、B-8 同一口径）。
+                       ② `mkt_chg`（价格块下方涨跌额）：补 `textStyle="bold"` —— 稿
+                          `:148-153` `.mk-price__c { font-weight: var(-fw-semibold) }` = 600 ⟹ 同落 700。
+                       ⚠ `maxWidth="176dp"` 与三行结构（venue / time / srcname）**逐字保留**：
+                         那是 2026-10-16 t57 的封顶 + `ellipsize=middle` 修法（留底态长源名会把
+                         30sp 现价挤折行），本轮不碰。 -->
+                <!-- ⚠ 2026-10-27 用户裁定：这一行「收盘时点」不再上屏（黄金/商品恒 00:00:00，
+                     没有信息量；美股那行与上面的「{代码} · 收盘」重复）。
+                     节点**保留**、只置 gone —— 删节点会让 MktPanel 的 findViewById 拿到 null 并 NPE。
+                     源码侧对应改写见 MktPanel.t106PaintMeta 末尾的墓碑。 -->
                 <TextView
                     android:id="@+id/mkt_time"
-                    android:layout_marginTop="3.8dp"
+                    android:layout_marginTop="4dp"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:maxWidth="176dp"
                     android:text=""
+                    android:visibility="gone"
                     android:textColor="?attr/colorFaint"
                     android:textSize="@dimen/fs_note"
-                    android:typeface="monospace" />
+                    android:fontFamily="@font/plex_mono" />
                 <!-- ⚠ 2026-10-02 照稿补第三行：「实时 · 源名」/「收盘价 · 源名」。
                      稿 v2.html:2126-2128 逐字：
                        color: isLive ? <ac> : <ink3>
@@ -785,7 +783,7 @@
                      实时用决策紫(ac)，收盘/未取到用第三档灰(ink3=colorFaint)。 -->
                 <TextView
                     android:id="@+id/mkt_srcname"
-                    android:layout_marginTop="3.8dp"
+                    android:layout_marginTop="4dp"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:maxWidth="176dp"
@@ -815,53 +813,116 @@
              蜡烛被**纵向拉伸**（v1 遗留缺陷，方向 B 顺手修掉）。
              ⚠ 别为了「塞进一屏」再压这个高度 —— 压了蜡烛立刻变形，方向 B 明确宁可让它滚。
              ⚠ clipToOutline：本视图在运行期被刷成卡片底（r12）⟹ 不裁的话剖面柱会顶到圆角外。 -->
-        <cn.gridcalc.gridcalc.MktView
-            android:id="@+id/mkt_chart"
-            android:layout_width="match_parent"
-            android:layout_height="226dp"
-            android:layout_marginTop="@dimen/space_3"
-            android:clipToOutline="true" />
-
-        <!-- ⚠ 2026-10-16 t52 · 方向 B §6.8：图表卡之后的这条 1dp 通栏发丝**已删**
-             （原 L706-710）。它分的是「K 线卡 ↔ 机构目标均价行」，而后者自 t107 起恒 GONE
-             ⟹ 留着就是屏底一条孤线；方向 B 的分组靠卡片，不靠发丝。 -->
-
-        <!-- ⑬ 机构目标均价 + 步长阈值 -->
-        <!-- ⚠ 2026-10-16 t52 · 方向 B「指标卡」（§2.4-3.2）：这两行是**同一张卡的两片**
-             （首片 = 机构目标均价、末片 = 步长阈值），与原型 `.mk-metrics` 卡同一语汇。
-             底色 / 圆角 / 抬升由 MktPanel.paintCardSlices() 运行期刷（理由同控制卡：XML 的
-             drawable 给不了分片圆角）。
-             ⚠ 两行的**显隐是独立的**（tgt 4 处 / stepT 5 处切换，见 MktPanel），所以只按
-             「两行都在」这个常见态给分片圆角；单行可见时圆角会略偏（只影响极端数据态的外观，
-             不影响可读性），本轮**不为它加 8 处联动重算** —— 这条偏差已登记在交付说明里。
-             ⚠⚠ 2026-10-16 t57（t54 观察项②）：本卡内边距由 12/4/12 收到 **8/4/8**、上间距
-             由 12 收到 **8** —— 合计省 **12dp ≈ 33px**，全部让给屏底的**支撑块**。
-             依据：支撑块是用户 2026-10-03 裁定要看的（第二支撑红线），而首屏可见区只有
-             2136px；t54 实测两行掉在可见区之下 ⟹ 按验收允许的「收窄卡片内边距/间距」手段
-             把这 12dp 收回来，**没有动 K 线（图表恒 226dp）**。改后两行的实测 y 见
-             `代码轮验证报告` 的 t57 段（本注释只写为什么收、收了多少，不写预测值）。 -->
-        <TextView
-            android:id="@+id/mkt_tgt"
+        <!-- ══════════ r8 B-1（2026-10-19）· **K 线卡 = 卡头带 + 图**（照稿补齐）══════════
+             稿依据：`四屏-行情页.html:322-336`（DOM：`.mk-blk` 卡 > `.mk-blkh`（左「K 线」+「月线 · 20 根」）
+               + `.mk-chart`）、`:161-177`（`.mk-blkh` = surface-2 底 + 上圆角 12 + padding `sp-3 sp-4`、
+               space-between；`.mk-chart` = height 226px + margin `sp-2 sp-4 0`）、
+               `theme.css:471-479`（`.mk-blkh__t/__m` = fs-note / 600 / ink-faint）。
+             ⚠ 2026-10-28 方向-B 收口：右上 `−` / `+` / `Reset` **缩放三键已整块删除**
+               （稿 `:528-543` 那套 viewBox 缩放不再上屏，MktPanel 侧 zoomBy / resetZoom 的调用点同步下线）。
+               `.mk-blkh` 现在只有左侧一组读数，`space-between` 退化为靠左 —— 删掉右侧按键后的必然结果。
+             ⚠ 卡宽 = `match_parent`（**不**再加 16dp 左右 margin）：页容器本身已有 `paddingStart/End=space_4`
+               （本文件 :240 一带），再加一层会变成**二次内缩**、卡宽 992→904px，与稿「所有卡等宽」相反
+               （稿的 `.mk-blk` 与 `.mk-price` 等都在同一个页面边距上）。改由**卡内**的 16dp 承担内缩：
+               卡头带 padding 16 ⟹ 文字起点 88px，与本屏其它卡（价格卡/控制卡）的内文起点逐值对齐。
+             ⚠ 图表 marginStart/End = `space_4`（16dp）是稿 `.mk-chart { margin: 8px 16px 0 }` 的左右 16px 那一半，
+               **必须保留**：它是稿「图比卡窄 32px」的关系（稿：卡 380、图 348）。
+               连带登记：图宽由 992px → 904px，故 K 线 pitch 由 33.55px → 30.57px（= 257×(W/380)/20，
+               比例不变、20 根不变、实体比 0.6 不变）。这不是绘制算法改动，是 B-1 按稿收窄绘图区。
+             ⚠ 卡片底/圆角/抬升由 `MktPanel.paintCardSlices()` 运行期刷到 **mkt_blk_card**（同控制卡的理由：
+               XML 的静态 drawable 给不了运行期口径）；本容器开 `clipToOutline` ⟹ 缩放后蜡烛/剖面不许越出卡内圆角。
+             ⚠ `mkt_chart` 的 **id 与类型（cn.gridcalc.gridcalc.MktView）一字未改**。
+               高度 **2026-11-04 由 226dp 提到 282dp**（用户裁定「K 线图窗口整个长一点，
+               下面还有这么大空间」；实测内容底部距视口底 ~72dp 空白，图表是唯一该吃掉它的元素）。
+               ⚠ **只许加、不许压矮**：`MktView.onDraw` 用 plotH = H − 边距 − 轴高 算绘图区，
+                  高度再矮会把蜡烛纵向挤压（改前 226dp 是当时的底线）。
+               ⚠ 也别为了「填满」继续加：再高会把支撑块顶出首屏。 -->
+        <LinearLayout
+            android:id="@+id/mkt_blk_card"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="@dimen/space_2"
-            android:paddingStart="@dimen/space_4"
-            android:paddingEnd="@dimen/space_4"
-            android:paddingTop="@dimen/space_2"
-            android:textColor="?attr/colorSub"
-            android:textSize="@dimen/fs_note"
-            android:visibility="gone" />
-        <TextView
-            android:id="@+id/mkt_stept"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:paddingStart="@dimen/space_4"
-            android:paddingEnd="@dimen/space_4"
-            android:paddingTop="@dimen/space_1"
-            android:paddingBottom="@dimen/space_2"
-            android:textColor="?attr/colorSub"
-            android:textSize="@dimen/fs_note"
-            android:visibility="gone" />
+            android:orientation="vertical"
+            android:clipToOutline="true">
+
+            <!-- 卡头带：surface-2 + 上圆角 12（新件 mk_blkh_bg.xml），左右 space-between -->
+            <LinearLayout
+                android:id="@+id/mkt_blkh"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingStart="@dimen/space_1"
+                android:paddingEnd="@dimen/space_1"
+                android:paddingTop="@dimen/space_2"
+                android:paddingBottom="@dimen/space_2"><!-- ⚠ 2026-11-04 用户报「k 线图窗口留白有点多」：
+                     稿 `.mk-blkh{padding: sp-2 sp-1}` = 8/4，App 原来写成 12/16（比稿大一倍以上）。
+                     按稿收齐，标题与图表面左右对齐同一条线。 -->
+
+                <LinearLayout
+                    android:id="@+id/mkt_blkh_grp"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:gravity="bottom"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/mkt_blkh_t"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="K 线"
+                        android:textColor="?attr/colorFaint"
+                        android:textSize="@dimen/fs_note"
+                        android:textStyle="bold" />
+
+                    <!-- 中段读数 = **实际画出来的根数**（MktView 的 vp.ks.size，经 MktInfo.count 带回），
+                         不是「已保存的窗口值」；无数据时 Kotlin 会给 0 根（诚实读数，整块仍显示）。
+                         ⚠ 与 B-2 的残留项「屏上无『实际画了几根』读数」同批收口。 -->
+                    <TextView
+                        android:id="@+id/mkt_blkh_m"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="@dimen/space_2"
+                        android:ellipsize="end"
+                        android:maxLines="1"
+                        android:text="月线 · 0 根"
+                        android:textColor="?attr/colorFaint"
+                        android:textSize="@dimen/fs_note"
+                        android:textStyle="bold" />
+                </LinearLayout>
+
+            </LinearLayout>
+
+            <!-- ⚠⚠ 2026-10-29 t30 · **画布自带面层**（拆卡之后才看得见这一层）：
+                 稿 `四屏-行情页.html:157` `.mk-chart{margin: sp-1 sp-1 0}` +
+                 `theme.css:692-695` 的 `.mk-chart` 规则：background = bg-surface 变量、
+                 border-radius = r-input 变量（本注释省掉 CSS 变量前缀 —— XML 注释体内不许
+                 出现连续两个连字符，本仓已踩多次）。
+                 ⟹ 画布底 = colorCard（= bg-surface `#FFFFFF`/`#161B22`）+ **10dp**（r-input，
+                   不是卡的 12dp）。
+                 ⚠ 别把本属性挪到外层 `mkt_blk_card` 上：包裹层（含标题带）在稿里是**透明**的
+                   （`theme.css` §6.1 透明组只有 `.mk-blk`），挪上去标题带会跟着变白。 -->
+            <cn.gridcalc.gridcalc.MktView
+                android:id="@+id/mkt_chart"
+                android:layout_width="match_parent"
+                android:layout_height="282dp"
+                android:background="@drawable/chart_panel_bg"
+                android:layout_marginStart="@dimen/space_1"
+                android:layout_marginEnd="@dimen/space_1"
+                android:layout_marginTop="@dimen/space_1"
+                android:layout_marginBottom="@dimen/space_1"
+                android:clipToOutline="true" /><!-- ⚠ 2026-11-04 同上：稿 `.mk-chart{margin: sp-1 sp-1 0}`
+                     是 4/4/0，App 原写 16/8/12 ⟹ 左右各白吃 12dp。现在四边统一 4dp。 -->
+            <!-- ⚠ 图下那条 marginBottom=space_3(12dp) 是**卡内留白**，不是图例行的占位。
+                 ⚠⚠ 2026-10-28 方向-B 收口：**K 线下方不做任何图例说明条** ——
+                 「实心▲涨 / 实心▼跌 / 实线支撑 / 虚线现价 / 1屏≤500根」一律不上屏。
+                 图上已有的支撑标签片与现价虚线本身即自解释，再加一行图例等于把线型讲第二遍。
+                 ⚠ 别照稿 `.mk-legend` 把图例行补回来 —— 这是明确裁掉的，不是漏移植。 -->
+        </LinearLayout>
+        <!-- ⚠ 三行的**显隐切换一处都没动**（`mkt_tgt` 4 处 / `mkt_stept` 5 处，在 MktPanel）——
+             本轮只改**卡片承载方式**（三片分片 → 一张独立整卡）与卡内留白 / 卡间距口径，
+             不改任何显隐逻辑 ⟹ 改后指标卡在 0/1/2 行可见的任一状态下都是**四角 12dp 的完整整卡**。 -->
 
         <!-- ⚠ 2026-10-03 **用户裁定删除**「● 源 · N 根 · 展开」这一行
              （原话：「图里的东西不要了」，此前一轮已说过「都不要」，我以「来源诚实性」为由保留过，
@@ -884,7 +945,7 @@
             android:paddingTop="@dimen/space_1"
             android:paddingBottom="@dimen/space_1"
             android:visibility="gone">
-            <TextView android:id="@+id/mkt_srcdot" android:layout_width="7.6dp" android:layout_height="7.6dp" android:layout_marginEnd="@dimen/space_2" android:background="@drawable/srcdot_on" />
+            <TextView android:id="@+id/mkt_srcdot" android:layout_width="8dp" android:layout_height="8dp" android:layout_marginEnd="@dimen/space_2" android:background="@drawable/srcdot_on" />
             <TextView android:id="@+id/mkt_srcmain" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:ellipsize="end" android:maxLines="1" android:text="" android:textColor="?attr/colorSub" android:textSize="@dimen/fs_note" />
             <TextView android:id="@+id/mkt_srcmore" android:layout_width="wrap_content" android:layout_height="wrap_content" android:maxLines="1" android:text="展开" android:textColor="?attr/colorFaint" android:textSize="@dimen/fs_note" />
         </LinearLayout>
@@ -912,14 +973,14 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
-            android:paddingTop="12.4dp"
-            android:paddingBottom="12.4dp"
+            android:paddingTop="12dp"
+            android:paddingBottom="12dp"
             android:visibility="gone">
             <TextView
                 android:id="@+id/mkt_stateline_lead"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginEnd="7.6dp"
+                android:layout_marginEnd="8dp"
                 android:textColor="?attr/colorFaint"
                 android:textSize="@dimen/fs_note" />
             <TextView
@@ -953,118 +1014,286 @@
              「真正在用的那套」这句话随之作废 —— 现在**没有**哪套在用。 -->
             <!-- t107 ② Vol 归位:与 O/H/L/C 同一水平线的右端(不再挂标题行) -->
         </LinearLayout>
-
-
-        <!-- ⚠ 2026-10-03 用户裁定：「下面空白区域写支撑线的价位」，
-             随后又追一句「能不能有点排版艺术啊」—— 第一版是一行裸文字浮在空白里。
-             现在改成**块**：上下各一条发丝线包住，小节标题 + 标签左/数值右两行。
-
-             为什么这么排（三条都对着既有语汇，不是自创）：
-             ① 发丝线上下包边 —— 本 App 全局是「无卡片 + 1px 细线分区」（t102 第2步定下的），
-                自选屏的行线、设置屏的区块线都是这一套，这里不例外。
-             ② 标签左、数值右 —— 直接复用自选屏那张表的「列头 ⟷ 行内右缘对齐」语汇，
-                数值一律右缘对齐，位数不同的两行也能竖着对齐。
-             ③ 数值用 colorPrimary（决策紫）—— 与图上第一支撑线同色同一个 token，
-                「线上的紫」和「下面的价」是同一个决策，不是两件东西。
-
-             字号只用现有两档：标签 fs_note(12) / 数值 fs_title(16)，**没有新增档位** ——
-             V1 那一维要求全 App 收敛到 4 档(30/21/16/12)，这里再添一档就破了。
-             -->
+        <!-- ⚠⚠ 2026-10-29 t30 · **指标 / 支撑改两列并排**（用户裁定「按稿彻底去卡片化」）。
+             稿 `四屏-行情页.html:32-38` `.mk { display:grid;
+             grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap: var(sp-2); }`
+             ⟹ 两列**等宽**、列间 gap = **sp-2 = 8dp**（`theme.css:198`）。
+             稿里 `.mk-ctl` / `.mk-price` / `.mk-blk` 都是 `grid-column: 1 / -1`（整行），
+             只有 `.mk-metrics` 与 `.mk-sup` 各占一列 ⟹ 本容器只包这两块，别把其它块搬进来。
+             ⚠ 支撑块默认 GONE（无支撑数据）：`weight` 只在可见时参与分配，GONE 时指标块自然占满整行。
+             ⚠ 两块的 `match_parent` 已改 `0dp + weight=1`；行距(marginTop 8dp)归本容器、两块自身不再带。
+             ⚠ 本容器是**外层容器**的第二个子节点（与内层竖排容器并列），不是塞进内层末尾 ——
+               因为 `mkt_supblock` 原本就是外层容器的直接子节点（`page_mkt.xml` 的树结构：
+               ScrollView > LinearLayout(outer) > [LinearLayout(inner), LinearLayout(mkt_supblock)]）。 -->
         <LinearLayout
-            android:id="@+id/mkt_supblock"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/space_3"
             android:orientation="vertical"
-            android:visibility="gone">
+            android:layout_marginTop="@dimen/space_2">
 
-            <View
-                android:layout_width="match_parent"
-                android:layout_height="1dp"
-                android:background="?attr/colorBorder" />
+            <!-- ⚠ 2026-10-16 t52 · 方向 B §6.8：图表卡之后的这条 1dp 通栏发丝**已删**
+                 （原 L706-710）。它分的是「K 线卡 ↔ 机构目标均价行」，而后者自 t107 起恒 GONE
+                 ⟹ 留着就是屏底一条孤线；方向 B 的分组靠卡片，不靠发丝。 -->
 
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:paddingTop="@dimen/space_3"
-                android:paddingBottom="@dimen/space_2"
-                android:text="支撑"
-                android:textColor="?attr/colorFaint"
-                android:textStyle="bold"
-                android:textSize="@dimen/fs_data" />
-            <!-- ⚠ 2026-10-03 用户裁定「再大一点，且要粗体」。
-                 改前是 fs_note(11.4sp) 常规 —— 四档里最小的一档，当小节标题用明显不对。
-                 改成 fs_data(**20sp**)+ textStyle="bold"：
-                   · 字号取**现成的上一档**，没有新增第 5 档 —— V1 那一维要求
-                     全 App 收敛到 30/20/15.3/11.4 四档，另立一档就破了；
-                   · 主题已把 fontFamily 指向 @font/inter（Regular/Medium/SemiBold/Bold 四档齐全），
-                     所以 textStyle="bold" 会取到**真的 Inter Bold 字形**，不是合成加粗。
-                 ⚠ 若要「粗但没那么重」，把 textStyle 去掉、改 android:fontWeight="600"
-                   （SemiBold，同一个 family 里有）；要更重就把 fs_data 换成 fs_hero(28.6sp)。 -->
-
-            <!-- 第一支撑行 -->
+            <!-- ⑬ 机构目标均价 + 步长阈值 -->
+            <!-- ⚠⚠ 2026-10-20 **r9** · 方向 B：「指标」标题 + 机构目标均价 + 步长阈值 三行现同属
+                 **一张独立整卡** `mkt_metrics_card`（**不再是三片分片**）。
+                 稿依据：`方向-B/theme.css:428-438` —— `.mk-metrics` 在**整卡组**（bg-surface +
+                 border-radius: r-card 12px + box-shadow: elev-1）；`:440-458` §6.1b 的
+                 **分片组只有** .mk-ctl / .mk-split / .mk-splitbox ⟹ 指标卡**不是**分片卡，按整卡施工。
+                 卡内配方照稿 `四屏-行情页.html:189`（`.mk-metrics` = padding: sp-3 sp-4；gap: sp-2）
+                 = 上下 12 / 左右 16 / 行距 8；同屏卡间距 = 12dp（`:31-38` grid gap）。
+                 ⚠ **作废 t52「同一张卡的两片（首片=机构目标均价、末片=步长阈值）」与 r8 B-8「标题=首片、
+                 上圆角归它」**：tgt / stepT 在无网态**恒 GONE** ⟹ 屏上只剩标题一片 ⟹ 实机像素判定 =
+                 **上两角圆角 + 下两角直角**（r9 取证 before/app-mkt-{light,dark}.png）。
+                 ⟹ r9 改法：底色 / 圆角 / 抬升**全部归容器**（运行期 cardBg(top=true, bottom=true) + elev_1
+                 ⟹ 四角 12dp = r-card）；三行降为**卡内元素**（不再各自挂底色 / 圆角 / 阴影）⟹
+                 「片位跟随显隐」的耦合**整体删除** ⟹ 0/1/2 行可见的任一状态下都是完整整卡。
+                 ⚠ **t57 的取舍本轮推翻**：t57（2026-10-16）曾把本卡上间距 12→8、内边距 12/4/12→8/4/8，
+                 省 12dp 给屏底支撑块；r9 按稿**回滚**为上间距 12dp + 卡内 12/16（与稿一致是硬口径）。
+                 代价：默认态（只有标题）首屏净增 +8dp（+22px）⟹ 已登记为**已知偏差**（规格 §6.2-6.3），
+                 不是缺陷（页面是 ScrollView，可滚动；OHLC 明细卡已按 2026-10-28 裁定删除，与该代价无关）。
+                 ⚠ 本轮**不动**三行的显隐逻辑（tgt 4 处 / stepT 5 处，全在 MktPanel）—— 与圆角无关。 -->
             <LinearLayout
+                android:id="@+id/mkt_metrics_card"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="horizontal">
+                android:orientation="vertical"
+                android:paddingBottom="@dimen/space_2"
+                android:paddingStart="@dimen/space_1"
+                android:paddingEnd="@dimen/space_1">
+                <!-- r9：指标卡容器（**独立整卡**）。底色 / 四角 12dp 圆角 / 抬升**不在 XML 写** ——
+                     运行期由 MktPanel.paintCardSlices() 刷 cardBg(metricsCard, top=true, bottom=true)
+                     + elev_1（与现价卡 / K 线卡 / 支撑块同口径）。
+                     · layout_marginTop = space_3(12dp)：**同屏其它卡都是 12dp**（现价卡 :732 /
+                       K 线卡 / 支撑块）；改前这里是 8dp，是同屏唯一离群值
+                       （实机 K 线卡底 1799px ⟷ 指标卡顶 1821px = 22px = 8dp）。
+                     · 卡内左右内缩 16dp = space_4（与其它整卡的 paddingStart/End 同值）⟹ 文字左缘仍是
+                       16(页面基准) + 16(卡内) = 32dp，与其它整卡的内容左缘齐平。
+                     · 卡内**下**留白 12dp 归容器 paddingBottom（末行随时会变 ⟹ 只能归容器）。
+                     · 卡内**上**留白 12dp 归「指标」标题自身的 paddingTop（它改前就是 12dp）——
+                       容器**不再**另设 paddingTop，否则两处相加 = 24dp，与稿的 12 不符。 -->
 
                 <TextView
-                    android:layout_width="wrap_content"
+                    android:id="@+id/mkt_sec_metrics"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="第一支撑"
-                    android:textColor="?attr/colorSub"
-                    android:textSize="@dimen/fs_note" />
+                    android:paddingTop="@dimen/space_3"
+                    android:text="指标"
+                    android:textColor="?attr/colorInk"
+                    android:textSize="@dimen/fs_title"
+                    android:textStyle="bold" />
+                <!-- r9：删 marginTop 与 paddingStart/End/paddingBottom（左右内缩归容器、行距归行自身）；
+                     文字 / 字号 / 墨色 / 粗体**不动**（稿 .mk-sec = fs-note/600/ink-faint，r8 B-8 已对齐）；
+                     **恒可见**（稿的卡头恒在）⟹ 目标均价 / 步长阈值都收起时，屏上是一张只剩「指标」标题的卡。 -->
 
-                <View
-                    android:layout_width="0dp"
-                    android:layout_height="1px"
-                    android:layout_weight="1" />
-
-                <TextView
-                    android:id="@+id/mkt_sup1"
-                    android:layout_width="wrap_content"
+                <!-- ⚠⚠ 2026-10-29 t30 · **指标行改成与支撑行同构：label 左 / value 右**（队长方向纠正：
+                     用户选「单列堆叠」而不是两列并排）。稿逐字：
+                       `.mk-metric   { display:flex; align-items:baseline; justify-content:space-between;
+                                       gap: sp-2 }`
+                       `.mk-metric__l{ font-size: fs-note; color: ink-sub }`
+                       `.mk-metric__v{ font-size: fs-title; font-weight: 600; color: ink;
+                                       white-space: nowrap }`
+                     ⟹ 每项一行：左 = 标签（fs_note / colorSub，可两行）、右 = 数值（fs_title / 粗 / tnum /
+                       **单行不折**）。行距 = 稿 gap sp-2 = 8dp。
+                     ⚠ **id 落在行容器上**（`mkt_tgt` / `mkt_stept` 原名不动）：MktPanel 里有 4 / 5 处
+                       `tgt.visibility` / `stepT.visibility` 判据绑着它们，改 id 会全线失配；
+                       文本改写到新 id `mkt_tgt_v` / `mkt_stept_v`，标签是 `mkt_tgt_l` / `mkt_stept_l`。
+                     ⚠ 真实标签可能是「预测价(最高×1.2)」= 11 字带括号 —— 半宽列装不下会折行，这正是
+                       用户否掉两列并排的原因；整行宽下 11 字 ≈ 132dp + 数值 ≈ 90dp ≪ 380dp，稳稳放下。 -->
+                <LinearLayout
+                    android:id="@+id/mkt_tgt"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:fontFeatureSettings="tnum"
-                    android:textColor="?attr/colorTeal"
-                    android:textSize="@dimen/fs_title" />
+                    android:layout_marginTop="@dimen/space_2"
+                    android:orientation="horizontal"
+                    android:visibility="gone">
+                    <TextView
+                        android:id="@+id/mkt_tgt_l"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:maxLines="2"
+                        android:textColor="?attr/colorSub"
+                        android:textSize="@dimen/fs_label" />
+                    <TextView
+                        android:id="@+id/mkt_tgt_v"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="@dimen/space_2"
+                        android:fontFeatureSettings="tnum"
+                        android:maxLines="1"
+                        android:textColor="?attr/colorInk"
+                        android:textSize="@dimen/fs_title"
+                        android:textStyle="bold" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:id="@+id/mkt_stept"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/space_2"
+                    android:orientation="horizontal"
+                    android:visibility="gone">
+                    <TextView
+                        android:id="@+id/mkt_stept_l"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:maxLines="2"
+                        android:textColor="?attr/colorSub"
+                        android:textSize="@dimen/fs_label" />
+                    <TextView
+                        android:id="@+id/mkt_stept_v"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="@dimen/space_2"
+                        android:fontFeatureSettings="tnum"
+                        android:maxLines="1"
+                        android:textColor="?attr/colorInk"
+                        android:textSize="@dimen/fs_title"
+                        android:textStyle="bold" />
+                </LinearLayout>
             </LinearLayout>
 
-            <!-- 第二支撑行:本屏只有一条支撑时整行 GONE,不摆一个空位 -->
+
+            <!-- ⚠ 2026-10-03 用户裁定：「下面空白区域写支撑线的价位」，
+                 随后又追一句「能不能有点排版艺术啊」—— 第一版是一行裸文字浮在空白里。
+                 现在改成**块**：上下各一条发丝线包住，小节标题 + 标签左/数值右两行。
+
+                 为什么这么排（三条都对着既有语汇，不是自创）：
+                 ① 发丝线上下包边 —— 本 App 全局是「无卡片 + 1px 细线分区」（t102 第2步定下的），
+                    自选屏的行线、设置屏的区块线都是这一套，这里不例外。
+                 ② 标签左、数值右 —— 直接复用自选屏那张表的「列头 ⟷ 行内右缘对齐」语汇，
+                    数值一律右缘对齐，位数不同的两行也能竖着对齐。
+                 ③ 数值用 colorPrimary（决策紫）—— 与图上第一支撑线同色同一个 token，
+                    「线上的紫」和「下面的价」是同一个决策，不是两件东西。
+
+                 字号只用现有两档：标签 fs_note(12) / 数值 fs_title(16)，**没有新增档位** ——
+                 V1 那一维要求全 App 收敛到 4 档(30/21/16/12)，这里再添一档就破了。
+                 -->
+            <!-- ⚠ 2026-10-27 **按「指标」卡对齐排版**（用户：这里 UI 没优化）。
+                 改前四处分叉，现在全部收口到同一套语汇：
+                   ① 容器**没有**左右内缩 ⟹ 标题与数值贴到卡片边缘（截图里「支撑」顶着左缘、
+                      第二支撑那个数顶到右缘）。补 paddingStart/End = space_4(16dp)，与
+                      指标卡 / 现价卡 / K 线卡**同值**；补 paddingBottom = space_3(12dp)（末行留白归容器）。
+                   ② 小节标题原为 fs_data(20sp) 粗体 —— 同屏「指标」是 fs_note(12sp) 粗体，
+                      两块标题一个 20 一个 12，像两个层级的页面拼在一起。统一到 fs_note + bold + colorFaint。
+                   ③ 第一支撑行原本没有上间距（标题 paddingBottom 顶着），改为行自身 marginTop=space_2，
+                      与指标卡的行距口径一致（标题不再自带 paddingBottom）。
+                   ④ 第二支撑数值原来是 **colorRed** —— 它是"二级信息"，不是跌；且图上第二支撑线
+                      本来就走第三档墨色。改 colorSub，与标签同一档，层级靠"第一支撑是 teal"来立。
+                 ⚠ 数值仍走 fs_title(16sp) + tnum（与指标卡的数值同档），字号不新增档位。 -->
             <LinearLayout
-                android:id="@+id/mkt_suprow2"
+                android:id="@+id/mkt_supblock"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="@dimen/space_1"
-                android:orientation="horizontal"
+                android:layout_marginTop="@dimen/space_2"
+                android:orientation="vertical"
+                android:paddingStart="@dimen/space_1"
+                android:paddingEnd="@dimen/space_1"
+                android:paddingBottom="@dimen/space_2"
                 android:visibility="gone">
 
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="第二支撑"
-                    android:textColor="?attr/colorSub"
-                    android:textSize="@dimen/fs_note" />
-
-                <View
-                    android:layout_width="0dp"
-                    android:layout_height="1px"
-                    android:layout_weight="1" />
+                <!-- ⚠ r8 B-6（2026-10-19）· 这里原有一条 `match_parent × 1dp` 的**通栏发丝**（`?attr/colorBorder`）
+                     —— **已删**。裁据（三条）：
+                       ① 稿 `四屏-行情页.html:200-205`：`.mk-sup` 是一张卡（surface + r12 + elev-1，padding `sp-3 sp-4`），
+                          **卡内不画任何发丝**；`:39-40` 语言层明写 `.mk-hair { display: none }`；
+                       ② 分组由「卡面 / 内嵌面」承担（`theme.css:461-463`），不靠卡内线；
+                       ③ 该 View 是 `match_parent`，而卡片是 r12 圆角 ⟹ 线的两端**溢出圆角轮廓**
+                          （复核实测：6 行发丝 5952px 中 **320px 落在轮廓之外**；容器 `:973-979` 当时无 `clipToOutline`）。
+                     ⚠ 不采用「给容器加 clipToOutline」那条替代：它只裁掉溢出的 320px，卡内那两条**不符稿的线**还在。
+                     ⚠ 两个 View 都是**无 id 的纯装饰**（全仓无 Kotlin 引用）⟹ 直接删节点，不留 GONE 空壳。 -->
 
                 <TextView
-                    android:id="@+id/mkt_sup2"
-                    android:layout_width="wrap_content"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:fontFeatureSettings="tnum"
-                    android:textColor="?attr/colorRed"
+                    android:paddingTop="@dimen/space_3"
+                    android:text="支撑"
+                    android:textColor="?attr/colorInk"
+                    android:textStyle="bold"
                     android:textSize="@dimen/fs_title" />
-            </LinearLayout>
+                <!-- ⚠ 2026-10-03 用户裁定「再大一点，且要粗体」。
+                     改前是 fs_note(11.4sp) 常规 —— 四档里最小的一档，当小节标题用明显不对。
+                     改成 fs_data(**20sp**)+ textStyle="bold"：
+                       · 字号取**现成的上一档**，没有新增第 5 档 —— V1 那一维要求
+                         全 App 收敛到 30/20/15.3/11.4 四档，另立一档就破了；
+                       · 主题已把 fontFamily 指向 @font/inter（Regular/Medium/SemiBold/Bold 四档齐全），
+                         所以 textStyle="bold" 会取到**真的 Inter Bold 字形**，不是合成加粗。
+                     ⚠ 若要「粗但没那么重」，把 textStyle 去掉、改 android:fontWeight="600"
+                       （SemiBold，同一个 family 里有）；要更重就把 fs_data 换成 fs_hero(28.6sp)。 -->
 
-            <View
-                android:layout_width="match_parent"
-                android:layout_height="1dp"
-                android:layout_marginTop="@dimen/space_3"
-                android:background="?attr/colorBorder" />
+                <!-- 第一支撑行 -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="第一支撑"
+                        android:textColor="?attr/colorSub"
+                        android:textSize="@dimen/fs_label" />
+
+
+                    <TextView
+                        android:id="@+id/mkt_sup1"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:gravity="end"
+                        android:maxLines="2"
+                        android:fontFeatureSettings="tnum"
+                        android:textColor="?attr/colorTeal"
+                        android:textSize="@dimen/fs_title" />
+                </LinearLayout>
+
+                <!-- 第二支撑行:本屏只有一条支撑时整行 GONE,不摆一个空位 -->
+                <LinearLayout
+                    android:id="@+id/mkt_suprow2"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:visibility="gone">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="第二支撑"
+                        android:textColor="?attr/colorSub"
+                        android:textSize="@dimen/fs_label" />
+
+
+                    <TextView
+                        android:id="@+id/mkt_sup2"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:gravity="end"
+                        android:maxLines="2"
+                        android:fontFeatureSettings="tnum"
+                        android:textColor="?attr/colorRed"
+                        android:textSize="@dimen/fs_title" />
+                </LinearLayout>
+
+                <!-- ⚠ r8 B-6（2026-10-19）· 卡底那条 `match_parent × 1dp` 通栏发丝（原带 marginTop=space_3）
+                     **已删**，理由同上（卡内不发丝；且线端溢出 r12 圆角）。
+                     副作用（登记、属预期）：支撑卡纵向少 12+1+1dp、下缘不再有孤线；分组由卡面承担。 -->
+            </LinearLayout>
         </LinearLayout>
+
+        <!-- ⚠⚠ 墓碑 · 2026-10-28（方向-B 收口）· **OHLC 明细整卡已从本页删除**。
+             下线节点（XML 与 MktPanel 绑定一起删，不留 GONE 空壳）：
+               mkt_ohlc_card（整卡）/ mkt_ohlc_blkh / mkt_ohlc_m / mkt_ohlc_head（5 列可排序表头
+               mkt_oh_t·mkt_oh_o·mkt_oh_h·mkt_oh_l·mkt_oh_c）/ mkt_ohlc_body；
+               Kotlin 侧 paintOhlc / rebuildOhRows / paintOhHead / onOhSort / ohHeads / ohNum /
+               paintOhlcNextFrame 与全部字段、排序状态（ohSortCol·ohSortDir·ohRows·ohLastFlag）
+               一并删除，`paintOhlc()` 的下一帧 post 也随之下线。
+             依据：2026-10-27 用户裁定「这个东西不需要」—— 上一轮只置 visibility=gone，
+               本轮按任务要求把空壳删干净。
+             ⚠ 只删显示层：MktInfo 的 o/h/l/c/vol 与取数链路原样保留（K 线图仍用同一批数）。
+             ⚠ 别以「稿里有」为由加回来 —— 这是明确裁掉的，不是漏移植。 -->
 
         <!-- ⑫ 底部状态行「· N 根月线已更新」 -->
     </LinearLayout>

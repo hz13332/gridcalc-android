@@ -2,62 +2,59 @@
 <!--
   2026-10-16 t49：字号 / 间距整表换成 **方向 B「分层卡片」** 的刻度
   （规格 design/四屏视觉改版/交接_方向B.md §2.2 字表 / §2.3 间距表 / §5.3-M2/M3）。
-  改前是 v1 稿的 28.6 / 20 / 15.3 / 11.4 与 3.8 / 7.6 / 11.4 / 15.3 / 19.1 / 22.9 / 30.5
-  （外加 21 / 1.9 两个单列特例）—— 那些值带着 v1 稿 oklch 换算的痕迹，不是一套刻度；
-  方向 B 给的是**整数刻度**，且明暗共用一套（见 values-night/dimens.xml 的说明）。
-
-  字（4 档 + 脚手架 1 档，§2.2）：
-    fs_hero   30   lh 1.12   w700   主角数字（行情现价 / 计算净收益）
-    fs_data   20   lh 1.20   w600   数据档（自选「距支撑」）
-    fs_title  16   lh 1.35   w600   正文档（行标签 / 品种名 / 列表值）
-    fs_note   12   lh 1.45   w500   注脚档（分组标题 / 列头 / 徽标 / 代码）
-    fs_micro  11   lh 1.30   ——     **脚手架专用**（状态栏 / 底栏），不进屏内容
-  行高按 §2.2 的 lh 倍数换算成 sp 一并落表（lh_*），消费方 = 屏任务（android:lineHeight）。
-
-  间距（7 档，§2.3）：space_1…7 = 4 / 8 / 12 / 16 / 20 / 24 / 32 dp，主力 12 / 16。
+  2026-10-21 迁移：这些刻度**不再手写在本文件**，改由 theme.css 生成到
+  values/dimens_tokens_generated.xml（浅色）与 values-night/dimens_tokens_generated.xml（深色抬升全 0）。
+  本文件只留：墓碑别名、几何真值、全仓几何例外清单。
 -->
 <resources>
-    <!-- 排版节奏：方向 B §2.3 —— 只用这 7 档 -->
-    <dimen name="space_1">4dp</dimen>
-    <dimen name="space_2">8dp</dimen>
-    <dimen name="space_3">12dp</dimen>
-    <dimen name="space_4">16dp</dimen>
-    <dimen name="space_5">20dp</dimen>
-    <dimen name="space_6">24dp</dimen>
-    <dimen name="space_7">32dp</dimen>
     <!-- 墓碑别名（**新代码不许再用**，只为不让既有布局解析失败）：
-         space_8 = 旧 30.5dp，不在新刻度里 ⟹ 并入 space_7（32dp）。既有布局仍有 3 处引用。
+         space_8 = 旧 30.5dp（×0.9539 折算产物，R-1 已作废）⟹ 并入 space_7（32dp，1:1 值）。既有布局仍有 3 处引用。
          sec_top / sec_bot = 旧 21 / 1.9dp（v1 稿 L767 的 margin:'22px 0 2px' 单列特例）——
            新刻度没有 21 与 1.9 ⟹ 就近并入 space_5（20dp）/ space_1（4dp）。既有布局各 2 处引用。 -->
     <dimen name="space_8">@dimen/space_7</dimen>
     <dimen name="sec_top">@dimen/space_5</dimen>
     <dimen name="sec_bot">@dimen/space_1</dimen>
 
-    <!-- 字号：4 档 + 脚手架 1 档（方向 B §2.2） -->
-    <dimen name="fs_hero">30sp</dimen>
-    <dimen name="fs_data">20sp</dimen>
-    <dimen name="fs_title">16sp</dimen>
-    <dimen name="fs_note">12sp</dimen>
-    <dimen name="fs_micro">11sp</dimen>
-    <!-- 行高：按 §2.2 的 lh 倍数换算（30×1.12 / 20×1.20 / 16×1.35 / 12×1.45 / 11×1.30） -->
-    <dimen name="lh_hero">33.6sp</dimen>
-    <dimen name="lh_data">24sp</dimen>
-    <dimen name="lh_title">21.6sp</dimen>
-    <dimen name="lh_note">17.4sp</dimen>
-    <dimen name="lh_micro">14.3sp</dimen>
-
-    <!-- 抬升（§2.3 / §5.3-M5）：浅色 4 级真阴影；**深色全 0**（见 values-night/dimens.xml）。
-         消费方 = 屏任务（android:elevation / View.setElevation）。
-         elev_row 是「列表卡分片」专用（CSS 侧用负 spread 去上溢，Android 侧取同一档 2dp）。 -->
-    <dimen name="elev_1">2dp</dimen>
-    <dimen name="elev_2">4dp</dimen>
-    <dimen name="elev_3">8dp</dimen>
-    <dimen name="elev_row">2dp</dimen>
-
     <!-- ⚠ 几何真值**不属视觉 token**，不随方向换（交接 §2.5 注 + §2.4-3.4）：
          自选四列宽 = 代码常量（FavPanel.kt 的 COL_* 稿单位 88/88/76/56）+ space-between，
          col_symbol / col_gap 是 v1 遗留的名字（当前**零引用**），保留只为钉住
          「别把代码真值当视觉 token 改掉」这一条。 -->
     <dimen name="col_symbol">87.8dp</dimen>
-    <dimen name="col_gap">9.5dp</dimen>
+    <dimen name="col_gap">10dp</dimen>
+
+    <!-- ══════════════════════════════════════════════════════════════════════════════
+         **全仓几何例外清单**（2026-10-19 r8 建立）——凡「不是排版间距、不参与 7 档
+         （4/8/12/16/20/24/32）扫描」的**几何真值**登记在这里；排版间距**必须**落在 7 档
+         （`细节修复需求-r8_20261019.md` §4-1：间距 = 7 档；稿语言层组件几何 = 按稿 **1:1** 落字面量 + 逐条登记）。
+
+         1. **底栏药丸 39dp / 项 paddingTop 10dp**（`activity_main.xml` 的 `tab_*_bar` 与四个
+            宿主 FrameLayout，行内字面量；数值本体由跨屏组写）——
+            依据 `细节修复需求-r8_20261019.md` §3-①：稿 `theme.css:358-371` 的底栏项
+            `padding: 10px 8px 12px` + `background-clip: content-box` ⟹ 药丸 = 61−10−12 = **39px = 39dp（R-1 全线 1:1）**，
+            而 7 档**最大值就是 32dp** ⟹ 「就近吸档」只能吸到 32dp = 现状 = 差异本身，等于不修。
+            另：`theme.css:34-37` / `:263-267` 逐字写着底栏（`.gc-status / .gc-tabbar / .gc-navbar /
+            .gc-theme-toggle` 及其后代）**不参与档位扫描**，`设计语言.md:120-129` 把底栏与状态栏、
+            手势条一起列在「**设备框几何**」表里 ⟹ 它是**设备框几何真值**，与本段第 57 行的口径同源。
+            **破例登记三处**：`activity_main.xml:19-38` 注释块、`细节修复需求-r8_20261019.md` §3-①、本处。
+
+         2. **计算页顶行卡杠杆行 40dp**（`page_calc.xml` 的杠杆容器 `minHeight`，C-10②）——
+            稿 `四屏-计算页.html:62` `.calc-lev { height: 40px }` ⟹ **1:1 = 40dp**（R-1 取消 ×0.9539 折算）；
+            它是**稿语言层组件几何**（一行控件的高度），不是间距 ⟹ 落字面量 + 在此登记。
+
+         3. **计算页分段器「做多」段 5dp / 12dp 与轨道内边距 3dp**（`page_calc.xml`，C-9）——
+            稿 `theme.css:511-518`（段 `padding: 5px var(-sp-3)`）+ `:503-510`（轨道 `padding: 3px`）
+            ⟹ **5dp / 12dp / 3dp**（1:1）；同为组件几何（与 B-4 的行情屏分段器同一组取值）。
+
+         4. **折叠口 chevron 8dp×8dp**（`page_calc.xml` 的 `more_chev` / `det_chev`，C-4）——
+            稿 `四屏-计算页.html:175-184` `.calc-chev { width:8px; height:8px }` ⟹ 8dp；
+            它是**图形尺寸**（`calc_chev.xml` 的固有尺寸与宿主 View 同值），不是间距。
+
+         ⚠ 2026-10-21 **R-1 裁定**（用户拍板）：以上 4 条的值**已全部按 1:1 返工**——
+           ×0.9539 折算口径作废（41_ 台账 R-13 关闭；连带作废 R-6 / R-7）；
+           旧值 37.2 / 9.5 / 38.2 / 4.8 / 11.4 / 2.9 / 49.6 / 45.8 / 24.8 / 7.6 / 15.3 / 19.1 / 22.9 /
+           26.7 / 30.5 / 34.3 / 43.9 / 66.8 / 3.8dp 仅作追溯，不再出现在布局或代码里。
+         ⚠ 排版间距（`layout_margin*` / `padding*`）**不在此清单**：它们必须落在 7 档。
+           历史上 v1 稿的零数（1.9 / 3.8 / 5.7 / 6.7 / 7.6 / 10.5 / 12.4dp）已在 r8 的 X-3 逐条吸档
+           （`page_calc.xml`；逐条处置见 `流程走查_20261019\施工-r8-计算页.md` §C-1 的 X-3 表）。
+         ══════════════════════════════════════════════════════════════════════════════ -->
 </resources>

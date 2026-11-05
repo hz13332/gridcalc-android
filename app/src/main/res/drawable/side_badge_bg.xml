@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 计算屏「做多」**状态徽标**的底（2026-10-29 t34 新增；用户裁定 · 方案 C：方向只作提示、不是按钮）。
+     取值逐字对 Oct-29 稿 `.calc-side__state` 的两条：
+       · background: var(up-soft)  → 这里的 solid = ?attr/colorTealBg
+         （该 token 已存在、且逐值对上稿的 up-soft：浅 #1F0B7A55 alpha 31/255 ≈ 12%、
+           深 #293FD48F ≈ 16% ⟹ **不新增 token**）；
+       · border-radius: var(r-pill) → corners 999dp（Android 自动夹到半高 = 胶囊，与稿同口径）。
+     同组还有 `border: 0`（本 shape 不画 stroke）与字色 `var(up)`（XML 里 ?attr/colorTeal，同一色族）。
+     ⚠ 不可点：宿主 TextView **没有** clickable / focusable / ripple，运行期也不再挂监听或覆写背景
+       （旧的分段控件语义在 t34 已删除，见 MainActivity.paintSide 的墓碑与 onCreate 的监听墓碑）。 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="?attr/colorTealBg" />
+    <corners android:radius="999dp" />
+</shape>

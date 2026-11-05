@@ -10,8 +10,8 @@
     android:layout_height="36.2dp"
     android:gravity="center_vertical"
     android:orientation="horizontal"
-    android:paddingLeft="3.8dp"
-    android:paddingRight="3.8dp"
+    android:paddingLeft="4dp"
+    android:paddingRight="4dp"
     android:background="@drawable/row_detail_rule">
     <TextView
         android:id="@+id/row_idx"
@@ -31,8 +31,8 @@
         />
     <TextView
         android:id="@+id/row_dir"
-        android:layout_width="49.6dp"
-        android:layout_height="24.8dp"
+        android:layout_width="52dp"
+        android:layout_height="26dp"
         android:gravity="center"
         android:textSize="@dimen/fs_note" />
     <TextView

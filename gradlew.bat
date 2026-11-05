@@ -33,6 +33,11 @@ set APP_HOME=%DIRNAME%
 @rem Resolve any "." and ".." in APP_HOME to make it shorter.
 for %%i in ("%APP_HOME%") do set APP_HOME=%%~fi
 
+@rem Keep Gradle output inside the workspace while passing Windows an ASCII short path.
+if not defined GRIDCALC_BUILD_ROOT (
+    for %%i in ("%APP_HOME%\..") do set "GRIDCALC_BUILD_ROOT=%%~si\.gc-build-cache\gradle"
+)
+
 @rem Add default JVM options here. You can also use JAVA_OPTS and GRADLE_OPTS to pass JVM options to this script.
 set DEFAULT_JVM_OPTS="-Xmx64m" "-Xms64m"
 

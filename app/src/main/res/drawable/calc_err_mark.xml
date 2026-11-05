@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 计算屏告警行的 **① 图标**（C-6 建件 / 2026-10-19 t14 改为 vector 并补环内「!」）。
+     稿子依据：
+       · `方向-B\四屏-计算页.html:324-326` 逐字 `<span class="calc-err__mark" aria-hidden="true">!</span>`
+         ⟹ 环内**有一个「!」**（t14 之前本件是纯空心环，「!」被漏掉）。
+       · `theme.css:100-112` `.calc-err__mark { width:16px; height:16px;
+         border:1.5px solid var(-down); border-radius:var(-r-pill); font-size:var(-fs-note);
+         line-height:1; color:var(-down); display:flex; align-items:center; justify-content:center; }`
+         ⟹ **16×16 圆环**（1.5px 描边、全圆角）+ 环内**居中**一个 `fs-note`(12px) 的「!」，
+            两者同色 = `-down` = 本仓 `?attr/colorRed`。
+     落法（vector，viewBox 16×16 ⟹ 1 单位 = 1dp）：
+       · 外环：圆心 (8,8)、**半径 7.25** 的整圆 + `strokeWidth=1.5` + 透明填充
+         ⟹ 环带外缘 8.0 / 内缘 6.5，与稿的 16px 盒 + 1.5px 边框同构；
+       · 「!」：竖条（x 7.5..8.5，即 **1.0 宽**，y 4.0..9.0）+ 圆点（圆心 (8,12.4)、半径 **0.55**）——t17 按稿收窄（t15 实测旧值中心 20/25，稿 5/25；目标 ≤10/25），
+         竖条正好穿过 16dp 图标的**正中**（y=8 落在竖条内）⟹ 中心 5×5px 必有红像素；
+       · 颜色全部 `?attr/colorRed`（与改前同 token，浅深两态自动跟随主题）。
+     ⚠ 尺寸与宿主结构**未变**：仍 16dp 固有尺寸、仍挂 `calc_err` 的 `android:drawableStart`
+       + `drawablePadding="@dimen/space_2"` + 宿主 `gravity="center_vertical"`；
+       `MainActivity.showErr()` 零改动。 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="16dp"
+    android:height="16dp"
+    android:viewportWidth="16"
+    android:viewportHeight="16">
+    <!-- 外环：1.5dp 描边、全圆角（transparent 填充，露出宿主底色） -->
+    <path
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="?attr/colorRed"
+        android:strokeWidth="1.5"
+        android:pathData="M8,0.75 a7.25,7.25 0 1,0 0.01,0 z" />
+    <!-- 「!」竖条（穿过图标正中） -->
+    <path
+        android:fillColor="?attr/colorRed"
+        android:pathData="M7.5,4 h1 v5 h-1 z" />
+    <!-- 「!」圆点 -->
+    <path
+        android:fillColor="?attr/colorRed"
+        android:pathData="M8,11.5 m-0.55,0 a0.55,0.55 0 1,0 1.1,0 a0.55,0.55 0 1,0 -1.1,0 z" />
+</vector>

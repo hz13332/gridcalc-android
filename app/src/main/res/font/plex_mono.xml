@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  IBM Plex Mono 字体族（SIL Open Font License 1.1，见 gridcalc-native/licenses/IBMPlexMono-OFL.txt）。
+
+  为什么加（R-34 的由来）：设计稿 theme.css 的 font-mono 变量首顺位写的是 "IBM Plex Mono"，
+  但渲染稿的机器上并没有装这个字体，浏览器一路退到 Consolas；而 App 侧此前是
+  Droid Sans Mono / Inter ⟹ 稿、App、稿上声明的字体族三方不一致。
+  落地方式 = 两边同用 IBM Plex Mono 的同一份字节：4 个字重全部内嵌，App 侧这 4 个 ttf 与
+  稿侧 assets/plex-mono/ 下的 4 个 ttf 同 sha256（逐个相同），R-34 由此闭合。
+
+  权重说明：与 res/font/inter.xml 同构，给足 Regular/Medium/SemiBold/Bold 四档，
+  只给 Regular 会让中粗字重回系统合成加粗。
+
+  注意：本文件只是新增字体资源声明，尚未改动任何落点（落点改造另案）。
+-->
+<font-family xmlns:android="http://schemas.android.com/apk/res/android">
+    <font
+        android:font="@font/plex_mono_regular"
+        android:fontStyle="normal"
+        android:fontWeight="400" />
+    <font
+        android:font="@font/plex_mono_medium"
+        android:fontStyle="normal"
+        android:fontWeight="500" />
+    <font
+        android:font="@font/plex_mono_semibold"
+        android:fontStyle="normal"
+        android:fontWeight="600" />
+    <font
+        android:font="@font/plex_mono_bold"
+        android:fontStyle="normal"
+        android:fontWeight="700" />
+</font-family>

@@ -9,11 +9,15 @@
 
      本轮**只动视觉与排布**，三处结构改动逐条记：
       ① 分组语汇：v1 的「弱标题 + 强内容行 + 通栏发丝」→ 方向 B 的「**分组 = 一张卡**」
-         （§2.4-3.2）：卡面 colorCard + r12（card_bg）+ elev_1（浅 2dp / 深 0）+ clipToOutline；
-         卡内行分隔 = 1dp colorBorder（§2.4-3.3「行分隔 = border-bottom，末行不画」）。
-      ② S1 收口机制沿用（两组分贴上下 + 中间有界呼吸区）：Android 侧的
-         `justify-content: space-between` = **外层 match_parent + 中间 Space(weight=1)**
-         （fillViewport 保证内容不足时也铺满视口，weight 才有的可分）。
+         （§2.4-3.2）：卡面 colorCard + r12 + 1dp colorBorder 发丝 + elev_1（浅 2dp / 深 0）
+         + clipToOutline（2026-10-28 队长裁定：全仓只有 @style/Widget.GridCalc.Card 一支卡，
+         描边已并入 card_bg；外观卡与关于卡因此各有一圈**外边界**）。
+         卡内**不再画**行分隔线：外观组只剩「主题」一行（单行卡，四角全圆角）；
+         关于组三段拼一张卡，内部无横线，首段上圆角 / 末段下圆角由卡的 r12 承担。
+      ② **2026-10-28 t4 修掉「两组分贴上下」**：原实现照 v1 的 S1 收口用
+         「外层 match_parent + 中间 Space(weight=1)」把两组顶到屏幕上下两端、中间撑出一大块空白；
+         Oct-28 稿已改为 `justify-content: flex-start` + `gap: sp-4` ⟹ 这里**删掉那个 Space**，
+         两组紧接排列（组间距离由「关于」分组标题的 marginTop 给出），空白不再被撑开。
       ③ 主题三段 = **轨道药丸 + 抬起的选中药丸**（§2.4-3.6）：轨道 seg_frame
          （bg-surface-2 + r999 + 3dp 内边距），段内边距 5dp/12dp，选中底 = seg_sel
          （colorSurfaceRaised，**不再占主色实底**），抬升由宿主 View 消费 elev_1
@@ -25,24 +29,33 @@
        此后「背景 + 字色 + 字重 + 抬升」四件**只有 paintThemeSeg() 一处主人**。
 
      ⚠ 未改（用户裁定 / 既有条件）：
-       · 开关关态的按压与常态同值（用户裁定，switch_track.xml 的关态 item 不带 pressed 分支）；
        · 触摸目标：本屏 9 控件 5 项 <48dp（交接 §6.2），**不为凑 48 缩内容** ——
          命中区与真实点击区对齐即可（本轮行高按 §2.4-3.3 的 58/16 落地，已比 v1 更高）。
        · 顶部 AppBar 与「费率」空壳标题的删除（2026-10-08 用户裁定）**保持**。
 
-     ⚠ 所有原有 id 与控件类型保持不变（MainActivity 的 findViewById 绑定不许断）：
+     ⚠ id 与控件类型保持不变（MainActivity 的 findViewById 绑定不许断）：
        theme_follow / theme_light / theme_dark（Button，paintThemeSeg 强转 Button）、
-       set_auto_sw（Switch）、about_version / about_disclaimer（TextView）。
+       about_version / about_disclaimer（TextView）、settings_theme_card / settings_about_card
+       （paintStaticCardShadows 的卡片清单）。
+     ⚠⚠ 2026-10-28 t4 · **「启动时刷新一次」整行移除**（用户裁定）：
+       `set_auto_sw`（Switch）连同它上面那条 1dp 行分隔线一起删了 —— 外观组只剩「主题」一行。
+       Kotlin 侧的自动刷新行为改为**恒为默认值（每次启动刷新一次）**，
+       开关的 findViewById / track+thumb 染色 / OnCheckedChangeListener 与持久化键一并下线。
      ══════════════════════════════════════════════════════════════════════════════ -->
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:fillViewport="true"
     android:scrollbars="none"
-    android:clipToPadding="false">
+    android:clipToPadding="false"
+     android:clipChildren="false">
 
-    <!-- 外层 match_parent + 中间 Space(weight=1) = 方向 B 设置屏的 space-between（见文件头 ②）。
-         页面左右/下内边距 = space_4（16dp）= 原型 `.gc-set` 的 padding（0 / sp-4 / sp-4）。
+    <!-- 外层容器：两组紧接排列（原「中间 Space(weight=1) 撑开」已按 Oct-28 稿删除，见文件头 ②）。
+         页面横向 gutter = **space_2(8dp)** = 原型 `.gc-set` 的左右 padding（sp-2）；
+         下内边距 = **space_3(12dp)** = 原型 `.gc-set` 的 `padding: 0 sp-2 sp-3` 的下边
+         （2026-10-28 t22 按稿 sp-3 改；t14 当时只收横向，纵向仍是 space_4）。
+         ⚠ 2026-10-28 t14：横向由 16dp 收到 **8dp**（闸 5 报设屏「跟随系统 ↔ 主题」Δleft −36dp 的
+           第一段成因；第二段是卡内横向内边距 16→12dp，见主题行与关于组各自的注释）。
          ⚠ 本文件所有注释里**不写 CSS 变量名**（形如「两个连字符 + sp-4」那种写法）——
            XML 注释体里不允许出现连续两个连字符，写了整份资源解析失败（本文件第一版踩过，
            与 drawable/seg_box.xml 文件头登记的同一个坑）。变量一律写「sp-N 变量」这种说法。 -->
@@ -50,22 +63,24 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:orientation="vertical"
-        android:paddingLeft="@dimen/space_4"
-        android:paddingRight="@dimen/space_4"
-        android:paddingBottom="@dimen/space_4">
+        android:paddingLeft="@dimen/space_2"
+        android:paddingRight="@dimen/space_2"
+        android:clipChildren="false"
+         android:paddingBottom="@dimen/space_3">
 
         <!-- ═══════════════════ 外观组 ═══════════════════ -->
 
         <!-- 分组小标题（§2.4-3.3 / 原型 `.gc-cap`）：卡片**外**，12sp / 600 / faint + 宽字距。
-             marginTop = sp-5(20) / marginBottom = sp-2(8)；左右 padding = sp-1(4)，
-             与原型 `.gc-cap` 的 margin（sp-5 / 0 / sp-2）与 padding（0 / sp-1）逐值同源。
-             ⚠ 改前用 sec_top/sec_bot（21/1.9dp，v1 稿的单列特例）—— t49 已把这两个名字
-               并入 space_5/space_1 并标「新代码不许再用」，本轮起**不再引用旧名**。 -->
+             margin 上 sp-3(12) / 下 sp-1(4)；左右 padding = sp-1(4) —— 与 Oct-28 稿
+             `.gc-cap { margin: sp-3 0 sp-1; padding: 0 sp-1 }` 逐值同源。
+             ⚠ 2026-10-28 t22：纵向由 **20/8 收到 12/4**（改前是旧稿的 sp-5/sp-2）。
+             ⚠ 更早的 sec_top/sec_bot（21/1.9dp，v1 稿的单列特例）已并入 space_5/space_1，
+               新代码不许再用旧名。 -->
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/space_5"
-            android:layout_marginBottom="@dimen/space_2"
+            android:layout_marginTop="@dimen/space_3"
+            android:layout_marginBottom="@dimen/space_1"
             android:paddingLeft="@dimen/space_1"
             android:paddingRight="@dimen/space_1"
             android:letterSpacing="0.04"
@@ -74,28 +89,36 @@
             android:textSize="@dimen/fs_note"
             android:textStyle="bold" />
 
-        <!-- 卡片（§2.4-3.2）：分组 = 一张卡。
-             card_bg = colorCard + r12（t49 落；**无描边** —— 1dp stroke 已由 2026-10-16 t1「方案 A」删除）；抬升 = elev_1（浅 2dp / 深 0）。
-             clipToOutline：让卡内两行随 r12 圆角裁切（原型靠分片圆角 + 同一配方投影实现）。
-             ⚠ 口径差已收口（2026-10-16 t1「方案 A」，用户拍板）：原型卡片无 1dp 描边（theme.css 的卡 = 面 + 阴影），
-               App 侧的 r12 卡面 drawable（card_bg）**已无描边**（其 1dp stroke 即 t1 所删），
-               ⟹ 本页卡片与原型一致；原注释「要彻底去描边属 drawable 层改动」描述的缺口已在 t1 关闭。 -->
+        <!-- 卡片（§2.4-3.2）：分组 = 一张卡 = **一圈外边界**。
+             card_bg = colorCard + r12 + **1dp colorBorder 发丝**（2026-10-28 队长裁定把描边并进
+             card_bg，全仓只留 @style/Widget.GridCalc.Card 一支卡；旧的 .Outline 变体已删除）。
+             抬升 = elev_1（浅 2dp / 深 0 —— 深色靠发丝给边界，别把发丝删掉）。
+             clipToOutline：让卡内容随 r12 圆角裁切；外观组现在是**单行卡**（四角全圆角，
+             对应稿 `.gc-row` 的 solo 修饰形态，圆角 = r-card），行内不再有分隔线。 -->
         <LinearLayout
+            android:id="@+id/settings_theme_card"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:background="@drawable/card_bg"
-            android:elevation="@dimen/elev_1"
+            style="@style/Widget.GridCalc.Card"
             android:clipToOutline="true">
 
-            <!-- 主题行（§2.4-3.3：行 ≈58px / 内边距 16；本行被分段器撑到 ≈65，与原型同源） -->
+            <!-- 主题行（§2.4-3.3：稿 `.gc-row { padding: sp-3 sp-3 }` = 上下 12 / 左右 12）。
+                 ⚠ 2026-10-28 t14：横向 16 → **sp-3(12dp)**。
+                 ⚠ 2026-10-28 t22：纵向 16 → **sp-3(12dp)** —— 稿 `.gc-row` 四边都是 sp-3，
+                   本轮口径是「全部改成稿值」，且任务第 4 条要求「其它与稿不符的纵向档位一并改」。
+                   （任务书「不做」那条写的是「纵向若现已是 12 就不要改」；实测是 16 ⟹ 按稿改到 12。）
+                   行高随内边距 66 → **58dp**（稿 golden 的 `.gc-row` 盒高 57.39dp）。 -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="horizontal"
                 android:gravity="center_vertical"
                 android:minHeight="58dp"
-                android:padding="@dimen/space_4">
+                android:paddingTop="@dimen/space_3"
+                android:paddingBottom="@dimen/space_3"
+                android:paddingStart="@dimen/space_3"
+                android:paddingEnd="@dimen/space_3">
 
                 <TextView
                     android:layout_width="wrap_content"
@@ -167,61 +190,34 @@
                 </LinearLayout>
             </LinearLayout>
 
-            <!-- 行分隔（§2.4-3.3）：卡内 1dp colorBorder；末行不画 ⟹ 本行之后不再有线 -->
-            <View
-                android:layout_width="match_parent"
-                android:layout_height="1dp"
-                android:background="?attr/colorBorder" />
-
-            <!-- 开关行：标签 weight=1（= 原型 `.gc-row` 的 space-between），控件靠右。
-                 ⚠ id = set_auto_sw：MainActivity.kt:3117 起 findViewById + t211PaintSwitch 染两态。 -->
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical"
-                android:minHeight="58dp"
-                android:padding="@dimen/space_4">
-
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="启动时刷新一次"
-                    android:textColor="?attr/colorInk"
-                    android:textSize="@dimen/fs_title"
-                    android:textStyle="bold" />
-
-                <!-- §2.4-3.7 / §5.3-M10：**44×26 轨道**（改前 42×24.8 —— v1 稿的换算值）。
-                     色与描边（开 accentFill / 开+按压 accentPressed / 关 trackOff，两态都有描边）
-                     由 t49 的 switch_track.xml 四态 selector 自带；
-                     滑块两态由 t211PaintSwitch() 的 thumbTintList 染（on-accent / thumb-off）。
-                     thumb 直径与位移由平台按轨道尺寸算（Android 不暴露该几何）⟹ 装机实测值见交付说明。 -->
-                <Switch
-                    android:id="@+id/set_auto_sw"
-                    android:layout_width="44dp"
-                    android:layout_height="26dp"
-                    android:contentDescription="启动时刷新一次"
-                    android:minWidth="0dp"
-                    android:minHeight="0dp" />
-            </LinearLayout>
+            <!-- ⚠ 2026-10-28 t4 · 原「1dp 行分隔 + 启动时刷新一次（Switch set_auto_sw）」两段
+                 已**整块移除**（用户裁定：该开关不再暴露给用户；行为恒为启动刷新一次）。
+                 外观组因此只剩「主题」一行 ⟹ 单行卡四角全圆角、卡内不再有分隔线。
+                 ⚠ 切回旧版别只把 Switch 加回来：MainActivity 侧的 findViewById / 轨道与滑块染色 /
+                    OnCheckedChangeListener / 持久化键**已同步下线**，只加节点会得到死控件。 -->
         </LinearLayout>
 
-        <!-- 中间有界呼吸区（S1）：weight=1 把「关于」组压到屏底，空白收成两段之间一处；
-             不做任何装饰（种子 §1-3「层次不靠装饰」）。 -->
-        <Space
-            android:layout_width="1dp"
-            android:layout_height="0dp"
-            android:layout_weight="1" />
+        <!-- ⚠ 2026-10-28 t4 · 这里原来是 weight=1 的 Space：它把「关于」组压到屏底，
+             两组之间撑出一大块空白（v1 的 S1 收口）。Oct-28 稿改成 flex-start + gap
+             ⟹ 那个 weight Space 已删；组间距改由下方**固定高度**的 16dp Space 承担。 -->
 
         <!-- ═══════════════════ 关于组 ═══════════════════ -->
 
-        <!-- 与「外观」同规格（原型两个 .gc-cap 逐字同形） -->
+        <!-- 组间距（稿 `.gc-set { gap: sp-4 }` = **16dp**）：本页没有 section 包裹层，
+             用固定高度的 Space 等效。它 + 「关于」小标题自己的 marginTop 12dp
+             = 主题卡 → 「关于」标题 **28dp**（稿 golden：row 底 186.17 → cap elY 214.17）。
+             2026-10-28 t22 补。 -->
+        <Space
+            android:layout_width="1dp"
+            android:layout_height="@dimen/space_4" />
+
+        <!-- 与「外观」同规格（原型两个 .gc-cap 逐字同形）：margin 上 sp-3(12) / 下 sp-1(4)。
+             2026-10-28 t22 按 Oct-28 稿把旧值 20/8 收到 12/4。 -->
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/space_5"
-            android:layout_marginBottom="@dimen/space_2"
+            android:layout_marginTop="@dimen/space_3"
+            android:layout_marginBottom="@dimen/space_1"
             android:paddingLeft="@dimen/space_1"
             android:paddingRight="@dimen/space_1"
             android:letterSpacing="0.04"
@@ -230,27 +226,32 @@
             android:textSize="@dimen/fs_note"
             android:textStyle="bold" />
 
-        <!-- 关于卡 = 三段拼一张（§2.4-3.2 / 原型 .gc-about__ver / __sub / __note）：
-             三段共用同一配方（面 + r12 + elev_1），**无缝**；段间不画线（原型也不画）。 -->
+        <!-- 关于卡 = 三段拼成**一张连续卡**（§2.4-3.2 / 原型 .gc-about__ver / __sub / __note）：
+             只有**最外一圈**边界（card_bg 的 1dp colorBorder + r12 + elev_1），
+             段与段之间**没有任何横线**（稿里三段本来就没有 border-bottom，也不画）；
+             首段上圆角 / 末段下圆角 = 卡自身的 r12，靠 clipToOutline 裁三段。
+             ⚠ 2026-10-28 t4：**别**给中间段补 1dp colorBorder 当分隔 —— 用户明确要「连续一张卡」。 -->
         <LinearLayout
+            android:id="@+id/settings_about_card"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:background="@drawable/card_bg"
-            android:elevation="@dimen/elev_1"
+            style="@style/Widget.GridCalc.Card"
             android:clipToOutline="true">
 
             <!-- t117 ③ 层级：**应用名在主位**（fs_title + ink + 600），「等比网格」是小字副标。
                  ⚠ 版本号不写死：运行期从 PackageInfo 取 versionName（MainActivity.kt:2706 附近）。
-                 内边距 = 原型 `.gc-about__ver` 的 padding（sp-4 / sp-4 / 0）。 -->
+                 内边距 = Oct-28 稿 `.gc-about__ver { padding: sp-3 sp-3 0 }`
+                 = 横向 **12dp** / 上 **12dp** / 下 0。
+                 ⚠ 2026-10-28 t14：横向 16 → 12dp；t22：上 16 → **12dp**。 -->
             <TextView
                 android:id="@+id/about_version"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:paddingLeft="@dimen/space_4"
-                android:paddingRight="@dimen/space_4"
-                android:paddingTop="@dimen/space_4"
-                android:text="网格交易收益计算器"
+                android:paddingLeft="@dimen/space_3"
+                android:paddingRight="@dimen/space_3"
+                android:paddingTop="@dimen/space_3"
+                android:text="网格罗盘"
                 android:textColor="?attr/colorInk"
                 android:textSize="@dimen/fs_title"
                 android:textStyle="bold" />
@@ -259,8 +260,8 @@
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:paddingLeft="@dimen/space_4"
-                android:paddingRight="@dimen/space_4"
+                android:paddingLeft="@dimen/space_3"
+                android:paddingRight="@dimen/space_3"
                 android:paddingTop="@dimen/space_1"
                 android:lineSpacingMultiplier="1.45"
                 android:text="等比网格"
@@ -268,17 +269,18 @@
                 android:textSize="@dimen/fs_note" />
 
             <!-- 免责声明 —— 稿 L798 逐字，不多不少。
-                 内边距 = 原型 `.gc-about__note` 的 padding（sp-3 / sp-4 / sp-4）；
+                 内边距 = Oct-28 稿 `.gc-about__note { padding: sp-2 sp-3 sp-3 }`
+                 = 上 **8dp** / 横向 **12dp** / 下 **12dp**（t14 收横向、t22 收纵向：上 12→8、下 16→12）；
                  行高 1.45 = §2.2 的 fs-note 档 lh（用 lineSpacingMultiplier 而非 android:lineHeight：
                  后者是 API 28+，本仓 minSdk = 26，与 FavPanel.kt:447-450 的处置同一条）。 -->
             <TextView
                 android:id="@+id/about_disclaimer"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:paddingLeft="@dimen/space_4"
-                android:paddingRight="@dimen/space_4"
-                android:paddingTop="@dimen/space_3"
-                android:paddingBottom="@dimen/space_4"
+                android:paddingLeft="@dimen/space_3"
+                android:paddingRight="@dimen/space_3"
+                android:paddingTop="@dimen/space_2"
+                android:paddingBottom="@dimen/space_3"
                 android:lineSpacingMultiplier="1.45"
                 android:text="结果由输入参数推导，不构成投资建议。"
                 android:textColor="?attr/colorFaint"

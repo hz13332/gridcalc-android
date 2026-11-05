@@ -43,43 +43,72 @@ object FavStore {
     private const val SORTKEY = "gc_favsort"
 
     /**
-     * 屏上显示的符号：去掉 A 股的 `sh`/`sz` **取数前缀**。
-     * 港/美/币原样返回 —— 它们的内部符号本来就与屏上一致
-     * （港股那行显示 `00700` 而不是 `hk00700`）。
-     * ⚠ 只影响**显示**，取数仍用原始符号 —— 拆掉前缀会让 `symType` 认不出 A 股。
+     * 屏上显示的符号 = 规范化后的符号（港股/A股的取数前缀已随市场下线删除）。
+     * ⚠ 2026-11-03：原来这里会剥掉 A 股的 `sh`/`sz` 前缀、港股补零到 5 位 —— 两个市场都已下线，
+     *   这段分支一并删除，显示与内部符号从此完全一致。
      */
-    fun displaySym(s: String): String {
-        val t = s.trim()
-        return if (Regex("^(SH|SZ)\\d{6}$", RegexOption.IGNORE_CASE).matches(t)) t.drop(2) else t
+    fun displaySym(s: String): String = MktData.canonicalSym(s)
+
+    /**
+     * 记录里的类型一律**按现役 symType 重算**（唯一真源）。
+     *
+     * ⚠ 2026-11-03 t16（t4 的 R3）：旧版本给自选存过 `hk` / `ashare` 两种类型值。
+     *   港股 / A 股下线后 symType 不再产出它们，若原样保留：徽章会印出内部枚举名、
+     *   打开该行会被当成"有源品种"（5 位数字按 USD 显示、去折算、发请求）⟹ 可见缺陷。
+     *   ⟹ 载入/规整时统一重算：`hk`/`ashare` 这类旧值自然收敛成 `unsupported`，
+     *     徽章显示「不支持」，行内也不当有源品种处理。
+     */
+    private fun normType(canonical: String, t: String): String {
+        // 只归一**已知的旧值**与空值：其余类型原样保留（未来枚举/测试样例不受影响）。
+        if (t == "hk" || t == "ashare") return "unsupported"
+        if (t.isEmpty()) return MktData.symType(canonical)
+        return t
     }
 
     fun tag(t: String): String = when (t) {
+        // 旧记录里可能还留着这两个值（载入时会被 [normType] 归一成 unsupported）；
+        // 万一走到这里，徽章也必须说「不支持」，不能把内部枚举名原样印上屏。
+        "hk", "ashare" -> "不支持"
         "crypto" -> "币"
         // ⚠ t8 照稿 A1②：这里喂的是**徽章**，稿的徽章用词是「贵金」。
         //   稿 v2.html:133 `{sym:'XAUUSD', badge:'贵金', …}` 逐字；
         //   稿 v2.html:145 的注释也写明「新稿用词 `贵金`（截断词），不是「贵金属」」。
-        //   「贵金属」三字在稿里只出现在 SRC 表的 `ty`（品种类型），**徽章字段用的是截短的「贵金」**
-        //   —— 本函数渲染的正是徽章，故本条改为「贵金」。
-        // 旧注引「稿 L117: XAUUSD: {ty:'贵金属' …}」指向的是 SRC 表的 ty 那一处，与徽章是两回事，已改对。
-        // 「黄金」这三字在本仓还有两处(MktSuggest 的品种名表与搜索别名), 刻意不动:
-        // 动了用户打「黄金」就搜不到 XAUUSD 了。那两处是【检索用词】, 不是显示用词。
         "gold" -> "贵金"
         "silver" -> "贵金"
         "stock" -> "美股"
-        // ⚠⚠⚠ 2026-10-04 **补 A 股**。原来 [MktData.symType] 已经会返回 "ashare"，
-        //   但这里没有对应分支 ⟹ 落到 `else -> t` ⟹ 徽章**原样显示 `ashare`**（实测）。
-        //   这就是「加了枚举值、漏改穷举分支」那类自伤：类型认出来了，展示没跟上。
-        "ashare" -> "A股"
         "cmdty" -> "商品"
-        "hk" -> "港股"
         "kr" -> "韩股"
+        // ⚠ 2026-11-03：`ashare` / `hk` 两个徽章随市场下线删除；已下线市场由 symType 返回
+        //   "unsupported"，这里给「不支持」而不是把内部枚举名原样印到屏上。
+        "unsupported" -> "不支持"
         else -> t
     }
 
     private fun prefs(c: Context) =
         c.getSharedPreferences(PF, Context.MODE_PRIVATE)
 
-    fun get(c: Context): MutableList<FavItem> {
+    /** Normalize persisted records once, with the canonical natural-gas row preferred. */
+    internal fun canonicalItems(items: List<FavItem>): List<FavItem> {
+        // First remember exact canonical records. If an alias and NG00Y coexist, this
+        // map makes NG00Y win regardless of their order in the old JSON array.
+        val preferred = LinkedHashMap<String, FavItem>()
+        for (item in items) {
+            val raw = item.s.trim()
+            val canonical = MktData.canonicalSym(raw)
+            if (raw == canonical) preferred.putIfAbsent(
+                canonical, FavItem(canonical, normType(canonical, item.t)))
+        }
+        val seen = HashSet<String>()
+        val out = ArrayList<FavItem>(items.size)
+        for (item in items) {
+            val canonical = MktData.canonicalSym(item.s)
+            if (canonical.isEmpty() || !seen.add(canonical)) continue
+            out.add(preferred[canonical] ?: FavItem(canonical, normType(canonical, item.t)))
+        }
+        return out
+    }
+
+    private fun readRaw(c: Context): MutableList<FavItem> {
         val out = mutableListOf<FavItem>()
         try {
             val a = JSONArray(prefs(c).getString(KEY, "[]") ?: "[]")
@@ -93,28 +122,43 @@ object FavStore {
         return out
     }
 
+    fun get(c: Context): MutableList<FavItem> {
+        val raw = readRaw(c)
+        val normalized = canonicalItems(raw)
+        if (normalized != raw) set(c, normalized)
+        return normalized.toMutableList()
+    }
+
     // v4 D10:SP 写全程 try/catch,失败降级为「本次会话内生效」,不崩
     private fun set(c: Context, a: List<FavItem>) {
         try {
             val j = JSONArray()
-            for (it in a) j.put(JSONObject().put("s", it.s).put("t", it.t))
+            for (it in canonicalItems(a)) {
+                j.put(JSONObject().put("s", it.s).put("t", it.t))
+            }
             prefs(c).edit().putString(KEY, j.toString()).apply()
         } catch (_: Exception) {
         }
     }
 
-    fun isFav(c: Context, s: String): Boolean = get(c).any { it.s == s }
+    fun isFav(c: Context, s: String): Boolean {
+        val canonical = MktData.canonicalSym(s)
+        return canonical.isNotEmpty() && get(c).any { it.s == canonical }
+    }
 
     fun add(c: Context, s: String, t: String) {
+        val canonical = MktData.canonicalSym(s)
+        if (canonical.isEmpty()) return
         val a = get(c)
-        if (a.none { it.s == s }) {
-            a.add(FavItem(s, t))
+        if (a.none { it.s == canonical }) {
+            a.add(FavItem(canonical, t.ifEmpty { MktData.symType(canonical) }))
             set(c, a)
         }
     }
 
     fun remove(c: Context, s: String) {
-        set(c, get(c).filter { it.s != s })
+        val canonical = MktData.canonicalSym(s)
+        set(c, get(c).filter { it.s != canonical })
     }
 
     // 排序模式(稿§2):三键互斥 `dist|gain|ratio` × `asc|desc`;
@@ -227,17 +271,14 @@ class FavPanel(
     // t8 照稿 A1③：屏底「距支撑 实时 N / 无源 N」计数行（稿 v2.html:1641-1644）。
     private val favCountV: android.widget.TextView? = page.findViewById(R.id.fav_count)
 
-    // 列头带 = 列表卡的**首片**（方向 B §2.4-3.2 / theme.css §6.1b）：
-    //   surface-2 实底 + **上圆角 12** + 底发丝；抬升 elev_row（浅色真阴影 / 深色 0dp）。
-    // ⚠ 为什么不写在 page_fav.xml 的 android:background：XML 的 background 只吃**一个** drawable，
-    //   而「实底 + 上圆角 + 底发丝」这个组合在 res/drawable/ 里不存在（该目录不在 t51 的 inScope）
-    //   ⟹ 与行片一样在代码里拼（见 headBg / sliceBg，逐值等价于「新开一张分片 drawable」）。
-    // ⚠ 用户 2026-10-14 明确「列头**自己的底线**不动」—— 底线照旧保留，只是从 fav_row_line
-    //   （透明底 + 底线）换成「实底 + 底线」，线本身的位置/粗细/颜色都没变。
-    private val favHeadV: View? = page.findViewById<View>(R.id.fav_head)?.apply {
-        background = headBg()
-        elevation = dimenPx(R.dimen.elev_row).toFloat()
-    }
+    // ⚠ 2026-10-28 t2 · **列头带不再是「列表卡的首片」**（Oct-28 稿把自选列表整体去卡片化）：
+    //   稿 `.fav-head { padding: sp-3 sp-1 sp-2; background: transparent; border-radius: 0;
+    //                    border-bottom: hairline solid border; box-shadow: none }`
+    //   （四屏-自选页.html:106-115）⟹ 底色 = 透明、底线 = 1dp colorBorder、抬升 = 0。
+    //   落地：底色与底线由 page_fav.xml 的 `@drawable/fav_row_line` 给（= 透明底 + 底边 1dp
+    //   colorBorder，正是稿的 border-bottom），elevation 走 XML 默认值 0。
+    //   ⚠ 改前这里 apply { background = headBg(); elevation = elev_row } —— headBg() 已随
+    //     「列表去卡片化」删除（墓碑见 sliceBg 处），不要再把它拼回来。
     // t8 照稿 A1·副标「N 个品种 · 全部美元口径」（见 paintFavSubtitle 的注释）。
     private val favSubtitleV: android.widget.TextView? = page.findViewById(R.id.fav_subtitle)
 
@@ -269,7 +310,7 @@ class FavPanel(
     // 同一窗口、不抢焦点,键盘不会被收。内容超 248dp 时内部滚动(口径沿用原来浮层的)。
     private val sugBox: LinearLayout = page.findViewById(R.id.fav_sug_box)
     // ⚠ 2026-10-14 候选列表改版(移植对照表 §5.2)：内边距**归零**。
-    //   现状 padding(9.5dp, 3.8dp, 9.5dp, 3.8dp) 与行自己的内边距会**双重内缩**，
+    //   现状 padding(10dp, 4dp, 10dp, 4dp) 与行自己的内边距会**双重内缩**，
     //   候选行的横向基线对不上 fav_search 的文字基线（page_fav.xml 里那次「正解」教训同款：
     //   容器 padding=0、各元素自己内缩）。内边距改由 sugRow 的行内左右各 space_3 承担。
     private val resultsBox: LinearLayout = LinearLayout(act).apply {
@@ -316,6 +357,30 @@ class FavPanel(
     }.apply {
         isVerticalScrollBarEnabled = false
         addView(resultsBox)
+    }
+
+    /**
+     * 候选层的**内宽**（2026-10-28 t2 新增，候选层搬出搜索卡后宽度不再等于输入框宽度）。
+     *
+     * 改前：候选层是搜索卡的子节点、卡内左右没有额外内缩 ⟹ 直接用 `searchInp.width` 当宽度就够了。
+     * 现在（page_fav.xml）：候选层是页面列的**兄弟层**，左右各 space_2：
+     *   离屏边 = 页面列 space_2 + 本层 space_2 = **16dp**
+     *   输入框 = 搜索卡（离屏边 space_2）+ 卡内 padding space_3 ⟹ **20dp**
+     * ⟹ 两者差 8dp。若仍拿输入框宽度，sugScroll 会比卡面窄 8dp（右侧露出卡面）、
+     *   行内右对齐的「＋/已加入」也会短一截，卡面轮廓（clipToOutline 的 r12）还会在右侧空一块。
+     *
+     * 取法：`父容器的内容宽 − 本层左右 margin − 本层左右 padding`（本层 layout_width = match_parent）。
+     * ⚠ 首次展示时本层还是 GONE（width = 0），但**父容器已经布局** ⟹ 这条算式第一帧就成立，
+     *   不需要先 show 一次再量。
+     * 兜底：父容器还没布局（width <= 0）时退回 `searchInp.width`（与改前行为一致，绝不返回 0 卡死）。
+     */
+    private fun sugInnerWidth(): Int {
+        val parent = sugBox.parent as? View ?: return searchInp.width
+        var w = parent.width - parent.paddingLeft - parent.paddingRight
+        val lp = sugBox.layoutParams as? ViewGroup.MarginLayoutParams
+        if (lp != null) w -= lp.leftMargin + lp.rightMargin
+        w -= sugBox.paddingLeft + sugBox.paddingRight
+        return if (w > 0) w else searchInp.width
     }
 
     private val handler = Handler(Looper.getMainLooper())
@@ -372,50 +437,28 @@ class FavPanel(
                 setConfirm(s)
                 true
             }
-            // 方向 B §2.4-3.2 / theme.css §6.1b「列表卡 = 分片」的片位分配：
-            //   首片（列头带，在 page_fav.xml 里）给上圆角；**末片（本循环最后一行）给下圆角**；
-            //   中片 r0；片间分隔 = 每片的 border-bottom，**末片不画**。
-            //   ⚠ 片位只在全量换数据时确定（增删行会换末片是谁）⟹ 背景在这里按 index 重挂，
-            //     不能在 createRowShell 里挂死。抬升 elev_row 也一并挂（浅色真阴影 / 深色 0dp）。
+            // ⚠⚠ 2026-10-28 t2 · **自选列表去卡片化**（Oct-28 稿 §5 `.fav-row`，四屏-自选页.html:143-149）：
+            //   每行 = 透明底 + 无圆角 + 无阴影 + **底边 1dp 发丝**（`background: transparent;
+            //   box-shadow: none` + theme.css:466-467 的 `border-bottom: hairline solid border`），
+            //   末行**不画线**（theme.css:467 `.fav-row:last-child { border-bottom-width: 0 }`）。
+            //   ⟹ 原来那套「实底(colorCard) + 片位圆角（sliceBg）+ elev_row 抬升 + 末片 outline」
+            //     整体退役：改用现成的 @drawable/fav_row_line（透明底 + 底边 1dp colorBorder）。
+            //   ⚠ 片位只在全量换数据时才变，所以背景仍在这里按 index 挂（末行要摘线）。
             val isLast = r === newRows.last()
-            sh.root.background = sliceBg(isLast)
-            sh.root.elevation = dimenPx(R.dimen.elev_row).toFloat()
+            if (isLast) sh.root.background = null
+            else sh.root.setBackgroundResource(R.drawable.fav_row_line)
             bindRowShell(sh, r, pendingSyms.contains(r.it.s), confirmSym == r.it.s)
-            shells[r.it.s] = sh
-            favList.addView(sh.root)
+            shells[r.it.s] = sh; favList.addView(sh.root)
         }
     }
 
-    /**
-     * 列表卡的一片：**实底（colorCard）+ 底发丝（colorBorder）**，末片改成**下圆角 + 不画线**。
-     *
-     * 为什么用代码拼而不是换 drawable：`fav_row_line` 只有「透明底 + 底发丝」，没有实底；
-     * 而「实底 + 底发丝」与「实底 + 下圆角 + 无线」这两个组合在 `res/drawable/` 里都不存在
-     * （该目录不在 t51 的 inScope）⟹ 用 LayerDrawable + GradientDrawable 在代码里拼，
-     * 与「新开两张分片 drawable」逐值等价（下一轮可原样收回）。
-     * 色全走 ?attr/；主题切换走 recreate()，整批重建，不留旧色。
-     */
-    private fun sliceBg(last: Boolean): android.graphics.drawable.LayerDrawable {
-        val card = act.attrColor("colorCard")
-        val line = act.attrColor("colorBorder")
-        val body = GradientDrawable().apply {
-            shape = GradientDrawable.RECTANGLE
-            setColor(card)
-            // 末片给下圆角（r-card = 12），中片 r0；上圆角恒 0（上圆角归列头带）
-            cornerRadii = if (last) floatArrayOf(0f, 0f, 0f, 0f, dp(12f), dp(12f), dp(12f), dp(12f))
-                          else floatArrayOf(0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f)
-        }
-        if (last) return android.graphics.drawable.LayerDrawable(arrayOf(body))
-        val rule = GradientDrawable().apply {
-            shape = GradientDrawable.RECTANGLE
-            setColor(line)
-        }
-        return android.graphics.drawable.LayerDrawable(arrayOf(body, rule)).apply {
-            // 底发丝：贴片底、高 1dp、满宽（与 fav_row_line 的形态一致）
-            setLayerHeight(1, dp(1f).toInt())
-            setLayerGravity(1, Gravity.BOTTOM)
-        }
-    }
+    /* 墓碑 · 2026-10-28 t2 · `sliceBg(last)` 已删除（原第 431-451 行，`实底 + 片位圆角 + 底发丝`）。
+     *   删因：Oct-28 稿把自选列表**去卡片化**（`.fav-row { background: transparent; box-shadow: none }`
+     *   + theme.css:466-467 的底边发丝、末行不画线）⟹ 行的背景就是
+     *   `@drawable/fav_row_line`（透明底 + 底边 1dp colorBorder）/ 末行 null，见 submitRows()。
+     *   同批退役的还有 headBg()（列头带的「首片」卡面，改由 page_fav.xml 的同一张 fav_row_line 承担）
+     *   与 applyLastRowOutline()（末片圆角阴影轮廓 —— 行不再有圆角，也不再抬升）。
+     *   若日后要恢复卡片列表：这三处原样收回 + page_fav.xml 的表头背景/行背景一起改，缺一不可。 */
 
     /**
      * **B5 的「字距 + 列宽」方案**：字号不动（= token 值），只调字距；字距也不够时按**实测宽度**
@@ -424,7 +467,8 @@ class FavPanel(
      * 为什么这样写（三条都踩过）：
      *  ① **不许用 autoSizeText**：本机闪退，2026-10-05 已永久弃用。
      *  ② **不许用 ellipsize**：用户 2026-10-07 裁定「不要再剪掉单位」——宁可压字形，不许出现省略号。
-     *  ③ **不许改列宽**：COL_* 与 page_fav.xml 的列头是同一个数（「表头 ⟷ 行内右缘逐像素相等」不变量）。
+     *  ③ **不许改列宽**：列宽 = 四等分网格的 colW（与 page_fav.xml 表头的 weight=1 是同一份几何，
+     *     「表头 ⟷ 行内右缘逐像素相等」不变量）；avail 由调用点传进来，正常值下恒不触发压缩。
      *
      * 做法：`measureText` 量出真实宽度（含字距项 —— `letterSpacing` 是 em 单位，且 **不计入**
      * `paint.measureText`，必须自己加 `letterSpacing × textSize × (n-1)`），
@@ -449,23 +493,10 @@ class FavPanel(
         if (w > avail * 0.96f) tv.textScaleX = (avail * 0.96f / w).coerceIn(0.55f, 1f)
     }
 
-    /** 列头带（列表卡的**首片**）：surface-2 实底 + 上圆角 12 + 底发丝。见 favHeadV 的注释。 */
-    private fun headBg(): android.graphics.drawable.LayerDrawable {
-        val body = GradientDrawable().apply {
-            shape = GradientDrawable.RECTANGLE
-            setColor(act.attrColor("colorSurface2"))
-            // 角序：左上 / 右上 / 右下 / 左下，每角一对半径
-            cornerRadii = floatArrayOf(dp(12f), dp(12f), dp(12f), dp(12f), 0f, 0f, 0f, 0f)
-        }
-        val rule = GradientDrawable().apply {
-            shape = GradientDrawable.RECTANGLE
-            setColor(act.attrColor("colorBorder"))
-        }
-        return android.graphics.drawable.LayerDrawable(arrayOf(body, rule)).apply {
-            setLayerHeight(1, dp(1f).toInt())
-            setLayerGravity(1, Gravity.BOTTOM)
-        }
-    }
+    /* 墓碑 · 2026-10-28 t2 · `headBg()` 已删除（原第 463-478 行：列头带的「首片」卡面 =
+     *   surface-2 实底 + 上圆角 12 + 底发丝）。删因同 sliceBg：列头按稿平铺
+     *   （`.fav-head { background: transparent; border-radius: 0; border-bottom: 1px solid border;
+     *   box-shadow: none }`），底色/底线由 page_fav.xml 的 `@drawable/fav_row_line` 承担。 */
 
 
     /** 逐条更新：只重绑该行，不碰其他行、不重建列表。 */
@@ -529,7 +560,7 @@ class FavPanel(
     // 行高 52dp + 上下各 space_3 内边距；三态 chip 34dp 是行内最高元素
     // ⟹ 实测行高 = 12+34+12 = 58dp（= 方向 B 原型 `方向-B\四屏-自选页.html` 的 .fav-sug__row 实测 58/59px）。
     // ⚠ 2026-10-16 t51 · 方向 B §2.4-3.3：`.fav-sug__row` min 52px / padding 12-16。
-    //   改前是 45.8dp（与 fav_search 的框高对齐，v1 口径）—— 方向 B 的候选行比搜索框高，
+    //   改前是 48dp（与 fav_search 的框高对齐，v1 口径）—— 方向 B 的候选行比搜索框高，
     //   这个「对齐」不再成立，故按语言层给 52dp 下限（真正的行高由 chip 34 + 内边距决定）。
     private val sugRowMinH: Int get() = dp(52f).toInt()
 
@@ -539,7 +570,7 @@ class FavPanel(
     private val sugTagMaxW: Int get() = dp(68.4f).toInt()
 
     // 三态 chip / ＋ 的高与最小宽 = **34dp**（方向 B §2.4-3.9 的药丸规格，与原型 .fav-sug__chip 逐值相同）。
-    // ⚠ 2026-10-16 t51：改前借用 space_8（v1 的 30.5dp）。34 不在新的 4/8/12/16/20/24/32 刻度上，
+    // ⚠ 2026-10-16 t51：改前借用 space_8（v1 的 32dp）。34 不在新的 4/8/12/16/20/24/32 刻度上，
     //   它是**组件规格值**（药丸最小边长），不是间距刻度值 ⟹ 照 §2.4-3.9 写字面 34，不硬塞刻度。
     private val sugChipMin: Int get() = dp(34f).toInt()
 
@@ -582,6 +613,24 @@ class FavPanel(
      * ⟹ 按对照表 §10-R4 的处置：统一退化为 `Typeface.BOLD`(700)，并已回写对照表 §2。
      */
     private val tfSemi: Typeface get() = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+
+    /**
+     * **真正的 600 字面**（`res/font/inter_semibold.ttf`），给「同一串文字里只有数字是 semibold」用。
+     *
+     * 2026-10-28 t11 新增，唯一调用点 = paintCountLine（稿 `.fav-foot__n { font-weight: 600 }`）。
+     * ⚠ 为什么不复用上面的 [tfSemi]：那是 `Typeface.BOLD`(700) 且走系统合成 —— 同一串里混排时，
+     *   合成加粗会把相连的 CJK 字形一起顶厚，出来的不是「数字 600、其余 400」这层对照。
+     *   这里取资源里的真字面，`SpannableStringBuilder` 只把这层套在数字上。
+     * ⚠ `Resources.getFont` 是 API 26+，本项目 minSdk=26；取不到时返回 null ⟹ span 退化成「只换色」，
+     *   不抛异常、也不影响这行的可读性。
+     */
+    private val interSemi: Typeface? by lazy {
+        try {
+            act.resources.getFont(R.font.inter_semibold)
+        } catch (_: Exception) {
+            null
+        }
+    }
 
     // 稿.favrow .fb-* 徽标配色(固定hex,不随主题)
     /**
@@ -809,14 +858,54 @@ class FavPanel(
      *   （「实测出现过 实时4+无源1+计算中6 = 11 > 9 行」），所以 pending 必须先判、
      *   不能同时被算进 noneN。
      */
+    /**
+     * 只换字形、不动尺寸/颜色：给「同一串里只有数字是 semibold」用（2026-10-28 t11）。
+     * ⚠ 不用 `StyleSpan(Typeface.BOLD)`：那是**合成**加粗（700，且会把相连的 CJK 一并顶厚），
+     *   与稿 `.fav-foot__n { font-weight: var(--fw-semibold) }` 要的 600 字面不是一回事。
+     */
+    private class SemiTypefaceSpan(private val tf: Typeface?) :
+        android.text.style.MetricAffectingSpan() {
+        override fun updateDrawState(ds: android.text.TextPaint) { if (tf != null) ds.typeface = tf }
+        override fun updateMeasureState(ds: android.text.TextPaint) { if (tf != null) ds.typeface = tf }
+    }
+
     private fun paintCountLine(live: Int, noneN: Int, wait: Int, total: Int) {
         val tv = favCountV ?: return
         // ⚠ 2026-10-13 用户要求数量行旁显示自选总品种数。第一版用三态求和当总数 —— **错**：
         //   「旧 N 前」的 stale 行既不计实时、也不计无源/待算（三态判据里没有它的位置），
         //   实测 9 行显示「共 8」。改为调用方传**真实行数 rows.size**，不再从三态推。
-        tv.text = "距支撑 实时 $live / 无源 $noneN" +
-            (if (wait > 0) " · 待算 $wait" else "") +
-            (if (total > 0) " · 共 $total 个品种" else "")
+        //
+        // ⚠⚠ 2026-10-28 t11 · **这行是两层颜色，不是一整段同色**（稿四屏-自选页.html:205-210）：
+        //     `.fav-foot__txt { color: var(--ink-sub) }`（= ?attr/colorSub，由 XML 的 textColor 给）
+        //     `.fav-foot__n   { color: var(--ink); font-weight: var(--fw-semibold) }`（= colorInk + 600）
+        //   ⟹ 只把**数字**套「ink 色 + Inter SemiBold」两层 span，其余字符吃 view 自己的 colorSub。
+        //   改前是整串一个 colorFaint（比稿的 ink-sub 还淡，数字也没提亮）⟹ 与稿不符，已按稿改。
+        //   ⚠ 仍未做的一件事：稿的「共 N 个品种」与「待算 N」里的 N 同样套 `.fav-foot__n`，
+        //     这里一并套（待算那一档稿里没有，是本 App 的补充计数，跟着同一套写法走）。
+        val ink = act.attrColor("colorInk")
+        val semi = interSemi
+        val sb = SpannableStringBuilder()
+
+        fun plain(s: String) {
+            sb.append(s)
+        }
+
+        fun number(n: Int) {
+            val start = sb.length
+            sb.append(n.toString())
+            sb.setSpan(
+                ForegroundColorSpan(ink), start, sb.length,
+                android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            sb.setSpan(
+                SemiTypefaceSpan(semi), start, sb.length,
+                android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
+
+        plain("距支撑 实时 "); number(live)
+        plain(" / 无源 "); number(noneN)
+        if (wait > 0) { plain(" · 待算 "); number(wait) }
+        if (total > 0) { plain(" · 共 "); number(total); plain(" 个品种") }
+        tv.text = sb
         // 空列表时也照常显示 0/0：稿把这一行**常驻**渲染（v2.html:1642 不在 st!=='ok' 条件里）。
         tv.visibility = View.VISIBLE
     }
@@ -866,7 +955,6 @@ class FavPanel(
         // 拿列表第一腿顶上去是**编造**(那正是「● 东财」的来源)。
         // t114 C:ago 来自 lastLegsAt(值实际产生的时刻),**不再硬编码「刚刚」**。
         // t116:聚合行**不许点名单一源**。一行聚合数据来自 N 个品种/N 个源/不同抓取时刻,
-        // 根本没有"主用源"——点任何一腿名都是错的(上一轮显示「● 新浪」而屏幕上是股票,就是这个问题)。
         // 源名属于**单个品种**,属于「展开」里的逐品种明细,不属于聚合行。
         // t324 稿 L315-318 的三态:
         //   nosrc  → `—无源 · ${S.ty} 两腿皆不可用`
@@ -879,7 +967,6 @@ class FavPanel(
             main.text = "—无源"
         } else {
             // 腿名必须过 vendorName(): LegInfo.name 存的是竞速 pool 的**内部键**(币是
-            // BN/GT/OK/BB/KU/MX, 美股港股混着「百度」「腾讯」「TX」, A股是「新浪」「东财」),
             // 直接显示用户会看见 BN / OK / TX 这种看不懂的东西。稿 L111-118 的 legs 写的
             // 全是友好显示名, 稿 L334 原样渲染 {l} ⟹ 这里也必须是友好名。
             // 口径与行情页 srcMain(MktPanel 同一处)一致, 两边共用 vendorName 一张表。
@@ -925,17 +1012,15 @@ class FavPanel(
         //        `cooldownMs()` 是从 SRCBAD 时间戳**派生**的、不是腿自己的返回值；
         //        要判「这腿只回了 1 根」必须动 raceOk / fetchCryptoLeg 的**返回契约** ——
         //        那是取数链路，不是文案层。
-        //     ② 稿 L330 的判据是 `l==='腾讯' && nosrc`，**按腿名硬编码的演示态**；
-        //        App 的腿表里「腾讯」在美股/港股/韩股都出现，通用化会在其它市场说错话。
         //     ③ 稿的 nosrc 分支是「—无源」(L315)，thin 只出现在 nosrc 展开明细里；
         //        App 无源时整块报「—无源」，已覆盖主要诉求。
         //   ⟹ 记为已知取舍，**不要**为了让注释好看而去补一个没有数据支撑的状态。
         detail.removeAllViews()
         // 稿 L333 padding '11px 16px 11px 32px' ⟹ 上下 11 / 右 16 / 左 32
         // ⚠ dp 是**本类的成员函数**(L230), 不是 act 的 —— 写成 act.dp 编译不过(t325 实测)。
-        val PAD_R = dp(15.3f).toInt()
+        val PAD_R = dp(16f).toInt()
         val PAD_I = dp(10.5f).toInt()
-        val PAD_TL = dp(30.5f).toInt()
+        val PAD_TL = dp(32f).toInt()
         for (l in legs) {
             val cool = try { l.cooldownMs() } catch (_: Throwable) { 0L }
             val isBad = l.failed || l.skipped
@@ -973,7 +1058,7 @@ class FavPanel(
                 // （状态在 x=250-382，x=400 之后零墨迹），A.2 复核 #9。
                 layoutParams = android.widget.LinearLayout.LayoutParams(
                     0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                    leftMargin = dp(9.5f).toInt()                      // 稿 L333 gap 10
+                    leftMargin = dp(10f).toInt()                      // 稿 L333 gap 10
                 }
                 gravity = android.view.Gravity.END                    // 稿 L335 textAlign:'right'
             }
@@ -998,7 +1083,7 @@ class FavPanel(
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             val pad = dp(1.9f).toInt()
-            setPadding(0, dp(9.5f).toInt(), 0, dp(9.5f).toInt())
+            setPadding(0, dp(10f).toInt(), 0, dp(10f).toInt())
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT)
@@ -1021,12 +1106,12 @@ class FavPanel(
             text = tag
             setTextColor(act.attrColor("colorSub"))
             textSize = TS(R.dimen.fs_note)
-            val p = dp(7.6f).toInt()
+            val p = dp(8f).toInt()
             setPadding(p, dp(1.9f).toInt(), p, dp(1.9f).toInt())
             val lp = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT)
-            lp.leftMargin = dp(9.5f).toInt()
+            lp.leftMargin = dp(10f).toInt()
             layoutParams = lp
         }
         pick.addView(sym)
@@ -1046,7 +1131,7 @@ class FavPanel(
                 val lp = LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT)
-                lp.leftMargin = dp(9.5f).toInt()
+                lp.leftMargin = dp(10f).toInt()
                 layoutParams = lp
             }
             ad.setOnClickListener { add() }
@@ -1067,9 +1152,9 @@ class FavPanel(
     //
     // ⚠ 代码列字体：**保留 monospace**（用户 2026-10-13 裁定，对照表 §0 与 §10-R2）——
     //   与自选行一致、避免代码里 0/O 混淆（PL00Y 被读成 PLOOY）。
-    //   原型里的 Inter+tnum 方案**不进真机**；因此代码列**不**套 tfSemi(600/BOLD)，
-    //   等宽字体族没有 600 档，硬套只会拿到合成假粗体。
-    //   对照表 §5.2 骨架里那句 setTypeface(typeface, 600) 与用户裁定冲突，按裁定执行（见 task output 偏差项）。
+    //   原型里的 Inter+tnum 方案**不进真机**；因此代码列**不**套 tfSemi(600/BOLD)——
+    //   ⚠ 2026-10-22 t2 更正：「等宽字体族没有 600 档，硬套只会拿到合成假粗体」这句**已过期**（IBM Plex Mono **有** 600 档 = res/font/plex_mono_semibold.ttf，OS/2 usWeightClass=600，t1 落地）；
+    //   但仍按裁定**不**套 600：稿 .fav-sug__code 的字重是 --fw-medium(500) ⟹ 取 500 面（res/font/plex_mono_medium.ttf）；对照表 §5.2 骨架那句 setTypeface(typeface, 600) 按裁定不执行。
     private fun sugRow(
         it: SugItem,
         st: SugState,
@@ -1095,6 +1180,11 @@ class FavPanel(
             if (!last) setBackgroundResource(R.drawable.fav_sug_row_line)
             isClickable = true
             isFocusable = true
+            /* ⚠ 2026-10-19 r8 · **A-5**：候选行以前只有 `＋`（ADDABLE 态）有文字替代；行本身的
+               「点行 = 直达该品种行情页」对读屏是**无声**的（dump 里行节点 content-desc 为空）。
+               稿 `四屏-自选页.html:213`/`:241` 逐字给 `aria-label="直达 PL00Y 行情页"` ⟹ 照稿补。
+               ⚠ 取**行代码**而不是中文名：同一列表里每行读起来才知道是哪一个品种。 */
+            contentDescription = "直达 " + it.s + " 行情页"
             // 行态：整行换层 = 方向 B 的 --bg-surface-2（= colorSurface2）。
             // ⚠ 走 setBackgroundColor 而不是再开一个带线的 drawable —— 这是对照表 §5.2 骨架的写法；
             //   副作用（该行底边发丝被实色底覆盖）在「已加入」那一行上，
@@ -1115,7 +1205,7 @@ class FavPanel(
             text = it.s
             textSize = TS(R.dimen.fs_title)
             setTextColor(act.attrColor("colorInk"))
-            typeface = Typeface.MONOSPACE                       // 用户裁定：保留等宽
+            typeface = resources.getFont(R.font.plex_mono_medium) // 2026-10-22 t2（R-34 / C-40）：稿 .fav-sug__code = var(--font-mono) + --fw-medium(500) ⟹ 取 IBM Plex Mono 500 面（与稿同一份字节）；用户裁定：保留等宽
             letterSpacing = 0.03f                               // 对照表 §6-D10：Android 的 letterSpacing 单位也是 em
             maxLines = 1
             ellipsize = android.text.TextUtils.TruncateAt.END
@@ -1131,7 +1221,7 @@ class FavPanel(
             //   中文名仍走文字列，市场标签走徽标，两块不再混在一个 TextView 里。
             val nm = MktSuggest.favName(it.s).trim()
             val mk = it.tag?.trim().orEmpty()
-            val marketTags = setOf("币", "贵金", "A股", "美股", "港股", "韩股", "商品", "美债", "OKX", "Bybit")
+            val marketTags = setOf("币", "贵金", "美股", "韩股", "商品", "美债", "不支持")
             val isMarket = mk in marketTags
             text = when {
                 nm.isNotEmpty() && mk.isNotEmpty() && nm != mk && !isMarket -> "$nm·$mk"
@@ -1163,23 +1253,42 @@ class FavPanel(
             if (text.isEmpty() && !isMarket) visibility = View.GONE
         }
         // 市场标签徽标：与自选行 badge 同形（方向 B §2.4-3.9：colorSurface2 实底药丸 + ink-sub 字，无描边）。
+        // ⚠ 2026-10-28 t2 · 字号/内边距按 Oct-28 稿收档（theme.css:631-642 对 `.fav-badge` 与
+        //   `.fav-sug__badge` 是**同一条规则**）：fs_note(12sp) → **fs_micro(11sp)**、
+        //   内边距 → `1px var(--sp-1)`（左右 4dp / 上下 1dp）。自选行的徽章同步改（见 createRowShell 的 bd）。
         val marketBadge: TextView? = run {
             val mk = it.tag?.trim().orEmpty()
-            val marketTags = setOf("币", "贵金", "A股", "美股", "港股", "韩股", "商品", "美债", "OKX", "Bybit")
+            val marketTags = setOf("币", "贵金", "美股", "韩股", "商品", "美债", "不支持")
             if (mk !in marketTags) null else TextView(act).apply {
                 text = mk
-                textSize = TS(R.dimen.fs_note)
+                textSize = TS(R.dimen.fs_micro)          // 稿 --fs-micro = 11sp
                 setTypeface(tfSemi)                      // 方向 B §6.7 徽标 = 600
                 setTextColor(act.attrColor("colorSub"))
                 maxLines = 1
                 // 方向 B §6.7：徽标 = surface-2 实底药丸（改前是 fav_badge 的「透明底 + 1dp 描边 + r4」）
                 background = pill(act.attrColor("colorSurface2"))
-                val ph = dimenPx(R.dimen.space_2)        // 方向 B §6.7 的 padding: 2px var(--sp-2)
-                val pv = dp(2f).toInt()
+                val ph = dimenPx(R.dimen.space_1)        // 稿 padding: 1px var(--sp-1)
+                val pv = dp(1f).toInt()
                 setPadding(ph, pv, ph, pv)
+                /* ⚠⚠ 2026-10-19 r8 · **A-2**：徽标**不许被尾巴挤到截字**（基线：点＋前 110px=40.0dp 完整
+                   「美股」，点＋后 80px=29.1dp 只剩「美」且**无省略号**，见走查 04 报告 §4-R3）。
+                   根因：`pick` 是 weight=1（拿到 EXACTLY 余量），徽标是 WRAP_CONTENT（只拿到
+                   AT_MOST 余量）⟹ 尾巴「已加入自选」chip 从 40dp 变宽到 84dp 时，徽标就被压 11.1dp。
+                   三件事一起做（合计让出 12dp ≥ 11.1dp 缺口）：
+                     ① 本徽标 `ellipsize = END`（**兜底**：真被挤到也不许「无省略号地裁字」）；
+                     ② `minWidth = 自然宽`（= ceil(measureText) + 2×徽标水平内边距；
+                        2026-10-28 起内边距 space_1(4dp) + 字 11sp ⟹ 2 字 CJK 实测 ≈30.0dp，
+                        改前是 space_2/12sp 的 40.0dp；缺口本来就已解决，这里仍保留 minWidth 兜底）
+                        ⟹ 徽标自身宽度**不随尾巴变宽而缩**，文字完整；
+                     ③ 徽标 leftMargin space_2(8dp) → space_1(4dp)、三态 chip leftMargin space_3(12dp)
+                        → space_1(4dp)：这两条**间距**是本机画框（392.7dp）比稿（412px）窄 4.7% 的适配，
+                        登记在施工报告 §6；**不写死文本宽度、不动 sugSymMaxW/marketNameW 两个代码真值**。 */
+                ellipsize = android.text.TextUtils.TruncateAt.END
+                val badgeNatW = Math.ceil(paint.measureText(mk).toDouble()).toInt() + 2 * ph
+                minWidth = badgeNatW
                 layoutParams = LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT).apply { leftMargin = dimenPx(R.dimen.space_2) }
+                    ViewGroup.LayoutParams.WRAP_CONTENT).apply { leftMargin = dimenPx(R.dimen.space_1) }
             }
         }
         pick.addView(sym)
@@ -1190,12 +1299,12 @@ class FavPanel(
         val tail: View = when (st) {
             SugState.ADDABLE -> TextView(act).apply {
                 /* ⚠⚠ 2026-10-14 t5 修复（t2 复验 F2）：**由 Button 改成 TextView**。
-                   原实现用 Button，显式 minWidth/minHeight=30.5dp + insets=0 **都不管用** ——
+                   原实现用 Button，显式 minWidth/minHeight=32dp + insets=0 **都不管用** ——
                    设备实测仍是 242×132px（88×48dp）：Button 自己的测量把 48dp 最小高度钉死了
-                   （Row 的 45.8dp 被它顶到 132px，比「已加入自选」chip 的 84px 高出一截）。
+                   （Row 的 48dp 被它顶到 132px，比「已加入自选」chip 的 84px 高出一截）。
                    改成 TextView 是**合同给的备选方案**，也是这里唯一与 chip 同构的做法：
-                   三态尾巴因此都是「TextView + 自带背景 + minWidth/minHeight=30.5dp + space_3 内边距」，
-                   同高 84px，可加行回落到 45.8dp(=126px)。
+                   三态尾巴因此都是「TextView + 自带背景 + minWidth/minHeight=32dp + space_3 内边距」，
+                   同高 84px，可加行回落到 48dp(=126px)。
                    ⚠ 仍是可点控件：clickable/focusable 显式打开（TextView 默认都不开），
                      contentDescription 与无障碍语义**逐字保留**（对照表 §4「保留不动」）。 */
                 text = "＋"
@@ -1217,7 +1326,11 @@ class FavPanel(
                 val lp = LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT)
-                lp.leftMargin = dimenPx(R.dimen.space_3)
+                /* ⚠ 2026-10-19 r8 · **A-2**：三态 chip 的左距 space_3(12dp) → space_1(4dp)。
+                   与徽标 leftMargin（8→4dp）合计让出 12dp，抵消 ADDED 态的行内缺口 11.1dp
+                   （走查 04 报告 §4-R3 的算术），使徽标在「已加入自选」态仍保有 40.0dp 自然宽。
+                   登记：本机画框 392.7dp vs 稿 412px 窄 4.7%（与 t12 的既有登记同源）。 */
+                lp.leftMargin = dimenPx(R.dimen.space_1)
                 layoutParams = lp
             }
             SugState.ADDED -> TextView(act).apply {
@@ -1234,6 +1347,11 @@ class FavPanel(
                 gravity = Gravity.CENTER
                 minWidth = sugChipMin
                 minHeight = sugChipMin
+                /* ⚠ 2026-10-19 r8 · **A-4**：ADDED 态原来**没有** contentDescription ⟹ dump 里
+                   `content-desc` 从 `＋` 的「添加到自选：AAPL」变成**空串**（走查 04 §4-R3 自采）。
+                   稿 `四屏-自选页.html:375` 逐字要求 `aria-label = '已加入自选：' + code` ⟹ 补文字替代。
+                   非可点这一点**不变**（纯反馈，无 clickListener/selector）。 */
+                contentDescription = "已加入自选：" + it.s
             }
             SugState.IN_LIST -> TextView(act).apply {
                 text = "已在自选"
@@ -1246,13 +1364,17 @@ class FavPanel(
                 gravity = Gravity.CENTER
                 minWidth = sugChipMin
                 minHeight = sugChipMin
+                // ⚠ 2026-10-19 r8 · **A-4**：与 ADDED 同病，一并补（稿 `:222` 的
+                //   `aria-label="已在自选：PL00Y"` 同构）。
+                contentDescription = "已在自选：" + it.s
             }
         }
         if (tail.layoutParams == null) {
-            // ADDED / IN_LIST 两个 chip 没自带 LayoutParams，这里补上左距（与＋同一个 space_3）。
+            // ADDED / IN_LIST 两个 chip 没自带 LayoutParams，这里补上左距。
+            // ⚠ 2026-10-19 r8 · A-2：由 space_3(12dp) 改 **space_1(4dp)**（与＋同批，理由见 ＋ 处的注释）。
             tail.layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT).apply { leftMargin = dimenPx(R.dimen.space_3) }
+                ViewGroup.LayoutParams.WRAP_CONTENT).apply { leftMargin = dimenPx(R.dimen.space_1) }
         }
         if (st == SugState.ADDABLE) {
             // ＋自己先消费点击（「stopPropagation 等价物」：子 View 先消费，行根的 go 不会再跑）。
@@ -1312,7 +1434,12 @@ class FavPanel(
     private fun flagOf(d: DistR?, pending: Boolean = false): String = when {
         pending           -> "待取数"
         d == null || !d.ok -> "—无源"
-        isStale(d)        -> "旧 " + t114Ago(d.ts)                      // 稿 L378
+        // ⚠ 2026-10-27 用户裁定：**自选行不再显示「旧 N 分钟前」**（原稿 L378 那一档）。
+        //   理由：列表每行都挂一条年龄太吵；数据新鲜度改到**行情页价格卡右上那行**显示
+        //   （见 MktPanel.t2AgeLabel / t102PaintSourceRow）。
+        //   ⚠ 连带：原「stale 必须先于 zero」的次序随之作废 —— 距支撑为 0 的旧值现在落到
+        //     「支撑线上」。isStale() 保留（已无调用点，但它是「多久算旧」的唯一判据，
+        //     删它要连带改 60s 阈值，属另一件事）。
         isZero(d)         -> "支撑线上"                                // 稿 L379
         else              -> ""
     }
@@ -1400,7 +1527,9 @@ class FavPanel(
                         else -> act.attrColor("colorInk")
                     })
             }
-            dc.textSize = TS(R.dimen.fs_data)
+            // 2026-10-28 t2 · 字号收到 fs_title(16sp)：稿 `.fav-dist` = --fs-title（四屏-自选页.html:169-177）。
+            //   ⚠ bindRowShell 末尾会再写一次同一个值（它是最终写者），这里保持同源以免两处口径分叉。
+            dc.textSize = TS(R.dimen.fs_title)
             dc.setTypeface(dc.typeface, Typeface.BOLD)
             // ⚠ 删掉 minWidth=96dp 这个写死值: 它是"数字+时效挤一行"时代的遗产,
             //   那个数还会和 dimens.xml 的 col_dist=112dp 打架(审计点过)。
@@ -1436,46 +1565,36 @@ class FavPanel(
      */
     private fun favSubLine(t: String, cn: String): String = FavStore.tag(t)
 
-    /* t8 照稿 A1④ 列宽 —— 稿 v2.html:952 逐字:
-     *     const GRIDR='88px 88px 76px 56px';   // 品种 | 距支撑(主角列) | 收益率 | 收益比
-     *   稿 v2.html:953-956 原话:「四列按内容实测宽度定死，余量交给
-     *   justify-content:space-between 均分到三条列间隙（用 minmax(0,1fr) 会让品种列
-     *   吞掉全部余量，中间空出一个大洞）」、「合计 308，框内 380，余 72px → 间隙各 24px」。
+    /* ⚠⚠ 2026-10-28 t2 · **列网格改成四等分**（Oct-28 稿 §5 `.fav-grid`，四屏-自选页.html:116-125）
      *
-     *   ⟹ 忠实移植 = **四列定死 + 三条间隙均分余量**。
-     *     LinearLayout 没有 space-between，用**三个 0dp / weight=1 的间隔 View**等价：
-     *     固定宽先占位，余量只会被分给这三个 spacer，各得 余量/3 —— 正是 space-between。
-     *   本机实测: (392.73 − 32 − 308) / 3 = **17.58dp/条**（t1 实测旧值 10dp，偏小 43%）。
+     *   稿逐字：`display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); column-gap: 0`
+     *           + `.g-name/.g-dist/.g-gain/.g-ratio { min-width: 0; width: auto }`
+     *   ⟹ 四列等分、列间零间隙；表头（page_fav.xml 的 fav_head）与行内用的是**同一个网格**。
+     *   LinearLayout 的等价表达 = 每个列容器 `width = 0 + weight = 1`（见 gridColLp）。
      *
-     *   墓碑 · t336 的 `92px 1.2fr 0.88fr 0.88fr` 权重方案本轮**整体下线**：
-     *     它引的是稿的**旧一行**（旧注释写作「稿 L348」），现行稿是 v2.html:952 的定死四列。
-     *   权重列在这里也**用不了**：四列定死 ⟹ 余量必须全部进间隙，
-     *     权重列会把余量吃掉 —— 那正是稿注释里警告的「让某一列吞掉全部余量，中间空出大洞」。
+     *   ⚠ 改前是 v2 稿的 `GRIDR = '88px 88px 76px 56px'`「四列定死 + 三条 space-between 间隙」
+     *     （COL_NAME/COL_DIST/COL_GAIN/COL_RATIO + gapView）。Oct-28 稿把它整体改成等分网格 ⟹
+     *     定死列宽与三条 gap 一并退役：那套做法下「表头 88/88/76/56」与「行内同值」是**两份数**
+     *     靠人工同步，等分之后两边都只是 weight=1，物理上不可能再漂。
      *
-     *   ⚠ col_gap(10dp) 在本结构里**不再参与**。稿的间隙是 space-between 算出来的，不是定值。
-     *     见交付报告：验收文字「列间隙落到 10dp 档」与稿的 space-between 冲突，本条**按稿**。
-     *
-     * ⚠⚠ **必须是【类成员】，不能放回 favRowView 里**（2026-10-02 构建 e:978 实锤）：
-     *   上一版我把它们声明成 favRowView 内部的局部 val/局部 fun，而 `val fcol` 的
-     *   `layoutParams = fixedColLp(COL_NAME)` 在**声明之前**就用了它们。
-     *   **Kotlin 的局部声明不提升**（类成员才可以前向引用）⟹ 报 Unresolved reference。
-     *   提到类成员后一次解决五处调用，且列宽常量只有**一份** —— 不选「在 fcol 那儿再抄一份」，
-     *   那是两份真相，正是 t336 当年权重方案散架的同一个坑。
-     */
-    private val COL_NAME = 88f    // 品种
-    private val COL_DIST = 88f    // 距支撑（主角列）
-    private val COL_GAIN = 76f    // 收益率
-    private val COL_RATIO = 56f   // 收益比
+     *   ⚠ 可用宽度（fitTextScale 的判据，见 bindRowShell）：
+     *     屏幕宽 − 页面列左右 padding(space_2×2) − 行内左右 padding(space_1×2)，再四等分。
+     *     行根与页面列都是 match_parent，所以这个算式与真机布局逐像素一致。
+     *     ⚠ 改前数值列传的是定死列宽 dp(COL_DIST)=88dp / dp(COL_GAIN)=76 / dp(COL_RATIO)=56；
+     *       本轮等分后每列 ≈ 92.18dp（392.73 − 16 − 8 = 368.73 / 4），且**与屏幕宽度联动**，
+     *       不再是一个固定数。 */
 
-    private fun fixedColLp(w: Float) =
-        LinearLayout.LayoutParams(dp(w).toInt(), ViewGroup.LayoutParams.WRAP_CONTENT)
+    /** 四等分网格的一列：`width=0 + weight=1`（= 稿的 `minmax(0,1fr)`）。 */
+    private fun gridColLp() =
+        LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
 
-    /** space-between 的一条「间隙」：0 宽 + weight 1，三条平分余量。 */
-    private fun gapView() = View(act).apply {
-        layoutParams = LinearLayout.LayoutParams(0, 1).apply { weight = 1f }
+    /** 四等分后每列的可用宽度（px）。见上方注释里的算式。 */
+    private val colW: Int get() {
+        val usable = act.resources.displayMetrics.widthPixels -
+            2 * dimenPx(R.dimen.space_2) - 2 * dimenPx(R.dimen.space_1)
+        return usable / 4
     }
 
-    // 自选行雪球式版式(照稿):行>pick>[名称列fcol(名称19px/700+fbadge徽标+代码),
     // 距离列rq>dc胶囊];点行直达行情,**长按删**(2026-10-01 用户裁定长按菜单,取代左滑600ms;
     // 2026-10-06 侧滑删除层整体退役,见下)。
     // ⚠ 2026-10-06 RecyclerView 化:建壳一次、绑定多次,点/长按只挂 itemView。
@@ -1506,7 +1625,7 @@ class FavPanel(
     private fun createRowShell(): RowShell {
         // 稿 L384 行容器: padding: flag ? '11px 16px' : '16px' + borderBottom '1px solid var(line)'。
         // 首帧默认按无 flag 的 16dp 建,bind 时按实际 flag 重算(见 bindRowShell)。
-        val ph = dp(15.3f).toInt()
+        val ph = dp(16f).toInt()
         // 行内容(横向四列)。外层再包一个纵向 root,下面挂行内确认条。
         val content = LinearLayout(act).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -1541,8 +1660,8 @@ class FavPanel(
         }
         val fcol = LinearLayout(act).apply {
             orientation = LinearLayout.VERTICAL
-            // t8 照稿 A1④:首列定死 88(v2.html:952)。
-            layoutParams = fixedColLp(COL_NAME)
+            // 2026-10-28 t2：等分网格的第一列（稿 `.g-name`，四屏-自选页.html:116-125）。
+            layoutParams = gridColLp()
             isClickable = false
             isFocusable = false
         }
@@ -1562,7 +1681,7 @@ class FavPanel(
             val p = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT)
-            p.topMargin = dp(3.8f).toInt()          // 稿 v2.html:1208 marginTop:4
+            p.topMargin = dp(4f).toInt()          // 稿 v2.html:1208 marginTop:4
             // ⚠ 2026-10-06 撤掉上一轮加在这里的 bottomMargin 4dp。
             //   那一刀是为了"徽标不贴线"临时垫的，但只垫了下面 ⟹ 上下不对称，
             //   用户实机报"分隔线上下留白不对称"。行底呼吸本来就由整行 pv 承担，
@@ -1575,20 +1694,26 @@ class FavPanel(
         //   2026-10-16 t51 · 方向 B §2.4-3.9 / §6.7：徽标从「透明底 + 1px 中性描边 + r4」改成
         //   **colorSurface2 实底药丸（r999）+ ink-sub 字 + 600**（与候选行的市场徽标同一配方）。
         //   值仍走 ?attr/，明暗两态自动成立。
+        //   ⚠ 2026-10-28 t2 · **字号与内边距按 Oct-28 稿收档**（theme.css:631-642
+        //     `.fav-badge, .fav-sug__badge { padding: 1px var(--sp-1); font-size: var(--fs-micro);
+        //     line-height: var(--lh-micro); font-weight: var(--fw-semibold) }`）：
+        //       改前 = fs_note(12sp) + 左右 space_2(8dp) / 上下 2dp（档外值）
+        //       现在 = fs_micro(11sp) + 左右 space_1(4dp) / 上下 1dp
         val bd = TextView(act).apply {
             setTextColor(act.attrColor("colorSub"))      // 方向 B --ink-sub
-            textSize = TS(R.dimen.fs_note)
+            textSize = TS(R.dimen.fs_micro)              // 稿 --fs-micro = 11sp
             setTypeface(tfSemi)                          // 方向 B §6.7 徽标 = 600
             maxLines = 1
-            setPadding(dimenPx(R.dimen.space_2), dp(2f).toInt(), dimenPx(R.dimen.space_2), dp(2f).toInt())
+            val ph = dimenPx(R.dimen.space_1)            // 稿 padding: 1px var(--sp-1)
+            val pv = dp(1f).toInt()
+            setPadding(ph, pv, ph, pv)
             background = pill(act.attrColor("colorSurface2"))
             isClickable = false
             isFocusable = false
         }
         fsub.addView(bd)
         val codeTv = TextView(act).apply {
-            // ⚠ 2026-10-05 **A 股显示去前缀的代码**(`688825` 而非 `sh688825`,
-            //   `sh`/`sz` 是取数用的市场前缀,不该出现在屏上;港股同理显示 `00700`)。
+            // 2026-11-03：港股/A股下线后没有"取数前缀"要剥，代码就是规范化符号本身。
             setTextColor(act.attrColor("colorSub"))       // 稿 --ink2
             textSize = TS(R.dimen.fs_note)
             maxLines = 1
@@ -1626,12 +1751,15 @@ class FavPanel(
         val flagTv = TextView(act).apply {
             textSize = TS(R.dimen.fs_note)
             maxLines = 1
-            gravity = Gravity.CENTER
+            // 2026-10-28 t2：与上面的数字同一条右缘（稿 `.fav-cell--dist` 的 align-items: flex-end，
+            //   见 bindRowShell 里 dc.gravity 的注释）。改前是 CENTER（同样因为默认 MATCH_PARENT 宽，
+            //   实际表现为列心居中）。
+            gravity = Gravity.END
             visibility = View.GONE
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                topMargin = dp(3.8f).toInt()
+                topMargin = dp(4f).toInt()
             }
             isClickable = false
             isFocusable = false
@@ -1639,12 +1767,12 @@ class FavPanel(
         dc.tag = flagTv
         dcol.addView(dc)
         dcol.addView(flagTv)
-        dcol.layoutParams = fixedColLp(COL_DIST)
+        dcol.layoutParams = gridColLp()          // 2026-10-28 t2：等分网格的第二列（稿 `.g-dist`）
         val gc = TextView(act).apply {
             textSize = TS(R.dimen.fs_title)
             gravity = Gravity.END or Gravity.CENTER_VERTICAL
             setTypeface(typeface, Typeface.BOLD)
-            layoutParams = fixedColLp(COL_GAIN)
+            layoutParams = gridColLp()           // 第三列（稿 `.g-gain`）
             maxLines = 1
             ellipsize = android.text.TextUtils.TruncateAt.END
             isClickable = false
@@ -1653,17 +1781,18 @@ class FavPanel(
         val rc = TextView(act).apply {
             textSize = TS(R.dimen.fs_title)
             gravity = Gravity.END or Gravity.CENTER_VERTICAL
-            layoutParams = fixedColLp(COL_RATIO)
+            layoutParams = gridColLp()           // 第四列（稿 `.g-ratio`）
             maxLines = 1
             ellipsize = android.text.TextUtils.TruncateAt.END
             isClickable = false
             isFocusable = false
         }
-        // t8 照稿 A1④:四列定死 + 三条 space-between 间隙,**顺序必须与稿 GRIDR 一致**。
+        // 2026-10-28 t2：四列**等分**（.fav-grid 的 repeat(4,minmax(0,1fr)) + column-gap:0）
+        //   ⟹ 列间不再插 space-between 的 spacer，顺序仍是 品种 / 距支撑 / 收益率 / 距离比。
         pick.addView(fcol)
-        pick.addView(gapView()); pick.addView(dcol)
-        pick.addView(gapView()); pick.addView(gc)
-        pick.addView(gapView()); pick.addView(rc)
+        pick.addView(dcol)
+        pick.addView(gc)
+        pick.addView(rc)
         content.addView(pick)
         // C 版行内确认条:平时 GONE,长按才展开。
         // 「删除 {代码} {中文名}? [取消] [删除]」,眼睛不离开这一行。
@@ -1690,7 +1819,7 @@ class FavPanel(
             setPadding(dp(16f).toInt(), dp(7f).toInt(), dp(16f).toInt(), dp(7f).toInt())
             background = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
-                cornerRadius = dp(6f)
+                cornerRadius = dp(10f)          // r9：收进 r-input 10dp（稿自选页无此元素 ⟹ 按三档口径）
                 setStroke(dp(1f).toInt(), act.attrColor("colorRed"))
                 setColor(Color.TRANSPARENT)
             }
@@ -1711,23 +1840,19 @@ class FavPanel(
             addView(stripDel)
         }
         // itemView 根:纵向 = 行内容 + 确认条。
-        // ⚠ 2026-10-06 borderBottom 通栏线挂在这里（稿 L384:每一行下面都有一条）。
+        // ⚠ 2026-10-06 底线通栏线挂在**行根**上（稿:每一行下面都有一条）。
         //   线必须跟着**有内边距**的容器走 —— 之前挂在无内边距的 content 底边，
         //   字下面几乎贴线、线下面却是下一行的整段 pv，上下两把尺子。
-        //   现在线的上下都是同一套 pv，对称。
-        // ⚠ 2026-10-16 t51 · 方向 B §2.4-3.2「列表卡 = 分片」：**背景不再在建立时挂死**，
-        //   改由 submitRows() 按片位分配（首/中片 = 实底 + 底发丝；末片 = 实底 + 下圆角、不画线）。
-        //   理由：片位只在「全量换数据」时才知道（末片是谁），建立时无法判定。
+        // ⚠ 2026-10-28 t2 · 去卡片化后行根**不再有外缩**：页面列（page_fav.xml L154）自己吃
+        //   space_2，行内再吃 space_1（见 bindRowShell 的 ph）⟹ 行文字离屏边 12dp。
+        //   改前这里是 space_4 外缩（卡片的左右边界），列表改平铺后那 16dp 会多缩一档。
+        //   背景（底边发丝 / 末行无线）仍由 submitRows() 按「是不是最后一行」挂，
+        //   因为只有全量换数据时才知道末行是谁。
         val root = LinearLayout(act).apply {
             orientation = LinearLayout.VERTICAL
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                // 方向 B §2.4-3.2：列表卡与搜索卡**同一外缩**（space_4）⟹ 卡的左右边界对齐，
-                // 卡内文字也就落在同一条基线上（16 外缩 + 16 内边距 = 32dp）。
-                leftMargin = dimenPx(R.dimen.space_4)
-                rightMargin = dimenPx(R.dimen.space_4)
-            }
+                ViewGroup.LayoutParams.WRAP_CONTENT)
             isClickable = true
             isFocusable = true
             addView(content)
@@ -1762,17 +1887,25 @@ class FavPanel(
         sh.boundSym = r.it.s
         // 行高:flag 判据与 flagTv 同源 ⟹ 「flag 画出来了」与「行高跟着变了」不可能脱节。
         val flagged = flagOf(r.d, pending).isNotEmpty()
-        // ⚠ 2026-10-16 t51 · 方向 B §2.4-3.3：行 padding = 16（左右 space_4）。
-        //   改前左右 15.3dp（v1 的 space_4 档），新刻度里 space_4 = 16dp ⟹ 直接吃 dimen。
-        //   垂直仍保留 v1 的「有 flag 行少垫一点」补偿（flagged→space_3），
-        //   目的是让带时效行的行高与普通行一致；方向 B 的 §3.3 只钉了 16 与 ≈76，
-        //   这个补偿不冲突，且是 v1 既有口径，本轮不动它（只把它从字面 11dp 收到刻度 space_3=12）。
+        // ⚠ 2026-10-28 t2 · 行内边距按 Oct-28 稿（四屏-自选页.html:143-148 `.fav-row { padding: sp-4 sp-1 }`）：
+        //   左右 space_4(16dp) → **space_1(4dp)**（卡片外缩退役后，页面列 space_2 承担那 8dp，
+        //   行文字离屏边 8+4 = 12dp，与表头、与屏底计数行同一条基线）；
+        //   垂直仍是 space_4(16)，带 flag 的行按 v1 既有补偿降到 space_3(12)
+        //   （目的是让带时效行的行高与普通行一致；稿 :144 只给了 sp-4 一个值，这条补偿不冲突）。
         val pv = if (flagged) dimenPx(R.dimen.space_3) else dimenPx(R.dimen.space_4)
-        val ph = dimenPx(R.dimen.space_4)
+        val ph = dimenPx(R.dimen.space_1)
         sh.root.setPadding(ph, pv, ph, pv)
         // 标题:有中文名用中文名,没有(币类 shortSym 即代码)才回落代码本身。
         val cnName = MktSuggest.favName(r.it.s)
-        sh.fname.text = if (cnName.isNotEmpty() && cnName != r.it.s) cnName else r.it.s
+        val showName = if (cnName.isNotEmpty() && cnName != r.it.s) cnName else r.it.s
+        sh.fname.text = showName
+        /* ⚠ 2026-10-19 r8 · **A-5**：自选列表行（外层的可点行根）以前**没有** contentDescription ⟹
+           「点行 = 打开该品种行情页」这个动作对读屏是无声的。
+           ⚠ **登记：这一条稿里没有判据** —— 稿 `四屏-自选页.html` 只给了候选行的 aria-label（`:213`/`:241`），
+             自选行**没给**。按 `设计语言 §7.6「有意义的图形/动作给文字替代」` 补全
+             「打开 {显示名} 行情页」，属**稿无判据的补全**（不是照稿）；显示名取与行标题同一个值
+             （中文名优先、没有中文名回落代码），保证读出来的名字与屏上看到的**同一个**。 */
+        sh.root.contentDescription = "打开 " + showName + " 行情页"
         // ⚠ 2026-10-07 同上：标题恒墨，不再按stale置灰（时效只看flag行）。
         sh.fname.setTextColor(act.attrColor("colorInk"))
         // ⚠ 2026-10-13 用户裁定「字太多就缩小字号」——名字过长**缩字号**，不截断、不缩名。
@@ -1802,22 +1935,33 @@ class FavPanel(
         //   ≥10 字（如 `-12345.67%`）取 60%，再长就不是正常数值了。
         paintDist(sh.dc, r.d, pending)
         paintFlag(sh.dc, r.d, pending)
-        // ⚠⚠ 2026-10-16 t51 · **撤掉 ×0.88 防裁切缩字（B5）**，换成「字距 + 列宽」方案。
-        //   改前（2026-10-07 裁定「统一把字都缩小，不要再剪掉单位」）：整体 ×0.88 再按长度分档
-        //   ⟹ 屏上是 17.6sp（20×0.88），**贴 token 的假值**，与方向 B 的 20/16/12 冲突。
-        //   方向 B 的做法：**字号 = token 值（fs_data = 20sp）不动**，「装得下」改由字距与列宽承担：
+        // ⚠⚠ 2026-10-28 t2 · **距支撑字号 fs_data(20sp) → fs_title(16sp)**，可用宽度按新列网格重算。
+        //   稿件：四屏-自选页.html:169-177 `.fav-dist { font-size: var(--fs-title); font-weight: var(--fw-title);
+        //   letter-spacing: var(--ls-title); font-variant-numeric: tabular-nums }`
+        //   + :188-193 `.fav-val { font-size: var(--fs-title) }` ⟹ 距支撑与右两列**同为 title 档**，
+        //     不再有「主角列比别的列大一档」的 20sp 特例（那是 v2 稿的 `.dist` 大数字口径）。
+        //   ⚠ 「装得下」仍走 t51 的「字距 + 实测宽度」兜底（B5）：
         //     · 字距按长度收紧（fitTextScale 内的三档），吃掉的是数字间的空白；
-        //     · 列宽仍是代码真值 COL_DIST = 88dp，**不改**（与列头 88 是同一个数，动它=破不变量）。
-        //       实测（density 2.75）：`+32.69%` 在 20sp 下宽 ≈217px < 242px（88dp）⟹ 7 字以内本来就装得下，
-        //       v1 的 ×0.88 是为更长值买的保险；把保险换成「按实测宽度的确定性兜底」更划算。
-        //     · ≥10 字的极端值（`-12345.67%`）字距也不够 ⟹ fitTextScale 按 **paint.measureText 实测宽度**
-        //       做横向压缩（纯算术、确定性、不可能闪退；**字号仍是 20sp**，只压字形宽度，绝不出现省略号）。
+        //     · 可用宽度 = **四等分网格的一列宽**（colW，≈92.18dp @392.73dp 屏，见 fav 列网格注释）。
+        //       改前传的是定死列宽 dp(COL_DIST)=88dp；等分后列宽与屏宽联动，必须按 colW 重算，
+        //       否则在小屏/窄屏上兜底压缩会判“装得下”而实际被裁（真机实测：`+22.63%` 的 % 被吃掉）。
+        //       `+32.69%` 在 16sp 下实测 ≈174px < 253px（92dp）⟹ 7 字以内本来就装得下，
+        //       fitTextScale 只在极端值（`-12345.67%`，≥10 字）时兜底。
+        //     · 兜底 = 按 **paint.measureText 实测宽度** 做横向压缩（纯算术、确定性、不可能闪退；
+        //       **字号仍是 token 值**，只压字形宽度，绝不出现省略号）。
         //   ⚠ 为什么不用 ellipsize=END：用户 2026-10-07 明确「不要再剪掉单位」——宁可压字形，不许剪。
         //   ⚠ 为什么不用 autoSizeText：本机闪退，2026-10-05 已永久弃用（见上方注释）。
-        sh.dc.textSize = TS(R.dimen.fs_data)
-        sh.dc.gravity = Gravity.CENTER
+        sh.dc.textSize = TS(R.dimen.fs_title)
+        // ⚠ 2026-10-28 t2 · dc 的 gravity 改 END：稿 `.fav-cell--dist { align-items: flex-end }`
+        //   （四屏-自选页.html:151-153）⟹ 距支撑的数字与下面那行 flag 都**贴列右缘**，
+        //   与表头 `距支撑 ⇅` 按钮的右缘落在同一条竖线上。
+        //   ⚠ 改前写的是 Gravity.CENTER —— 那是无效的「居中」意图：dc 没有显式 LayoutParams，
+        //     而**纵向 LinearLayout 的 addView 默认给 MATCH_PARENT 宽**，于是这个 TextView 占满整列，
+        //     CENTER 就真的把数字居中到列心（真机实测：列 218..412，`+9.28%` 落在 255..377，
+        //     右缘比表头短 35px）。列等分后这个偏差在 4 列网格里一眼可见，故一并纠正为右对齐。
+        sh.dc.gravity = Gravity.END or Gravity.CENTER_VERTICAL
         sh.dc.maxLines = 1
-        fitTextScale(sh.dc, dp(COL_DIST).toInt())
+        fitTextScale(sh.dc, colW)
         // ⚠ 8.6dp 是 v1 的档外值（刻度里没有）—— 收到 space_2 = 8dp（差 0.6dp，肉眼无差）。
         sh.dc.setPadding(0, dimenPx(R.dimen.space_2), 0, dimenPx(R.dimen.space_2))
         sh.dc.background = null
@@ -1851,17 +1995,17 @@ class FavPanel(
         //   ⟹ 不再设 tooltip（信息在计算页同源可见）；同时显式清 rc 的（paintRatioCell 若设过）。
         //   保留下方 stripClickable 作皮带（不再承担本修复的成败）。
         sh.gc.tooltipText = null
-        // ⚠ 2026-10-16 t51 · 与距支撑同批撤掉 ×0.88（B5）：两列都回到 token 值 fs_title = 16sp。
-        //   这两列的值短（`+41.23%` / `70.95%`，实测 ≈174px / 149px），列宽 76dp=209px、56dp=154px
-        //   ⟹ 本来就装得下；fitTextScale 只在极端值时兜底（正常值下 textScaleX 恒 = 1）。
+        // ⚠ 2026-10-28 t2 · 与距支撑同批：三列**同为 fs_title(16sp)**（稿 `.fav-val` / `.fav-dist` 都是
+        //   `--fs-title`），兜底压缩的可用宽度也统一按四等分列宽 colW（改前是 dp(COL_GAIN)=76dp /
+        //   dp(COL_RATIO)=56dp 两个定死值）。7 字以内本来就装得下（正常值下 textScaleX 恒 = 1）。
         sh.gc.textSize = TS(R.dimen.fs_title)
-        fitTextScale(sh.gc, dp(COL_GAIN).toInt())
+        fitTextScale(sh.gc, colW)
         sh.rc.textSize = TS(R.dimen.fs_title)
         // 收益比。
         paintRatioCell(sh.rc, r.d, r.m)
         // ⚠ 顺序要紧：`rc` 的文本在 paintRatioCell 里才写进去 ⟹ 字距/兜底压缩必须**放在它之后**
         //   （真机实测：放在前面时 `41.43%` 被 ellipsize 成 `41.43…`，'%' 被吃掉）。
-        fitTextScale(sh.rc, dp(COL_RATIO).toInt())
+        fitTextScale(sh.rc, colW)
         sh.rc.tooltipText = null // 2026-10-13 同上：清 tooltip，别让它吞整行点击
         // ⚠ 2026-10-13 用户实报「点字进不去，只有点空白处才能进行情页」。
         //   根因：收益比/收益率格子设了 tooltipText（见上），Android 会自动把该 View 置为
@@ -1920,13 +2064,8 @@ class FavPanel(
         //   ⟹ 改成**逐行**取（见下方 rows 循环内的 mkt.distWin(f.s)），一个行一个口径，互不影响。
         //     本函数只做**展示**（FavDist.shown = 缓存/落盘读取），不发任何请求。
 
-        // ⚠ 2026-10-05 **补中文名**。自选行的排版规则是「中文名 · 徽章 · 代码」，
-        //   本地表（MktSuggest）里没有 A 股 ⟹ `favName` 返回空，标题回落成原始代码
-        //   `sh688825`，第二行又因为「标题已是代码」而不再显示代码 ——
-        //   屏上那一行就成了「原始代码 + A股 + 空」，与其他品种的规则对不上。
-        //   这里把「查不到名字」的符号整批交给 NameBook（腾讯行情，一次一批、落盘缓存），
-        //   到了再 repaint 一次。**先出旧样子、名字到了再刷新**，不阻塞首帧。
-        MktData.NameBook.ensure(act, a.map { it.s }) { repaint() }
+        // ⚠ 2026-10-05 **补中文名**。自选行的排版规则是「中文名 · 徽章 · 代码」。
+        // ⚠ 2026-11-03：名字来源改成**内置离线目录**（UsNames）—— 零网络、首帧就能读，
         data class Row(val it: FavItem, val d: DistR?, val m: RowMeta, val ratio: Double?)
         // 冷启动/断网首帧:display()兜底沿用持久化旧值,不先画无源;
         // 记录侧取该品种最新一条(latestRecOf,追加语义下读取取最新)
@@ -2010,8 +2149,11 @@ class FavPanel(
     //                  改前是无参全量,配合全局窗口 = 改一个就全量重取,见 MktPanel 文件头墓碑)
     //   add 成功后     只 repaint（新行没有值就顶着空/留底，等用户下一次显式动作）
     //   MainActivity  回前台**不**调 onShow（onResume 只 ensure 汇率）⟹ 回前台不刷，无定时轮询
-    // bg=后台补抓轮(本会话已成功的 key 直接复用现值、不再发请求,幂等)
-    // net=真抓轮(冷启动首次进自选的那一轮,**绕过全部复用层真的发网络请求**,见 FavDist.forceFetch)
+    //   ⚠ 2026-11-02 **补一条**：`onShow` 现在带陈旧闸 —— 距上一轮刷新完成 ≥5 分钟才补一轮
+    //      （见 onShow ③）。5 分钟内反复切页仍是零请求，节奏与 MainActivity 的前台定时拉取一致。
+    // bg=后台轻量重算轮(本会话已成功的 key 直接复用现值,幂等)
+    // net=全局前台刷新轮：唯一取数口 MktData.acquire(refresh=true) 真正拉取；本类随后只用共享批次重算距离。
+    // ⚠ 网络失败不能从留底重算并刷新 DistR.ts；只保留旧 lastOk 和它原来的数据年龄。
     // ⚠ 2026-10-10 起 onShow 不再传 only；**2026-10-12 裁定 B 改起，only 有了在用的调用点**
     //   —— onDistCommitted 传 `setOf(刚确认的品种)`，只刷那一行（见上方「保留的刷新入口」）。
     fun refreshFavDist(bg: Boolean = false, only: Set<String>? = null, net: Boolean = false) {
@@ -2057,7 +2199,6 @@ class FavPanel(
             //       第1次 空响应 → 等 45s → 第2次 40根 ✅ → 立刻第3次 空响应 ❌
             //   自选屏一次刷 5 个品种、每品种 2 条腿 ≈ 10+ 请求**同时**打出去 ⟹ 必撞限流。
             //   表现：撞上的那个品种显示「—无源」。黄金稳定中招（排最后，
-            //         且它的新浪腿返回 [] 白打一次），美光/海力士/比亚迪侥幸没撞上。
             // ⟹ 改成**错峰启动**：每个品种的 Thread 起来后先 sleep 一个按序号递增的间隔再取数。
             //   ⚠ 用 Thread.sleep 错峰而不是排队，**刻意为之**：保持每品种独立、
             //     失败隔离、互不阻塞的原有形状，只改「什么时候开始打」。
@@ -2078,7 +2219,7 @@ class FavPanel(
             //   ⚠ 这不是把 300ms 调大这么简单 —— 十几条以内**必须保持原 300ms**，
             //     否则就是拿常见场景的体验去补极端场景的坑。
             // ⚠ 2026-10-12 裁定 B 改：**每个品种进循环时定死它自己的窗口**（gridcalc_win_v1[s]，
-            //   无记录回落 ("M" to 20)）。下面 key / cached / lastOk / forceFetch / fullSup /
+            //   无记录回落 ("M" to 20)）。下面 key / cached / lastOk / recomputeFresh / fullSup /
             //   lightPx / display **七处同用这一份 (tf,n)** ⟹ 换窗口只换这一个品种的 key。
             //   改前这份 (tf,n) 是循环外的全局值：一变，**所有**行的 key 同时变 → 新鲜缓存
             //   全 miss → 全量重取（用户报的「改了 TSLA 的窗口，退回自选又把全部品种取了一遍」）。
@@ -2097,16 +2238,22 @@ class FavPanel(
                     r = shown
                 } else {
                     try {
-                        // 稿§5 两条取数路径:后台环=fullSup重抓支撑;首帧=lightPx轻量刷价
-                        // ⚠ 2026-10-09 **第三条:真抓轮(net)** —— 用户裁定「冷启动首次那轮选
-                        //   留底先上屏 + 后台错峰真抓一轮覆盖」。forceFetch 绕过
-                        //   LastChart/MktCache/MktSave 与本文件 5 分钟新鲜缓存，对每个品种
-                        //   **真的发请求**（改前这三级一命中就直接返回，一个请求都不发）。
-                        //   失败时下面的 display() 会回落 lastOk() 留底旧值，屏上不会空。
-                        r = when {
-                            net -> FavDist.forceFetch(s, tf, n)
-                            bg -> FavDist.fullSup(s, tf, n)
-                            else -> FavDist.lightPx(s, tf, n)
+                        // 所有网络只走唯一数据入口。只有 MainActivity 的前台定时器传 net=true，
+                        // 此时必须 refresh=true 绕过 MktCache/MktSave；普通界面联动只读已有批次。
+                        // ⚠ 2026-11-03 t16（t4 的 R3）：已下线市场（旧收藏里的港股/A股）
+                        //   **不发请求、不折算**，行内直接给「—不支持」（徽章另显示「不支持」）。
+                        if (MktData.symType(s) == "unsupported") {
+                            r = DistR(false, why = "—不支持")
+                        } else {
+                            val bars = MktData.acquire(s, tf, refresh = net)
+                            if (net && bars.isEmpty()) {
+                                // 本轮未取得新批次：不能再从旧留底重算并把 DistR.ts 伪装成当前。
+                                // display() 会保留 lastOk 的旧时间，让用户仍能看到留底但不报它是新鲜数据。
+                                r = DistR(false, why = "—无源")
+                            } else {
+                                // 中文名来自内置离线目录（UsNames），首帧已可读 ⟹ 这条旁路补名已删除。
+                                r = if (net) FavDist.recomputeFresh(s, tf, n) else FavDist.lightPx(s, tf, n)
+                            }
                         }
                     } catch (_: Exception) {
                     }
@@ -2169,53 +2316,33 @@ class FavPanel(
         val syms = FavStore.get(act).map { it.s }.distinct()
         if (syms.isEmpty()) return
 
-        // ② ⚠⚠⚠ 2026-10-09 **进程内首次进入自选：真抓一轮**。两句裁定拼起来才是这一段的语义：
-        //    ①「只在进程内首次进入自选刷新一次」⟹ 只有"首次"这一次；
-        //    ②「冷启动首次那轮选留底先上屏 + 后台错峰真抓一轮覆盖」⟹ 这一轮是**真抓**。
-        //    （2026-10-05 那句「没有获取到的，可以在限流措施内继续刷，但是只刷新他」
-        //      已被 2026-10-10 裁定取代，**不再是本段的依据**，见 ③。）
-        //    · 一轮 = **全量**（这是唯一允许全量的一处）；
-        //    · 真抓 = net=true ⟹ FavDist.forceFetch，绕过 LastChart/MktCache/MktSave
-        //      与 5 分钟新鲜缓存，对每个品种真的发网络请求（改前复用层一命中就返回，
-        //      所谓"刷新"只是拿缓存重算一遍）；
-        //    · 失败的行由回调里的 display() 回落 lastOk() 留底旧值顶屏。
-        //    ⚠ 本分支**语义未变**（2026-10-10 只删了下面 ③）：仍是"首次、全量、真抓"。
-        //      唯一少掉的是原来在这里顺手写的一次 `lastMissFetchAt[s] = now` —— 那是给
-        //      已删的 ③ 限流闸用的记账，首轮自身的行为与它无关，删掉不改变首轮。
-        if (!firstRoundDone) {
-            firstRoundDone = true
-            refreshFavDist(net = true)
-            return
-        }
+        // ②③ ⚠⚠⚠ 2026-11-02 **用户裁定：自选页不取数**（原话：自选页本身不需要拉取数据，
+        //   它只需要使用数据进行计算；拉取只由数据引擎做，任意界面都可以触发自动拉取）。
+        //   ⟹ 这里不发请求，onShow 只 `repaint()`；全局前台 timer 在 MainActivity 调
+        //     refreshFavDist(net=true)，由 MktData.acquire(refresh=true) 刷新整张自选表；
+        //     行情页取数也走同一个 acquire 入口。距离只从数据引擎已落地的批次计算。
+        //   ⚠ 不要再往 onShow 里加任何 form of 取数 —— 那正是这次要消掉的东西。
+    }
 
-        // ③ 【原"按缺值补刷"路径，2026-10-10 已删】——切页到此为止，不发任何请求。
-        //
-        // 删掉的是什么：原先这里按 `!FavDist.hasValue(s, tf, n) &&
-        //   now - lastMissFetchAt[s] >= MISS_REFETCH_GAP_MS` 求出 missing 集合，
-        //   再 `refreshFavDist(only = missing)` 去补那 1~2 行。
-        //
-        // 【为什么删】它挂着 60s 限流闸，**看着**不像"每次切页都刷"，但自选里只要有
-        //   1~2 个**永远取不到数**的品种（韩股、布伦特原油 B00Y 这类从没成功过的），
-        //   它们的 `hasValue` 恒为 false ⟹ 过了 60s 再切页必然命中 missing 又打一轮。
-        //   用户看到的就是「每次到自选页面就要自动刷新数据」——他 2026-10-10 的裁定
-        //   正是针对这个观感：**随便切一下页面不该触发任何取数**。
-        //   限流闸能压低请求量，但压不掉"切页会发请求"这件事本身。
-        //
-        // 【连带的死代码】`lastMissFetchAt` 与 `MISS_REFETCH_GAP_MS` 只服务这条路径，
-        //   已随它一起删（companion 里留了墓碑注释）。原来在 ② 之前声明的
-        //   `val now = System.currentTimeMillis()` 与 `val (tf, n) = mkt.distWin()`
-        //   也只剩这条路径在用，一并删（见上面两处 ⚠）。
-        //
-        // 【还活着的刷新入口】cycleSort（用户点列头）→ 全量，**未动**；
-        //   MainActivity.onDistCommitted（用户提交距离窗口）→ **only = 刚确认的那一个品种**
-        //   （2026-10-12 裁定 B 改；改前是无参全量，那时全局窗口一变就等于全部重取）；
-        //   加自选后走 mktPanel.onFavChanged → 只 repaint（本来就不取数），**未动**。
-        //   ⚠ 别再往 onShow 里加取数：那正是 2026-10-10 裁定要拿掉的东西。
+    /**
+     * 行情页刚把某品种的新 K 线落到 `MktData.LastChart`（[MktPanel.onChartReady]）。
+     * 自选页要做两件事：① 丢掉该品种的旧距离缓存；② 正显示自选页时按**这一批**重算那一行。
+     *
+     * ⚠ `net=false`：走 lightPx → compute 的复用层，直接吃 LastChart，**不发网络请求**。
+     * ⚠ **不在自选页时也要重算**（只是不更新 UI）：cache 预热后，下次 onShow 的 repaint
+     *   直接命中新值；否则 invalidate 之后 repaint 只会回落 lastOk 的旧值，等于白失效。
+     * 2026-11-02 用户报「行情页拉到新数据，自选页还是旧值，要一个品种一个品种点」——
+     * 这一条就是让行情页的每一次成功取数**自动**落到对应的自选行上。
+     */
+    fun onMarketChartReady(sym: String) {
+        val u = MktData.canonicalSym(sym)
+        if (u.isEmpty()) return
+        FavDist.invalidateSymbol(u)
+        refreshFavDist(only = setOf(u))
     }
 
     // 离开自选页(稿else clearTimeout(FAVRetry)):停表清计时器,在途旧结果作废
-    fun onHide() {
-        hidden = true
+    fun onHide() {        hidden = true
         distSeq++
         // t35:离开自选页时清空「待取数」集合。
         // 理由与 distSeq++ 同源 —— 在途线程的 runOnUiThread 回调会因 hidden 直接早退,
@@ -2258,8 +2385,18 @@ class FavPanel(
         // ⚠ 2026-10-16 t51 · 方向 B §2.4-3.4：表头三键**一律 600**（改前只有当前排序列加粗）。
         //   未选中列仍 faint、选中列仍 ink + 主色箭头（这两条 v1 已对，不动）；
         //   加粗统一走 tfSemi —— 与「列头 = 12sp/600/faint」逐字对齐。
-        //   ⚠ 这里是**加粗不是换字色**：contentDescription（无障碍对应物）一个字都没动。
+        //   ⚠ 这里是**加粗不是换字色**：`b.text` 的文案与箭头字形一个字都没动。
         b.setTypeface(tfSemi)
+        /* ⚠ 2026-10-19 r8 · **A-5**：三个列头按钮以前**没有** contentDescription ⟹ 读屏只会念
+           「距支撑 ⇅ / 收益率 ⇅ / 距离比 ▼」这一串含字形的文字。稿 `四屏-自选页.html:266-271` 逐字：
+             排序箭头是**有意义的图形**（字形标 aria-hidden），语义由**按钮文字替代**给出 ——
+             `aria-label="按距支撑排序" / "按收益率排序" / "按距离比排序，当前降序"`。
+           ⟹ 照稿：替代文字 = 「按{列名}排序」+ 选中态后缀「，当前升序/降序」；
+             `b.text` 里的箭头字形**保留**（它是稿意义上的图形，替代文字由按钮承担）。
+           注：旧注释曾写「contentDescription（无障碍对应物）一个字都没动」—— 那句在**当时**是
+             「没改」的意思，与本轮 A-5 的补写不冲突；本轮起它确实存在了。 */
+        b.contentDescription = "按" + label + "排序" +
+            (if (active) "，当前" + (if (dir == "asc") "升序" else "降序") else "")
     }
 
     private fun paintSortHeads() {
@@ -2378,7 +2515,12 @@ class FavPanel(
      * 这里直接 loadInterpolator 同一份资源，不为一次动画去改 MainActivity 的可见性）。
      *
      * 动画对象选 `sugScroll` 而不是 `fav_sug_box`：box 是 wrap_content 的父容器，
-     * 子高度变化它自然跟着长；box 顶部那 1dp 主色发丝（fav_sug_accent）不受影响。
+     * 子高度变化它自然跟着长（2026-10-28 t2 候选层搬出搜索卡后这条**依然成立** ——
+     * box 现在是页面列里的兄弟层，仍然是 wrap_content，只当外壳；原来那 1dp 主色发丝
+     * fav_sug_accent 已随卡中卡下线，边界改由卡面的 1dp colorBorder 承担）。
+     * ⚠ 搬出搜索卡后 **父容器换成了页面列的 LinearLayout（仍是 LinearLayout）** ⟹
+     *   applySugHeight() 里 `layoutParams as LinearLayout.LayoutParams` 的读法、以及
+     *   AnimatorListener 里「动画跑到尾才置 GONE」的判据全部不变，动画本身**一行没改**。
      *
      * ⚠ 与对照表 D11 的分界：D11 说的是「＋ ⇄ 已加入」**行内状态切换不做动画**（仍遵守），
      *   本次只给**容器高度**加过渡，不碰行态切换本身。
@@ -2517,21 +2659,34 @@ class FavPanel(
         //   ⚠ mine 本身不扣：行态判定仍要用**真实**的已收藏集合（`it.s in mine` → IN_LIST）。
         val mineForRank = mine - addedSinceOpen
         val show = MktSuggest.rankFav(items, q, mineForRank)
-        // ⚠ 已在自选的行仍进不了 show（rankFav 的 `!in mine` 是既有口径，MktSuggest 在范围外）
-        //   ⟹ IN_LIST 态在本次改版的真机路径上**不可达**（已裁定，见 task output 偏差项）。
-        // ① 无匹配：现状是一行 note("无匹配")，改成两行诚实空态（不放「直接添加」死行）。
+        // ⚠⚠ 2026-10-19 r8 · **A-1 改准（原文写反了）**：改前这里写「已在自选的行仍进不了 show
+        //   （rankFav 的 `!in mine` 是既有口径）⟹ IN_LIST 态在真机路径上**不可达**」。
+        //   本轮已按稿删掉 rankFav 的那句过滤（`MktSuggest.kt` rankFav 处有完整登记）⟹
+        //   **IN_LIST 态在真机可达**：已收藏项重新进 show，行态判定命中 `it.s in mine`，
+        //   尾巴 = 「已在自选」中性内嵌 chip，与稿 `四屏-自选页.html:209-213` 同构。
+        //   ⟹ 连带修掉 **A-6** 的误报：搜一个**已收藏**的品种不再掉进「无匹配」空态
+        //     （空态只在**真的**无命中时出现，判据 = show.isEmpty()，一字未动）。
+        //   ⚠ 「点＋后原地转已加入」不受影响：它靠 `addedSinceOpen`（上面 `mineForRank` 扣的就是它）
+        //     区分 ADDED 与 IN_LIST，刚加的那行仍在 show 里、行态 = ADDED。
+        // ① 无匹配：两行诚实空态（不放「直接添加」死行）。
+        //   ⚠ 2026-11-03 t11：已下线市场（港股 00700 / A股 sh688825）**不许落到通用「无匹配」**——
+        //     那不是"没搜到"，是"这个市场不支持"，两种语义混在一句里用户只会反复换写法试。
+        //     文案唯一来源仍是 MktData.unsupportedText。
         if (show.isEmpty()) {
+            val unsupported = MktData.symType(q) == "unsupported"
             resultsBox.addView(LinearLayout(act).apply {
                 orientation = LinearLayout.VERTICAL
                 setPadding(sugEmptyPadH, sugEmptyPadTop, sugEmptyPadH, sugEmptyPadBottom)
                 addView(TextView(act).apply {
-                    text = "无匹配"
+                    text = if (unsupported) MktData.unsupportedText(q) else "无匹配"
                     textSize = TS(R.dimen.fs_title)
                     setTypeface(tfSemi)
-                    setTextColor(act.attrColor("colorSub"))
+                    setTextColor(act.attrColor(if (unsupported) "colorRed" else "colorSub"))
                 })
                 addView(TextView(act).apply {
-                    text = "检查代码或中文名，或试试 PL00Y / AAPL / PYPL"
+                    // 举例码用**目录里真实存在**的普通股（AAPL/TSLA），不再用设计稿占位 PL00Y。
+                    text = if (unsupported) "港股与 A 股已下线；可搜 AAPL / TSLA / 000660 / BTCUSDT"
+                           else "检查代码或中文名，或试试 AAPL / TSLA / PYPL"
                     textSize = TS(R.dimen.fs_note)
                     setTextColor(act.attrColor("colorFaint"))
                     setPadding(0, dimenPx(R.dimen.space_1), 0, 0)
@@ -2574,7 +2729,10 @@ class FavPanel(
         // 可获焦浮层 show/dismiss 会抢窗口焦点、收软键盘,复用与延后恢复都只是事后补救,
         // 真机上照样掉。内联容器与输入框同属一个窗口,不产生新的窗口焦点,
         // 键盘没有被收的理由;无障碍树里也天然可达。
-        val w = searchInp.width
+        // ⚠⚠ 2026-10-28 t2 · 宽度来源改 `sugInnerWidth()`：候选层搬出搜索卡后，它的内宽不再等于
+        //   输入框宽度（候选层离屏边 16dp，输入框 20dp）⟹ 拿 searchInp.width 会让 sugScroll 比
+        //   卡面窄 8dp、行内右对齐元素也跟着短一截。见 sugInnerWidth 的注释。
+        val w = sugInnerWidth()
         if (w <= 0) return
         sugScroll.measure(
             View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.EXACTLY),
@@ -2614,36 +2772,16 @@ class FavPanel(
         }
         val r = Runnable {
             val gen = ++fsGen
+            // ① 本地即时：内置离线目录（中文名/代码/英文名子串），零网络。
             val local = MktSuggest.favLocal(q)
             showResults(local, q)
+            // ② 远端补充：**美股或加密二选一**（一次搜索只打一家，见 MktSuggest.remote）。
+            //    三段并联全部删除 —— 那是"多源兜底链"，正是本轮要消灭的东西。
             Thread {
-                val more = mutableListOf<SugItem>()
-                try {
-                    for (e in MktSuggest.spotAll()) {
-                        if (e.s.contains(q) && more.none { it.s == e.s }) {
-                            more.add(e)
-                        }
-                    }
-                } catch (_: Exception) {
-                }
+                val remote = MktSuggest.remote(q)
                 if (gen != fsGen) return@Thread
-                val withSpot = local + more.filter { x -> local.none { it.s == x.s } }
-                act.runOnUiThread {
-                    if (gen != fsGen) return@runOnUiThread
-                    showResults(withSpot, q)
-                }
-                try {
-                    for (x in MktSuggest.yahooFav(q)) {
-                        if (more.none { it.s == x.s } &&
-                            withSpot.none { it.s == x.s }
-                        ) {
-                            more.add(x)
-                        }
-                    }
-                } catch (_: Exception) {
-                }
-                if (gen != fsGen) return@Thread
-                val all = withSpot + more.filter { x -> withSpot.none { it.s == x.s } }
+                val all = (local + remote.filter { x -> local.none { it.s == x.s } })
+                    .distinctBy { it.s }
                 act.runOnUiThread {
                     if (gen != fsGen) return@runOnUiThread
                     showResults(all, q)
@@ -2694,6 +2832,13 @@ class FavPanel(
         //   起在别的页时那一轮**本来就不该打**（28 品种 × 1~2 腿，白撞东财限流）。
     }
 
+    /* 墓碑 · 2026-10-28 t2 · `applyLastRowOutline(root)` 已删除（原第 2760-2787 行）。
+     *   它当年给「末片」补一层凸形 outline，好让 elev_row 的阴影只落在最后一行下沿、
+     *   不落到片间接缝里。Oct-28 稿的自选行**不抬升、不圆角**（`.fav-row { box-shadow: none }`
+     *   + 无 border-radius）⟹ 没有阴影要塑形，这段连同行抬升一起退役。
+     *   ⚠ 它同时把父链的 clipChildren / clipToPadding 打开，那是给阴影留画布用的；
+     *     现在行不再画阴影，也没有别的地方依赖那两个标记。 */
+
     companion object {
         // ⚠ 2026-10-10 这里原有两个成员，**已删**（用户当天裁定「切页不刷」的连带清理）：
         //   · `MISS_REFETCH_GAP_MS`（60s 限流闸）—— 只被 onShow ③「按缺值补刷」那条路径读；
@@ -2701,13 +2846,11 @@ class FavPanel(
         //   路径删了，两者都没有任何引用点 ⟹ 按"不留死代码"清掉。删它们**不影响**首轮真抓
         //   （onShow ②）与其它刷新入口：那两个成员从没参与过那些路径。
         //   ⚠ 别因为"看着像限流保护"就加回来 —— 切页已经不发请求，没有需要限流的对象了。
-        //   裁定原文与完整理由见 onShow() ③ 的墓碑注释。
-
-        /**
-         * **进程内**是否已经刷过冷启动首轮（见 onShow ②）。
-         * ⚠ 必须是**进程级**（companion）而不是实例字段：转屏/主题变化会重建 Activity，
-         *   实例字段会把「每进程一次」变成「每次重建一次」。
-         */
-        @Volatile private var firstRoundDone = false
+        //   裁定原文与完整理由见 onShow() ②③ 的墓碑注释。
+        // ⚠ 2026-11-02 又清了三个（同一原因：自选页不再取数 ⟹ 它们全都没有读者）：
+        //   · `FAV_PULL_MS`（进页陈旧闸的周期）
+        //   · `lastDistPullAt`（上一轮刷新完成时刻）
+        //   · `firstRoundDone`（进程内首次进页真抓一轮的标记）
+        //   取数现在只由 `MainActivity.autoPull`（前台每 5 分钟，与页面无关）驱动。
     }
 }

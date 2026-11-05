@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- 浅色 · 白天 -->
+    <!-- 2026-10-21 迁移：token 值不再手写在本文件 ——
+         色/值住在 values/tokens_generated.xml（由 theme.css 生成，**勿手改**）；
+         本文件只留 App 自有 token（colorBlueBg）与非 token 项（字体 / 状态栏 / textColor*）。
+         改了稿请改 theme.css 后重跑：python toolchain/tokens/gen_android.py（apply 模式） -->
     <!-- ⚠⚠ 2026-10-16 t49：色 token 整表换成 **方向 B「分层卡片」** 的 20 色
          （规格 design/四屏视觉改版/交接_方向B.md §2.1 色表 / §2.5 改名表 / §5.3-M1）。
          对照表写在 attrs.xml 下半段（不写就不可查）。三条要点：
@@ -8,47 +11,8 @@
            ② **主色拆两个角色**：colorAccentText（当文字/描边，深色要够亮）与
               colorAccentFill（当实底，白字要够深）—— 这正是 v1 F-5 的根因；
            ③ **涨绿跌红只换值、不翻转**（colorTeal 仍是涨/买，colorRed 仍是跌/卖）。 -->
-    <style name="Theme.GridCalc.Light" parent="android:Theme.Material.NoActionBar">
-        <item name="colorCanvas">#F1F4F8</item>
-        <item name="colorCard">#FFFFFF</item>
-        <!-- colorInput = colorSurface2 的旧名(同值同角色), 保留给未迁移的 layout; 新 drawable 用 colorSurface2 -->
-        <item name="colorInput">#EDF1F6</item>
-        <item name="colorSurface2">#EDF1F6</item>
-        <item name="colorSurface3">#E2E8F0</item>
-        <!-- 选中药丸: 浅色取 surface(见 colorSurfaceRaised 的注释) -->
-        <item name="colorSurfaceRaised">#FFFFFF</item>
-        <!-- 稿 colorInk（第一档墨色），B-40 对应表见 attrs.xml；方向 B 换值 #1B1E25 → #10151C -->
-        <item name="colorInk">#10151C</item>
-        <!-- 稿 colorSub（第二档墨色），B-40 对应表见 attrs.xml；方向 B 换值 #53575F → #4A5563 -->
-        <item name="colorSub">#4A5563</item>
-        <!-- 稿 colorFaint（第三档墨色），B-40 对应表见 attrs.xml；方向 B 换值 #686C74 → #646E7C -->
-        <item name="colorFaint">#646E7C</item>
-        <!-- colorPrimary = 主色**当文字/图标/描边**的旧名(全仓 300+ 处引用), 取 accent-text 的值;
-             实底场景改用 colorAccentFill。 -->
-        <item name="colorPrimary">#2A5BD7</item>
-        <!-- colorPrimaryPressed: v1 的「主色 60% 叠画布」合成口径已退役, 方向 B 给的是真实深色 token -->
-        <item name="colorPrimaryPressed">#1E47B0</item>
-        <item name="colorAccentText">#2A5BD7</item>
-        <item name="colorAccentFill">#2A5BD7</item>
-        <item name="colorAccentPressed">#1E47B0</item>
-        <!-- accent-soft = rgba(42,91,215,.10) ⟹ #1A2A5BD7(alpha 前置, 与 colorTealBg 同格式) -->
-        <item name="colorAccentSoft">#1A2A5BD7</item>
-        <!-- ⚠ 2026-10-02 t7 那条「浅色涨绿由 0x008457 改 0x00794D」的口径**已退役**：
-             它对齐的是 v1 稿 t16 的 up。方向 B 的浅色 up = #0B7A55（压画布 #F1F4F8 = 4.84:1，本机复算），
-             本行按方向 B §2.1 取值。**语义不变：绿 = 涨/买，红 = 跌/卖，不许翻转。** -->
-        <item name="colorTeal">#0B7A55</item>
-        <item name="colorRed">#C0362F</item>
-        <!-- 危险实底之上的字色（浅色白字压 #C0362F = 5.51:1）；深色换深墨, 见 Dark -->
-        <item name="colorOnDanger">#FFFFFF</item>
-        <item name="colorBorder">#DCE3EB</item>
-        <item name="colorBorderStrong">#C6D0DC</item>
-        <!-- 无文字控件的边界色: 压自身底色 4.21:1 ⟹ 过 3:1（v1 的 colorBorder 只有 1.35:1） -->
-        <item name="colorControlOutline">#6B7684</item>
-        <item name="colorTrackOff">#E2E8F0</item>
-        <item name="colorThumbOff">#333C48</item>
-        <item name="colorTealBg">#1F0AA182</item>
+    <style name="Theme.GridCalc.Light" parent="Theme.GridCalc.Tokens.Light">
         <item name="colorBlueBg">#1F9B7DFF</item>
-        <item name="colorOnPrimary">#FFFFFF</item>
         <item name="android:windowBackground">?attr/colorCanvas</item>
         <item name="android:statusBarColor">?attr/colorCanvas</item>
         <item name="android:navigationBarColor">?attr/colorCanvas</item>
@@ -77,47 +41,8 @@
     <!-- ⚠⚠ 2026-10-16 t49：同浅色，整表换成方向 B 的 20 色（交接 §2.1 右列）。
          深色的层次**不走阴影**（§2.3：elev-* 在深色一律 none）而走 4 级色调阶梯：
          canvas #0E1116 → surface #161B22 → surface-2 #1E242D → surface-3 #272E38，每级更亮。 -->
-    <style name="Theme.GridCalc.Dark" parent="android:Theme.Material.NoActionBar">
-        <item name="colorCanvas">#0E1116</item>
-        <item name="colorCard">#161B22</item>
-        <!-- colorInput = colorSurface2 的旧名(同值同角色), 保留给未迁移的 layout -->
-        <item name="colorInput">#1E242D</item>
-        <item name="colorSurface2">#1E242D</item>
-        <item name="colorSurface3">#272E38</item>
-        <!-- 选中药丸: 深色取 surface-3（#272E38 压 #1E242D 轨道才看得出抬起） -->
-        <item name="colorSurfaceRaised">#272E38</item>
-        <!-- 稿 colorInk（第一档墨色），B-40 对应表见 attrs.xml；方向 B 换值 #E7E9EF → #E9EDF3 -->
-        <item name="colorInk">#E9EDF3</item>
-        <!-- 稿 colorSub（第二档墨色），B-40 对应表见 attrs.xml；方向 B 换值 #9CA0A8 → #AAB4C2 -->
-        <item name="colorSub">#AAB4C2</item>
-        <!-- 稿 colorFaint（第三档墨色）；方向 B 换值 #82868f → #818C9B。
-             ⚠ t41（2026-10-0x）那条「#70747D → #82868f，深色 hint 4.15→5.33:1」的口径**已退役**：
-             它对齐的是 v1 稿的 ink3。方向 B 的深色 ink-faint = #818C9B（压 canvas = 5.55:1，仍过 AA，本机复算）。
-             本轮只按方向 B 取值，不再回溯 v1 稿的两次修正。 -->
-        <item name="colorFaint">#818C9B</item>
-        <item name="colorPrimary">#8FB2FF</item>
-        <item name="colorPrimaryPressed">#2F55B8</item>
-        <!-- accent 拆角色: 文字/描边用 #8FB2FF（压深色画布 8.22:1）；实底用 #3D6BE0（白字压它 4.80:1） -->
-        <item name="colorAccentText">#8FB2FF</item>
-        <item name="colorAccentFill">#3D6BE0</item>
-        <item name="colorAccentPressed">#2F55B8</item>
-        <!-- accent-soft = rgba(143,178,255,.14) ⟹ #248FB2FF -->
-        <item name="colorAccentSoft">#248FB2FF</item>
-        <item name="colorTeal">#3FD48F</item>
-        <item name="colorRed">#FF7A72</item>
-        <!-- ⚠ 危险实底之上换**深墨**：v1 深色是白字压 #E94C44 = 3.76:1，不过 AA（交接 §5.1-②）。
-             方向 B 深色 down 变量 = #FF7A72，白字压它只有 2.54:1 ⟹ 必须换深墨：
-             #0A0D12 压 #FF7A72 = **7.67:1**（压 v1 的 #E94C44 也有 5.17:1）。
-             **不动共享的 colorOnPrimary**（主色实底的字色两套都必须是白）。 -->
-        <item name="colorOnDanger">#0A0D12</item>
-        <item name="colorBorder">#2A313B</item>
-        <item name="colorBorderStrong">#3A434F</item>
-        <item name="colorControlOutline">#6E7A88</item>
-        <item name="colorTrackOff">#1E242D</item>
-        <item name="colorThumbOff">#C3CBD6</item>
-        <item name="colorTealBg">#1F27A644</item>
+    <style name="Theme.GridCalc.Dark" parent="Theme.GridCalc.Tokens.Dark">
         <item name="colorBlueBg">#269B7DFF</item>
-        <item name="colorOnPrimary">#FFFFFF</item>
         <item name="android:windowBackground">?attr/colorCanvas</item>
         <item name="android:statusBarColor">?attr/colorCanvas</item>
         <item name="android:navigationBarColor">?attr/colorCanvas</item>

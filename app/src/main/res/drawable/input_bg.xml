@@ -1,13 +1,33 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 输入 / 内嵌面（含聚焦态）。
-     2026-10-16 t49 · 方向 B §2.4-3.8「输入 / 内嵌面」+ §2.3 圆角：
-       常态：底 = colorSurface2（= bg-surface-2）、描边 1dp = colorBorder、圆角 **8 → 10dp**（-r-input）。
-       聚焦：底抬到 colorCard（= bg-surface）、描边换 colorAccentText（= -accent）—— 逐字照
-             「聚焦 = 描边 accent + 底 surface」。
-     ⚠ §2.4-3.8 的「容器描边 transparent / 控件本体描边 control-outline」两类分写：
-       本 drawable 是**控件本体**那一类（自带底色的输入面），所以描边是**看得见的**，
-       不写 transparent —— 写 transparent 会被对比度闸读成「描边 = 自身底色」= 1.00:1。
-       聚焦态的描边用 accent（浅色 #2A5BD7 压卡片面 #FFFFFF = 5.87:1，本机复算）。 -->
+<!-- 共享输入件 · **容器类**（对应稿 .fav-field / .calc-field / .calc-cell / .calc-lev）。
+
+     ── 2026-10-28 本轮统一 ───────────────────────────────────────────────────
+     输入控件按稿 theme.css §6.6 分成两类 + 一个输入体落点，三类共用同一条配方
+     （圆角 10dp / 聚焦 = 1dp colorAccentText 描边 + colorCard 底）：
+       ① 容器类（本文件）：底 colorSurface2（bg-surface-2）+ r10，**常态没有可见描边**
+          —— 稿 theme.css:582-587 逐字 `background: bg-surface-2; border: 1px solid transparent;
+             border-radius: r-input`：容器不参与控件边界判定，边界由内嵌底承担；
+          聚焦 = 底抬到 colorCard（bg-surface）+ 描边 1dp colorAccentText（accent）
+          —— 逐字照 theme.css:600-604 的 :focus-within。
+       ② 控件本体类（自带底色的裸输入 .mk-cnt__i 一组）：见 drawable/mkt_count_box.xml
+          （surface2 + 1dp colorControlOutline）。
+       ③ 容器内输入体（透明体）：见 drawable/calc_input_bg.xml。
+     三类落点的对照表写在 values/styles.xml 末尾，改任何一类先看那张表。
+
+     ── 本轮改了什么 ─────────────────────────────────────────────────────────
+     改前常态 = 1dp **colorBorder**（#DCE3EB 压 #EDF1F6 约 1.2:1，屏上等于一条看不见的线），
+     与稿的「transparent」是两回事；本轮按容器类收口为**不写描边**。
+       · 为什么不写成 `width=0dp` 或透明色的 <stroke>：Android 的描边画在形状内侧，
+         透明描边既不参与任何渲染，也不属于本 App 的六道闸要读的「控件边界」——
+         直接不写，几何与稿的 1px transparent 边框等价（稿那边 border 只占盒模型）。
+       · 边界感从哪来：surface-2 面层与卡面/画布的色差（稿的同一套分层语汇），
+         以及聚焦时那圈 1dp accent 描边（浅色压卡面 5.87:1）。
+     ⚠ 旧注释里「写透明描边会被对比度闸读成 1.00:1」说的是**原型**的 smoke2.py 闸
+       （读 CSS 的 borderTopColor）；App 侧六道闸不读这个值，故不再为闸保留一条假描边。
+
+     活引用（2026-10-28 grep）：**1 处** —— layout/page_fav.xml:279 的搜索框 fav_search。
+     若后续把它包进一层 .fav-field 容器（容器用 surface-2 + r10 的面），本框应改挂
+     @drawable/calc_input_bg（本体透明），不要再自带底 —— 否则一层里会出现两个灰盒子。 -->
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:state_focused="true">
         <shape android:shape="rectangle">
@@ -19,7 +39,6 @@
     <item>
         <shape android:shape="rectangle">
             <solid android:color="?attr/colorSurface2" />
-            <stroke android:width="1dp" android:color="?attr/colorBorder" />
             <corners android:radius="10dp" />
         </shape>
     </item>

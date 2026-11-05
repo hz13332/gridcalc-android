@@ -10,7 +10,7 @@
     <application
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
-        android:label="网格交易收益计算器"
+        android:label="网格罗盘"
         android:supportsRtl="true"
         android:theme="@style/Theme.GridCalc.Dark">
         <activity

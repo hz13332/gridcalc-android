@@ -48,7 +48,6 @@ object FavDist {
     private val okSeen = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     // 同key在途复用:第一个发起者负责抓取(**在锁外**),并发到达者等它的 Future 拿到同一结果。
     // v4.1/t94-O2:原先用 per-key monitor 把「网络取数 + SP 落盘」整段包在 synchronized(lock) 里。
-    // 单次抓取最坏耗时可观(股走稿§6串行腿:东财6s+Nasdaq9s+腾讯9s+Yahoo9s;加密腿单腿10s),
     // 于是 ART 打出 `Long monitor contention ... FavDist.compute(FavDist.kt:206) ... for 10.392s`,
     // 且违反 v4_spec §0.1「不阻塞界面、不做长等待」——网络取数绝不该在锁内做。
     // 改为 Future 复用:去重语义不变(同key仍只发一轮请求),但等待方阻塞在 Future.get 而非 monitor,
@@ -66,7 +65,15 @@ object FavDist {
 
     // 字符串键(照稿favKey().key):对象作键会永远miss,此处自查为字符串拼接
     fun key(s: String, tf: String, n: Int): String =
-        MktData.symType(s) + "|" + s + "|" + tf + "|" + n
+        MktData.symType(s) + "|" + MktData.canonicalSym(s) + "|" + tf + "|" + n
+
+    /** Canonicalize persisted/cache keys while preserving legacy type/tf/n segments. */
+    internal fun canonicalKey(raw: String): String {
+        val p = raw.split("|")
+        if (p.size < 4) return raw
+        return p[0] + "|" + MktData.canonicalSym(p[1]) + "|" +
+            p.drop(2).joinToString("|")
+    }
 
     @Synchronized
     fun cached(s: String, tf: String, n: Int): DistR? {
@@ -80,10 +87,29 @@ object FavDist {
     fun doneOk(k: String): Boolean = okSeen.contains(k)
 
     /**
+     * 丢掉某品种的距离缓存（**只清内存态**），让下一次 [compute] 重新按最新 K 线算一遍。
+     *
+     * 触发点：行情页刚为它取到新 K 线（`MktPanel.renderAgg` → `MktData.LastChart.put` 之后）。
+     * 2026-11-02 用户报「行情页拉到了，自选页还是旧值，得一个品种一个品种点」——
+     * 根因就在这里：行情页的数据落地后没人通知自选，自选那行只能等自己下一轮全量抓取，
+     * 而它的 5 分钟缓存还会把刚取到的新数据挡在外面。
+     *
+     * ⚠ 不动落盘的 `lastOk`：新值还没算出来之前，旧值仍是唯一可展示的兜底。
+     * ⚠ 按**品种**清（所有 tf/n 键），因为行情页的周期与自选的冻结窗不保证一致。
+     */
+    @Synchronized
+    fun invalidateSymbol(s: String) {
+        val u = MktData.canonicalSym(s)
+        if (u.isEmpty()) return
+        val prefix = MktData.symType(u) + "|" + u + "|"
+        cache.keys.removeAll { it.startsWith(prefix) }
+    }
+
+
+    /**
      * ⚠ 2026-10-07 **落盘毒值防线（实机实证）**。
      *   真机上同一行先显示 +1532.43%、清数据后变 +1117.12%，而正解（尺度带收紧后）是 1.52%
      *   —— 说明**上一版算出的坏值被持久化了**，SP 里的旧值可以压过新代码最多 24 小时。
-     *   用户报「博通/腾讯数字夸张」很可能看的就是这种残值。
      *   判据：尺度带生效后，支撑必然落在 [现价/3, 现价*3] 内 ⟹ 距支撑数学上不可能超过 200%。
      *   超过即判定为旧版/坏数据，**丢弃并让调用方重算**，绝不拿它顶屏。
      *   ⚠ 墓碑 · 2026-10-12 用户裁定选 A：`profileOf` 的尺度带已整段删除（见 [MktData.profileOf]），
@@ -95,7 +121,7 @@ object FavDist {
     private fun sane(pct: Double): Boolean = pct.isFinite() && pct >= 0.0 && pct <= 200.0
 
     /**
-     * 该品种在**取数侧**用的符号 —— 与 [fetchAndDerive] 的 when 分支**同源**，改一处必须改两处。
+     * 该品种在**取数侧**用的符号 —— 与 [deriveFromAvailable] 的 when 分支**同源**，改一处必须改两处。
      *
      * ⚠⚠ 2026-10-08 这个函数存在的唯一理由：**同一个品种在两处用了两个名字**。
      *   · 自选/存储侧：XAUUSD / XAGUSD（用户在搜索框里看到、FavStore 里存的就是这个）
@@ -191,10 +217,24 @@ object FavDist {
                 val txt = a.getSharedPreferences(PF, Context.MODE_PRIVATE)
                     .getString(PKEY, "{}") ?: "{}"
                 val o = JSONObject(txt)
+                val normalized = LinkedHashMap<String, JSONObject>()
                 val it = o.keys()
                 while (it.hasNext()) {
-                    val k = it.next()
-                    o.optJSONObject(k)?.let { e -> store[k] = e }
+                    val rawKey = it.next()
+                    val entry = o.optJSONObject(rawKey) ?: continue
+                    val canonical = canonicalKey(rawKey)
+                    // A canonical record wins even when an old alias was serialized first.
+                    if (!normalized.containsKey(canonical) || rawKey == canonical) {
+                        normalized[canonical] = entry
+                    }
+                }
+                store.clear()
+                store.putAll(normalized)
+                if (normalized.keys != o.keys().asSequence().toSet()) {
+                    val migrated = JSONObject()
+                    for ((k, v) in normalized) migrated.put(k, v)
+                    a.getSharedPreferences(PF, Context.MODE_PRIVATE)
+                        .edit().putString(PKEY, migrated.toString()).apply()
                 }
             } catch (_: Exception) {
             }
@@ -206,9 +246,10 @@ object FavDist {
     private fun save(k: String, r: DistR) {
         val a = app ?: return
         ensureLoaded()
+        val canonical = canonicalKey(k)
         try {
             synchronized(store) {
-                store[k] = JSONObject()
+                store[canonical] = JSONObject()
                     .put("pct", r.pct).put("px", r.price).put("chg", r.chg)
                     .put("ts", r.ts).put("st", "ok")
                     .put("sup1", r.sup1).put("sup2", r.sup2)
@@ -237,47 +278,35 @@ object FavDist {
         }
     }
 
-    // 同步拉取并缓存(调用方放后台线程);同key在途复用首抓结果,**网络取数在任何锁之外**
+    // 同步从共享数据引擎读取并缓存派生结果（调用方放后台线程）；同 key 的重复计算复用在途结果。
     fun compute(s: String, tf: String, n: Int): DistR = compute(s, tf, n, false)
 
     /**
-     * ⚠⚠ 2026-10-09 **真抓一轮**（用户裁定：冷启动首次进自选那轮要「后台错峰真抓一轮覆盖」）。
-     *
-     * 【为什么必须单开一条路 —— 反直觉但已核实的现役行为】
-     *   [fetchAndDerive] 的复用链只要命中（`r.ok || r.soft`）就**直接返回、一个请求都不发**；
-     *   而自选屏用过的三级复用（LastChart / MktCache.cachedFor / MktSave.saved）在
-     *   「用户打开过该品种」时几乎必中 ⟹ 现役的 refreshFavDist 多半只是「拿缓存重算一遍」，
-     *   裁定的「首次真抓一轮」根本落不到地上。
-     *
-     * 【口径】绕过**全部**复用层：LastChart / MktCache / MktSave，也绕开本文件 5 分钟新鲜缓存
-     *   （[cached]），对每个品种**真的发起网络取数**。
-     *   ⚠ 失败**不抛异常**：返回失败 DistR，由调用方 [display] 回落 [lastOk] 的留底旧值 ——
-     *     这就是「留底先上屏 + 真抓覆盖，抓不到就继续顶着旧值」。
-     *   ⚠ 真抓成功后照常写 [MktData.MktSave]（带 tf），下一轮就能被复用层兜住。
+     * 绕过本地 5 分钟派生缓存，按共享数据引擎当前批次重新计算距离。
+     * ⚠ 本函数**不发网络请求**；唯一取数口是 [MktData.acquire]。
+     * 调用方必须先确认 acquire(refresh=true) 返回了新批次；失败时不能用旧留底重算并刷新时间戳。
      */
-    fun forceFetch(s: String, tf: String, n: Int): DistR = compute(s, tf, n, true)
+    fun recomputeFresh(s: String, tf: String, n: Int): DistR = compute(s, tf, n, true)
 
-    private fun compute(s: String, tf: String, n: Int, forceNet: Boolean): DistR {
-        if (!forceNet) cached(s, tf, n)?.let { return it }
+    private fun compute(s: String, tf: String, n: Int, forceRecompute: Boolean): DistR {
+        if (!forceRecompute) cached(s, tf, n)?.let { return it }
         val k = key(s, tf, n)
-        // ⚠ 真抓轮用**独立的在途键**：若与普通轮共享同一个 Future，首轮可能等到一个
-        //   由缓存/留底短路出来的结果，那就不叫真抓了。代价是极端情况下同 key 并发两条请求，
-        //   而首轮每进程只跑一次，可接受。
-        val ik = if (forceNet) "$k#net" else k
+        // 强制重算用独立在途键，避免与普通的 5 分钟缓存命中路径串用结果。
+        val ik = if (forceRecompute) "$k#recompute" else k
         val mine = java.util.concurrent.CompletableFuture<DistR>()
         val prev = inflight.putIfAbsent(ik, mine)
         if (prev != null) {
-            // 同key已有在途抓取:等它完成复用结果(不重复发请求)。此处不持任何 monitor,
+            // 同 key 已有在途计算：等待并复用结果，不重复计算。此处不持 monitor，
             // 因此不会再出现 ART 的 monitor contention 警告。
             return try {
                 prev.get(inflightWaitMs, java.util.concurrent.TimeUnit.MILLISECONDS)
             } catch (_: Exception) {
-                // 首抓者异常/超时:能读缓存就回落缓存,否则给失败文案,绝不无限期挂住
+                // 首算者异常/超时：能读缓存就回落缓存，否则给失败文案，绝不无限期挂住
                 cached(s, tf, n) ?: DistR(false, why = "—超时")
             }
         }
         try {
-            val r = fetchAndDerive(s, tf, n, k, forceNet) // 网络取数在锁外
+            val r = deriveFromAvailable(s, tf, n, k, forceRecompute) // 只读共享数据并派生，无网络请求
             mine.complete(r)
             return r
         } catch (e: Throwable) {
@@ -288,256 +317,55 @@ object FavDist {
         }
     }
 
-    // 真正的取数 + 派生:网络在这里(无 per-key monitor),写值只在 synchronized(this)/synchronized(store) 内
+    // 只从共享数据引擎读当前批次并派生距离；所有网络取数都由 MktData.acquire 负责。
 
-    private fun fetchAndDerive(s: String, tf: String, n: Int, k: String, forceNet: Boolean = false): DistR {
-        if (!forceNet) cached(s, tf, n)?.let { return it }
+    private fun deriveFromAvailable(
+        s: String, tf: String, n: Int, k: String, forceRecompute: Boolean = false
+    ): DistR {
+        if (!forceRecompute) cached(s, tf, n)?.let { return it }
+        // ⚠ 2026-11-03 t16（t4 的 R3）：已下线市场（旧收藏里的港股/A股）不当有源品种：
+        //   不读旧批次、不折算、不算支撑，行内直接说「—不支持」（徽章另显示「不支持」）。
+        if (MktData.symType(s) == "unsupported") {
+            val bad = DistR(false, why = "—不支持")
+            synchronized(this) { cache[k] = Pair(System.currentTimeMillis(), bad) }
+            return bad
+        }
         val t0 = System.currentTimeMillis()
         var r = DistR(false)
         try {
-            val type = MktData.symType(s)
-
-            // ⚠⚠⚠ 2026-10-03 **优先复用行情屏抓到的数据，不重复取数**。
-            //
-            // 【用户原话】「直接就用行情屏抓到的，他数据不是可以存嘛？怎么可能抓不到」
-            //   —— 对，它**存了**，而这里**从来没去读**。
-            //
-            // 【原来的行为】行情屏取完 → MktCache.put + MktSave.store（都做了），
-            //   而本函数开头只有 `cached(s,tf,n)`（**本文件自己的另一个 map**），
-            //   查不到就直接再抓一遍。于是**同一个品种被抓两次**。
-            //
-            // 【为什么必须改 —— 不是省流量，是数据要一致】
-            //   两屏各自取数，各自算 `vp.sup`。源不同/根数不同/时点不同/其中一个源返回坏柱，
-            //   就会算出**不同的支撑位**。用户实报「并没有跌破支撑线，却显示负数」，
-            //   根因就在这里：屏上显示的支撑和这个函数算的不是同一个数。
-            //   ⟹ 统一数据源，两屏的支撑位**必然一致**。
-            //
-            // 【查找顺序】行情末帧LastChart → MktCache按品种扫 → 落盘 MktSave → 才自己抓
-            //   ⟹ 前三级覆盖「用户打开过该品种」的全部情形（含冷启动，第二次进 App 就有）。
-            //   ⟹ 第四级必须保留：**从没在行情屏打开过的品种**自选屏仍要能出数。
-            //   ⚠ 2026-10-07 泛化：精确键get恒miss（自选n=20 vs 取数档240），改按品种扫；
-            //     LastChart是行情屏刚画完的那批K线（已fxify+已复权），与屏上支撑同源。
-            //
-            // 【顺带的限流收益】自选屏原本为**每个品种独立打一轮**（股类含东财腿）。
-            //   这正是把 IP 打进封禁的放大器之一 —— 复用后自选屏的网络请求基本归零。
-            //   ⚠ 2026-10-09 **三级复用一律只认同一周期（tf）**（用户裁定：距支撑的旧数据复用
-            //     只认同一周期，根数 n 仍可放宽）。下游只有 takeLast(n) 能把**根数**归一，
-            //     **周期归不了一** ⟹ 复用到另一个周期的K线，距支撑就是在那个周期上算出来的。
-            //     三级的 tf 校验都在各自内部（LastChart.get / cachedFor / MktSave.saved），
-            //     这里只负责把 tf 传下去。
-            //   ⚠ 真抓轮（forceNet）**整段跳过**：用户裁定冷启动首轮要「真抓一轮覆盖」，
-            //     而这一段只要命中就直接 return、一个请求都不发（见 forceFetch 的注释）。
-            //
-            // ⚠⚠⚠ 2026-10-10 **四条取数路径的数据口径对照**（用户报「取支撑的数据很奇怪。
-            //   每次取完数据之后，就和之前保存的数据相差很大」——查实结论写在这里）。
-            //
-            //   【共同的下游】四条路径最后都汇到下面 `MktData.aggregate(vsShared, s)`，
-            //     再 `takeLast(n)` → `profileOf(show)` → `sup`。所以「口径」指的就是
-            //     **喂给 aggregate 的那批 K 线是什么状态**。全项目只有 aggregate 会调
-            //     `SplitBook.apply`（手动拆股前复权），于是每条路径的**复权次数**是关键。
-            //
-            //   ① LastChart（本段第 1 级）——MktPanel.renderAgg 放的 `show`
-            //        源：行情屏刚画完的那批；根数：`ag.ks.takeLast(curN())`（用户填的显示根数）
-            //        复权：**已 fxify + 已复权**（它是 aggregate 的产物）⟹ 本函数再 aggregate
-            //              = **复权 2 次** ❌ 改前就是这样
-            //   ② MktCache.cachedFor（第 2 级）
-            //        源：fetchStocks 的原始腿；根数：取数档（`|tf|n@rate`，n=240）
-            //        复权：**复权之前**（写盘顺序 `fxify` → `MktCache.put` → `aggregate`）
-            //              ⟹ 本函数 aggregate = **复权 1 次** ✅
-            //   ③ MktSave.saved(ckShared/ckAlt)（第 3 级，含取数符号别名那一次）
-            //        源：同上，落盘留底；根数：存的时候是多少就是多少（`saved()` 只校验 tf，不看 n）
-            //        复权：**复权之前**（`MktSave.store` 在 `renderStock(aggregate(...))` **之前**）
-            //              ⟹ 本函数 aggregate = **复权 1 次** ✅
-            //   ④ 网络路径（本函数下方 fetchStocks/fetchMetals/fetchCryptoLeg）
-            //        源：东财 `fqt=1`（**已前复权**）/ 腾讯 `qfq` / 百度（不复权）
-            //        根数：直接按自选窗 `n` 取
-            //        复权：SplitBook 意义上的**未复权** ⟹ 本函数 aggregate = **复权 1 次** ✅
-            //
-            //   【跳变的真实原因】②③④ 都是 1 次，**只有 ① 是 2 次**，而 `SplitBook.apply`
-            //     不是幂等的（按比例除价、乘量，再来一次就再除一次）⟹ 用户只要在行情屏看过
-            //     该品种（LastChart 命中），切回自选算出的支撑就和真抓/缓存路径**不是同一个数**。
-            //     ⚠ 墓碑 · 2026-10-12 尺度带已删（用户裁定选 A），下面这段描述的是**历史行为**，
-            //       「带内集合」指的已是一个不存在的过滤器。结论本身仍成立：二次复权会把第一段
-            //       再除一次 ⟹ sup 变（只是不再经过「带内集合」这个中间量）。
-            //     ⚠ 尺度带（profileOf 里的 `[cur/3, cur*3]`）**不会**把差异约掉：
-            //       拆股日在窗口之前 ⟹ 整窗均匀缩放 ⟹ 带内集合不变 ⟹ sup 不变（离线实测差 0.000000）；
-            //       拆股日**在窗口之内** ⟹ 只有一部分柱子被除，再除一次会把第一段推出带外
-            //       ⟹ **带内集合变小** ⟹ sup 变（离线实测 r=3：带内 20 根 sup=0.606250%
-            //        vs 19 根 sup=2.554861%）。完整数值见 `KLine.adj` 的注释。
-            //
-            //   【修法】不在本函数里分叉（那会变成"每条路径各一套口径"，正是缺陷的来源），
-            //     而是让 `SplitBook.apply` **幂等**：出口给每根打 `KLine.adj`，入口整批已标记
-            //     就原样返回 ⟹ 同一批数据不论被 aggregate 几次，复权**恰好生效一次**，
-            //     四条路径必然同值，而本函数一个字都不用改。
-            //     ⚠ **没有新增任何请求**（用户 2026-10-10：「抓取行情信息不要频繁打，
-            //       不要被限流」）：标记只在内存对象上，落盘格式不变。
-            var vsShared: List<VendorKs>? = null
-            if (!forceNet) {
-                val lastKs = MktData.LastChart.get(s, tf)
-                if (lastKs != null && lastKs.size >= 2) {
-                    // LastChart存的是已聚合单腿K线，直接包一层即可，不再aggregate选腿
-                    vsShared = listOf(VendorKs("LAST", lastKs))
-                }
-                if (vsShared == null || vsShared.isEmpty()) {
-                    vsShared = MktData.MktCache.cachedFor(s, tf)
-                }
-                val ckShared = MktData.MktCache.key(s, tf, n)
-                if (vsShared == null || vsShared.isEmpty()) {
-                    vsShared = runCatching { MktData.MktSave.saved(ckShared) }.getOrNull()
-                }
-            // ⚠⚠⚠ 2026-10-08 用户报「大宗商品自选页距支撑**老是无源**」——**最后一块拼图在这里**。
-            //
-            // 【受控实验证据】清空留底(gridcalc_mk_v1)→ force-stop → 启动 → 只等 12 秒：
-            //   005930/00700/AVGO/NFLX/ORCL 的留底时间戳**全都没变**（06:31:5x）
-            //   ⟹ 它们靠留底复用出数，兜底链路是通的；
-            //   而 **GC=F 的时间戳从 06:31:53 变成 06:33:12 ⟹ 只有黄金在重新拉取**。
-            //
-            // 【根因：同一个品种两个符号，存用一个、查用另一个】
-            //   · 自选这侧(FavStore)存的符号是 **XAUUSD**，于是这里用 `key("XAUUSD",…)` 去查；
-            //   · 而落盘/行情这侧写进去的键是**取数符号** —— 贵金属走
-            //     `fetchMetals("GC=F"/"SI=F",…)`（见下方 when 的 "gold"/"silver" 分支），
-            //     所以留底里躺着的是 **GC=F**（实验实测：GC=F, bars=240, 东财）。
-            //   ⟹ `saved()` 虽已「按品种取」，但取的是**这个品种名**，两套名字对不上 ⟹ **永远 miss**
-            //   ⟹ 每次冷启动都要重拉，而贵金属被裁定删掉新浪后**只剩东财一个腿**
-            //     （MktData.kt:1279 原话「没有退路」）+ **排在自选最后**
-            //     （FavPanel.kt:1514 的注释早就写着「黄金稳定中招」）⟹ 一抖就无源。
-            // 【修法】查询侧补一次**取数符号**。不新增数据源、不发任何请求，
-            //   只是把已经躺在盘里的同一份数据用它的另一个名字取出来。
-            //   ⚠ 映射表与下方 `fetchAndDerive` 的 when 分支**必须同源**，否则又会出现两套名字。
-                if (vsShared == null || vsShared.isEmpty()) {
-                    val fs = fetchSym(s)      // ⚠ 用 if 而非 ?.let：let 的闭包会捕获 vsShared，
-                    if (fs != null) {         //   使后面的 smart cast 失效（编译期实测报错）
-                        val ckAlt = MktData.MktCache.key(fs, tf, n)
-                        vsShared = runCatching { MktData.MktSave.saved(ckAlt) }.getOrNull()
-                    }
-                }
-            }   // ← 三级复用到此为止（真抓轮整段跳过；上面每一级内部都已校验 tf）
-
-            if (vsShared != null && vsShared.isNotEmpty()) {
-                val ag = MktData.aggregate(vsShared, s)
-                // ⚠ 显示侧与取数侧分离后，ag.ks可能是240根；距离按distWin的n切尾，与行情renderAgg同口径
+            // ⚠ 2026-11-02 **自选页不取数**（用户裁定）：这里只读数据引擎已经落好的那批
+            //   （内存缓存 → 落盘留底），绝不自己发请求。取数由 MktData.acquire 在
+            //   「行情页取数」或「前台定时刷新」时统一完成 ⟹ 两屏永远是同一批数据。
+            //   `forceRecompute` 现在只表示"绕过本文件 5 分钟缓存、按当前这批重算"，不再表示"真抓"。
+            val vs = MktData.readOnly(s, tf)
+            if (vs.isNotEmpty()) {
+                val ag = MktData.aggregate(vs, s)
+                // 显示侧与取数侧分离后 ag.ks 可能是 240 根；距离按 distWin 的 n 切尾，与行情 renderAgg 同口径。
                 val show = ag.ks.takeLast(n.coerceAtLeast(2))
                 if (show.size >= 2) {
                     val vp = MktData.profileOf(show)
                     val cur = show.last().c
                     val prv = show[show.size - 2].c
-                    // ⚠ 2026-10-07 泛化修失真：取**离现价最近**的下方支撑（max），不依赖sup列表顺序假设。
-                    //   原below[0]在列表降序时正确，一旦上游顺序变了就是最远一条，AVGO/0700的夸张数即此类。
-                    // ⚠ 2026-10-15 收益比改口径：同时取第一/第二支撑线价格，供 FavPanel.ratioOf 用。
-                    //   口径与行情页 supShow 严格同源（MktView.kt:488 `vp.sup.filter { it < cur }`，
-                    //   MktPanel.kt:1616 `sup1=supShow[0]`/`:1619 sup2=supShow[1]`）：
-                    //   **只取现价下方的支撑**，第一=其中最高的一条，第二=次高的一条。
-                    //   ⚠ 不按 |it-cur| 排序 —— 那会把现价**上方**的档选进来，与行情页标签打架。
-                    //   ⚠ 同时保留上面那条「不依赖 sup 列表顺序」的立场：用 max 而非 [0]。
+                    // 只取现价下方的支撑：第一 = 其中最高的一条，第二 = 次高的一条（与行情页 supShow 同源）。
                     val below = vp.sup.filter { it < cur }
                     val sup1 = below.maxOrNull()
                     val sup2 = if (sup1 != null) below.filter { it < sup1 }.maxOrNull() else null
                     val sup = sup1 ?: vp.sup.filter { it >= cur }.minOrNull()
                     r = if (sup != null && cur > 0) {
-                        DistR(true, Math.abs((cur - sup) / cur * 100.0), cur,
-                            if (prv > 0) (cur - prv) / prv * 100.0 else 0.0, ts = System.currentTimeMillis(),
-                            sup1 = sup, sup2 = sup2 ?: 0.0)
+                        // 距支撑恒 ≥ 0（「有没有跌破」由图上的价格线表达，不由这个数表达）。
+                        DistR(
+                            true, Math.abs((cur - sup) / cur * 100.0), cur,
+                            if (prv > 0) (cur - prv) / prv * 100.0 else 0.0,
+                            ts = System.currentTimeMillis(), sup1 = sup, sup2 = sup2 ?: 0.0
+                        )
                     } else {
+                        // 数据拉到、但该窗口算不出支撑（≠「无源」）：软失败，按成功缓存。
                         DistR(false, soft = true, why = "—无支撑")
                     }
                 }
             }
-
-            // ⟹ 只有复用未命中才真去网络取
-            // ⚠ 2026-10-09 **真抓轮（forceNet）无条件走网络**：上面整段复用被跳过 ⟹ 此处
-            //   r 仍是初始的失败值，本来也会落进 when；写成显式条件是为了让「真抓」这件事
-            //   在本行一眼可读，将来谁再往上面加一条复用捷径都不会把它悄悄短路掉。
-            val vs = if (!forceNet && (r.ok || r.soft)) {
-                emptyList()
-            } else {
-                when (type) {
-                    "crypto" -> MktData.cryptoLegs(s).mapNotNull {
-                        try {
-                            MktData.fetchCryptoLeg(it, s, tf, n)
-                        } catch (_: Exception) {
-                            null
-                        }
-                    }
-                    // 股(美/港/韩)统一走稿§6串行腿:东财→Nasdaq→腾讯→Yahoo命中即停;
-                    // hk/kr 路由进这里(fullSup/lightPx两条取数路径共用本when分发),
-                // 绝不落 gold/silver/cmdty 的商品兜底分支(漏接=自选恒「—无源」)
-                "stock", "hk", "kr" -> try {
-                    MktData.fetchStocks(s, tf, n)
-                } catch (_: Exception) {
-                    null
-                }
-                // 贵金属/商品:东财单源(稿favDist分支:gold→GC=F silver→SI=F cmdty→s)
-                "gold" -> try { MktData.fetchMetals("GC=F", tf, n) } catch (_: Exception) { null }
-                "silver" -> try { MktData.fetchMetals("SI=F", tf, n) } catch (_: Exception) { null }
-                "cmdty" -> try { MktData.fetchMetals(s, tf, n) } catch (_: Exception) { null }
-                // ⚠ 2026-10-07 外汇/美债分支已退役（用户：不要外汇，美债只留 TLT）。
-                //   TLT 是 ETF，上面的 "stock" 分支本来就覆盖它，不需要单独分支。
-                // ⚠ 2026-10-03 **新增 A 股路由**：用户给的 sh688825（长鑫存储/长鑫科技，科创板）
-                //   走 fetchStocks —— 东财 secid 规则 `sh688825` 它认，腾讯 `sh688825` 也认。
-                //   ⚠ 之前 A 股**根本没有任何分支**，`else -> null` 直接吞掉，
-                //     所以 A 股在自选屏恒为「—无源」。这一条是补漏，不是新增能力。
-                "ashare" -> try { MktData.fetchStocks(s, tf, n) } catch (_: Exception) { null }
-                else -> null
-                }
-            }
-            // ⟹ 复用命中时 vs 是空的，走这里不会覆盖已算好的 r
-            if (vs != null && vs.isNotEmpty()) {
-                // ⚠⚠ 2026-10-08 用户报「大宗商品自选页距支撑**老是无源**，即使已经保存了数据，
-                //   这不就是计算一下子的事情吗」——**根因就在这里：自选页从来没写过留底**。
-                //
-                // 【事实】全项目 `MktSave.store` 的调用点**全在 MktPanel（行情页）**：
-                //   :1328 / :1697 / :1779，**FavDist 一处都没有**。
-                //   ⟹ 自选页第 4 级取到数、算出了距离，**落盘仍是空的**；
-                //      下次冷启动/复用未命中又要重拉，而贵金属（gold/silver）被用户裁定
-                //      删掉新浪后**只剩东财一个腿**（MktData.kt:1279 注释原话：没有退路），
-                //      东财一抖就失败 ⟹ 陷入「成功→不存→再拉→失败→无源」的死循环。
-                // 【实测证据】落盘 gridcalc_mk_v1 里只有 AVGO / B00Y / NG00Y，
-                //   **XAUUSD 与 GC=F 都不在** —— 黄金从没有成功留底过；
-                //   而天然气/布伦特有数，恰恰因为它们的留底是**行情页**那条路写进去的。
-                // 【补法】与行情页对称：**真实拉到数才写**（复用命中时 vs 为空，天然不写，
-                //   免得拿旧值反复刷存盘时间）。写完后，下次失败就能被第 3 级 [MktSave.saved] 兜住
-                //   —— 那个函数是**按品种取**的（见其注释「按品种取而非按完整键」），
-                //   正好实现用户要的「算一下就行，不必再去打源」。
-                //   ⚠ 键**必须**与查询侧 `saved(ck)` 的 `symOf(ck)`（取第一段）严格一致，
-                //     否则「存了但查不到」——那就是又一次「保存了却仍显示无源」。
-                //     故这里直接用 $s（当前品种），不借 tf/n 间接拼键。
-                runCatching { MktData.MktSave.store("$s|$tf|$n@1.0", vs) }
-                val ag = MktData.aggregate(vs, s)
-                val show = ag.ks.takeLast(n.coerceAtLeast(2))
-                val vp = MktData.profileOf(show)
-                val cur = show.last().c
-                val prv = if (show.size > 1) show[show.size - 2].c else cur
-                val chg = if (prv > 0) (cur - prv) / prv * 100.0 else 0.0
-                // ⚠ 2026-10-15 第一/第二支撑口径同上（与行情页 supShow 同源，只取现价下方）。
-                val below = vp.sup.filter { it < cur }
-                val sup1 = below.maxOrNull()
-                val sup2 = if (sup1 != null) below.filter { it < sup1 }.maxOrNull() else null
-                val sup = sup1 ?: vp.sup.filter { it >= cur }.minOrNull()
-                if (sup != null && cur > 0) {
-                    // ⚠⚠⚠ 2026-10-03 **距支撑改为恒正**（用户裁定：「他并没有跌破支撑线，却显示负数」）。
-                    //
-                    // 【原逻辑的问题】上面那个 `else` 支会在**现价跌破全部支撑**时
-                    // 选中一个**高于现价**的 sup，于是 `(cur - sup)` 为负 —— 但那个数
-                    // 的语义是「**已跌破 N%**」，和这一列要的「**距支撑还有 N%**」
-                    // 是两回事，一个带符号一个不带。
-                    //
-                    // 【为什么这不是显示偏好问题】用户报「并没有跌破支撑线，却显示负数」——
-                    //   除语义错配外还有一处实质不一致：**本函数自己重新取一遍数据**算 sup，
-                    //   与行情屏显示的现价/支撑**未必是同一批**（tf / 根数 / 时点都可能不同）。
-                    //   两处 sup 对不上，就出现「屏上看着没破、背地里算成破了」。
-                    //
-                    // 【现在的语义】距支撑 = |现价 − 支撑| / 现价，**恒 ≥ 0**。
-                    //   「有没有跌破」在图上一眼可见（价格线在支撑线下方），不由这个数表达。
-                    //   ⚠ 2026-10-15 收益比改口径：sup1/sup2 传到 DistR，供 FavPanel.ratioOf 用。
-                    val rawPct = (cur - sup) / cur * 100.0
-                    r = DistR(true, Math.abs(rawPct), cur, chg,
-                        ts = System.currentTimeMillis(), sup1 = sup, sup2 = sup2 ?: 0.0)
-                } else {
-                    // 稿NOSUP软分支:数据拉到了,只是该窗口算不出支撑位(≠「—无源」)
-                    r = DistR(false, soft = true, why = "—无支撑")
-                }
-            }
         } catch (_: Exception) {
+            // 汇率缺失 / 网络异常一律落到下面的「—无源 / —超时」，绝不拿半截数据顶屏。
         }
         // 仅真失败(数据没到)才标无源/超时;soft按成功走5分钟缓存、不进5秒重试
         if (!r.ok && !r.soft) r = DistR(
@@ -554,12 +382,10 @@ object FavDist {
         return r
     }
 
-    // 稿fullSup:重抓支撑(全量K线→profileOf→支撑→pct),后台补抓环走此路;
-    // 类型分发在 compute 内,stock/hk/kr 统一串行腿,不进商品兜底
+    // fullSup:强制绕过派生缓存，用共享数据引擎当前批次重算支撑；网络由 MktData.acquire 预先完成。
     fun fullSup(s: String, tf: String, n: Int): DistR = compute(s, tf, n)
 
-    // 稿lightPx:轻量刷价——有新鲜缓存直接复用(不发请求),过期才回落 fullSup 重抓;
-    // 自选页首帧onShow走此路;同样经 compute 分发,hk/kr 接入
+    // lightPx:轻量重用派生缓存；过期后只从共享 K 线批次重算，不发网络请求。
     fun lightPx(s: String, tf: String, n: Int): DistR =
         cached(s, tf, n) ?: compute(s, tf, n)
 }

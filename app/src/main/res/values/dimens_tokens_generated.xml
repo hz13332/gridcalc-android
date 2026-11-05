@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ⚠ 生成文件（light），不要手改。真值 = theme.css 的间距 / 字号 / 行高 / 抬升四组变量。
+  源：design/四屏视觉改版/方向-B/theme.css（sha256:16 0fa87b30e8e3c7d0）
+  抬升是「人工换算后的 dp」（CSS box-shadow ≠ Android elevation，残差 R-2），
+  深色全 0dp —— 深色的层次靠色调阶梯，不靠阴影（方向 B 硬约束）。
+-->
+<resources>
+    <dimen name="elev_1">2dp</dimen>
+    <dimen name="elev_2">4dp</dimen>
+    <dimen name="elev_3">8dp</dimen>
+    <dimen name="elev_row">2dp</dimen>
+    <dimen name="fs_data">20sp</dimen>
+    <dimen name="fs_hero">30sp</dimen>
+    <dimen name="fs_label">14sp</dimen>
+    <dimen name="fs_micro">11sp</dimen>
+    <dimen name="fs_note">12sp</dimen>
+    <dimen name="fs_title">16sp</dimen>
+    <dimen name="lh_data">24sp</dimen>
+    <dimen name="lh_hero">33.6sp</dimen>
+    <dimen name="lh_label">19.6sp</dimen>
+    <dimen name="lh_micro">14.3sp</dimen>
+    <dimen name="lh_note">17.4sp</dimen>
+    <dimen name="lh_title">21.6sp</dimen>
+    <dimen name="space_1">4dp</dimen>
+    <dimen name="space_2">8dp</dimen>
+    <dimen name="space_3">12dp</dimen>
+    <dimen name="space_4">16dp</dimen>
+    <dimen name="space_5">20dp</dimen>
+    <dimen name="space_6">24dp</dimen>
+    <dimen name="space_7">32dp</dimen>
+</resources>

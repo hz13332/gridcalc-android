@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- API 28+: keep the card shadow as a downward spot shadow; the base
+         style remains the fallback for API 26-27.
+         ⚠ 2026-10-28：implShared 曾在此新增 Widget.GridCalc.Card.Outline（带发丝的第二支卡）。
+            队长裁定收敛为**一张卡面**：描边并入 @drawable/card_bg ⟹ 本文件只保留 Card 本体，
+            .Outline 已删除（含 values/styles.xml 的同名变体与 card_bg_line.xml）。
+            本目录的样式在 API 28+ 整份替换，而不是逐项合并 ⟹ 与 values/styles.xml 必须同步改。 -->
+    <style name="Widget.GridCalc.Card" parent="">
+        <item name="android:background">@drawable/card_bg</item>
+        <item name="android:elevation">@dimen/elev_1</item>
+        <item name="android:outlineAmbientShadowColor">@android:color/transparent</item>
+        <item name="android:outlineSpotShadowColor">#40101828</item>
+    </style>
+</resources>
