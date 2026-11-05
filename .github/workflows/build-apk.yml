@@ -74,11 +74,23 @@ jobs:
             # 2026-11-05：把失败日志压成一条 annotation。
             # 公开仓库的 check-run annotations 可以无需登录读到，
             # 而 Actions 原始日志需要身份证。
-            msg=$(tail -n 40 /tmp/build.log | sed 's/%/%25/g; s///g' | tr '
+            msg=$(tail -n 40 /tmp/build.log | sed 's/%/%25/g; s/
+//g' | tr '
 ' '|' | cut -c1-6000)
             echo "::error title=gradle-failed::$msg"
             exit $rc
           fi
+      - name: 上传失败日志到 ci-log 分支
+        if: failure()
+        continue-on-error: true
+        run: |
+          mkdir -p ci-logs
+          cp /tmp/build.log ci-logs/build.log || true
+          git config user.name ci-bot
+          git config user.email ci-bot@local
+          git add -f ci-logs/build.log
+          git commit -m "ci log $(date -u +%FT%TZ)" || true
+          git push --force origin HEAD:ci-log
       - name: 读取版本号
         id: ver
         run: |
