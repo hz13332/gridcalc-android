@@ -64,6 +64,14 @@ jobs:
           fi
           echo "keystore bytes: $SZ"
       - uses: gradle/actions/setup-gradle@v3
+      - name: 检查签名变量是否注入
+        # 只打长度，不打内容
+        run: |
+          for v in GC_STOREPASSWORD GC_KEYPASSWORD GC_KEYALIAS GC_KEYSTORE_PATH; do
+            eval "val=\$$v"
+            echo "$v len=${#val}"
+          done
+          ls -l "$GC_KEYSTORE_PATH" || true
       - name: 构建 Release APK
         env:
           # ⚠ job 级 env 里取不到 `runner` 上下文（会解析成空串），
