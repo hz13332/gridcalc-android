@@ -32,9 +32,6 @@ jobs:
       #   相对路径 `../keystore/gridcalc.jks`（相对 app/ 解析到仓库根，同样能取到）。
       #   这里写绝对路径只是把它从"隐式约定"变成"看得见"，两条路指向同一个文件。
       GC_KEYSTORE_PATH: ${{ github.workspace }}/keystore/gridcalc.jks
-      # 2026-11-05：根 build.gradle.kts 强制要求 ASCII 构建根（中文路径兼容），
-      # 未设置就直接 error。CI 的 runner 路径本身是 ASCII，指到 runner.temp 即可。
-      GRIDCALC_BUILD_ROOT: ${{ runner.temp }}/gc-build
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -68,6 +65,10 @@ jobs:
           echo "keystore bytes: $SZ"
       - uses: gradle/actions/setup-gradle@v3
       - name: 构建 Release APK
+        env:
+          # ⚠ job 级 env 里取不到 `runner` 上下文（会解析成空串），
+          #   必须写在 step 上；路径用 /tmp 即可（ASCII、可写）。
+          GRIDCALC_BUILD_ROOT: /tmp/gc-build
         run: |
           chmod +x gradlew
           set -o pipefail
