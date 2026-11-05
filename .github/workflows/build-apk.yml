@@ -97,16 +97,18 @@ jobs:
           echo "name=$V" >> $GITHUB_OUTPUT
       - name: 重命名 APK
         run: |
-          cd app/build/outputs/apk/release
+          # 2026-11-05：构建输出被 GRIDCALC_BUILD_ROOT 挪到 /tmp/gc-build，
+          # 不再是仓库内 app/build/…
+          cd /tmp/gc-build/app/outputs/apk/release
           mv app-release.apk "GridCalc-v${{ steps.ver.outputs.name }}.apk"
       - name: 上传 APK
         uses: actions/upload-artifact@v4
         with:
           name: GridCalc-apk
-          path: app/build/outputs/apk/release/GridCalc-*.apk
+          path: /tmp/gc-build/app/outputs/apk/release/GridCalc-*.apk
       - name: 发布 Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.ver.outputs.name }}
           name: v${{ steps.ver.outputs.name }}
-          files: app/build/outputs/apk/release/GridCalc-*.apk
+          files: /tmp/gc-build/app/outputs/apk/release/GridCalc-*.apk
