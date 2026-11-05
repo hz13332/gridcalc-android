@@ -53,6 +53,9 @@ jobs:
             echo "::error::GC_KEYSTORE_B64 是空的。请在 Settings → Secrets and variables → Actions 里配置它。"
             exit 1
           fi
+          # 2026-11-05：仓库不含 keystore/（.gitignore 排除），checkout 后目录不存在，
+          # 直接重定向会以 “No such file or directory” 失败 —— 这正是历次构建卡在第 4 步的原因。
+          mkdir -p keystore
           printf '%s' "$B64" | tr -d '\r\n' | base64 -d > keystore/gridcalc.jks
           SZ=$(stat -c %s keystore/gridcalc.jks)
           if [ "$SZ" -lt 512 ]; then
