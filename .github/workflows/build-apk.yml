@@ -67,7 +67,18 @@ jobs:
       - name: 构建 Release APK
         run: |
           chmod +x gradlew
-          ./gradlew assembleRelease
+          set +e
+          ./gradlew assembleRelease 2>&1 | tee /tmp/build.log
+          rc=${PIPESTATUS[0]}
+          if [ $rc -ne 0 ]; then
+            # 2026-11-05：把失败日志压成一条 annotation。
+            # 公开仓库的 check-run annotations 可以无需登录读到，
+            # 而 Actions 原始日志需要身份证。
+            msg=$(tail -n 40 /tmp/build.log | sed 's/%/%25/g; s///g' | tr '
+' '|' | cut -c1-6000)
+            echo "::error title=gradle-failed::$msg"
+            exit $rc
+          fi
       - name: 读取版本号
         id: ver
         run: |
