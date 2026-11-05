@@ -19,7 +19,11 @@ plugins {
  *   ⟹ 两者都无 → 报错，**不静默回落到明文**（静默回落等于没改）。
  */
 fun secret(key: String): String? {
-    System.getenv("GC_" + key.replace(".", "_").uppercase())?.let { return it }
+    // 2026-11-05 修：调用点传的 key 自带 `gc.` 前缀（"gc.storePassword"），直接拼会得到
+    //   GC_GC_STOREPASSWORD —— 永远对不上；本机有 local.properties 掩盖了这一点，
+    //   CI 里没有该文件就变成构建期「缺少签名口令」。先剥前缀再拼。
+    val envName = "GC_" + key.removePrefix("gc.").replace(".", "_").uppercase()
+    System.getenv(envName)?.let { return it }
     val lp = rootProject.file("local.properties")
     if (!lp.exists()) return null
     // ⚠ 手写解析而不是 java.util.Properties —— Kotlin DSL 里 `java` 会被解析到
